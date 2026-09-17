@@ -1,0 +1,6 @@
+{
+  "name": "Gestión Club de Fútbol",
+  "description": "Plataforma web móvil instalable (PWA) para la gestión integral de clubes de fútbol con sincronización a Google Sheets y Google Apps Script.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

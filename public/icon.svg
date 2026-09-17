@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f97316" />
+      <stop offset="50%" stop-color="#ea580c" />
+      <stop offset="100%" stop-color="#9a3412" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde047" />
+      <stop offset="50%" stop-color="#eab308" />
+      <stop offset="100%" stop-color="#ca8a04" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <!-- Background Shield -->
+  <path d="M 256 32 C 370 32 448 80 448 180 C 448 330 330 430 256 480 C 182 430 64 330 64 180 C 64 80 142 32 256 32 Z" 
+        fill="url(#shieldGrad)" 
+        stroke="url(#goldGrad)" 
+        stroke-width="12" 
+        filter="url(#shadow)" />
+
+  <!-- Shield Inner Border -->
+  <path d="M 256 56 C 352 56 424 98 424 185 C 424 315 320 405 256 450 C 192 405 88 315 88 185 C 88 98 160 56 256 56 Z" 
+        fill="none" 
+        stroke="#ffffff" 
+        stroke-opacity="0.3" 
+        stroke-width="4" />
+
+  <!-- Top Stars -->
+  <g fill="url(#goldGrad)">
+    <!-- Center star -->
+    <path d="M 256 80 L 262 98 L 280 98 L 265 109 L 271 127 L 256 116 L 241 127 L 247 109 L 232 98 L 250 98 Z" />
+    <!-- Left star -->
+    <path d="M 216 92 L 221 106 L 235 106 L 224 115 L 228 129 L 216 120 L 204 129 L 208 115 L 197 106 L 211 106 Z" />
+    <!-- Right star -->
+    <path d="M 296 92 L 301 106 L 315 106 L 304 115 L 308 129 L 296 120 L 284 129 L 288 115 L 277 106 L 291 106 Z" />
+  </g>
+
+  <!-- Soccer Ball in Center -->
+  <g transform="translate(256, 260)" filter="url(#shadow)">
+    <!-- Ball circle base -->
+    <circle cx="0" cy="0" r="110" fill="#ffffff" stroke="#1e293b" stroke-width="8" />
+    
+    <!-- Center pentagon -->
+    <polygon points="0,-36 34,-11 21,30 -21,30 -34,-11" fill="#0f172a" />
+    
+    <!-- Surrounding seam lines and polygons -->
+    <line x1="0" y1="-36" x2="0" y2="-75" stroke="#1e293b" stroke-width="6" stroke-linecap="round" />
+    <line x1="34" y1="-11" x2="72" y2="-23" stroke="#1e293b" stroke-width="6" stroke-linecap="round" />
+    <line x1="21" y1="30" x2="45" y2="68" stroke="#1e293b" stroke-width="6" stroke-linecap="round" />
+    <line x1="-21" y1="30" x2="-45" y2="68" stroke="#1e293b" stroke-width="6" stroke-linecap="round" />
+    <line x1="-34" y1="-11" x2="-72" y2="-23" stroke="#1e293b" stroke-width="6" stroke-linecap="round" />
+
+    <!-- Top patch -->
+    <path d="M -30,-88 L 0,-75 L 30,-88" fill="none" stroke="#1e293b" stroke-width="6" />
+    <polygon points="-24,-106 0,-75 24,-106" fill="#0f172a" />
+    <!-- Top-right patch -->
+    <polygon points="72,-23 102,-45 92,-10 68,14" fill="#0f172a" />
+    <!-- Bottom-right patch -->
+    <polygon points="45,68 85,72 65,96 25,102" fill="#0f172a" />
+    <!-- Bottom-left patch -->
+    <polygon points="-45,68 -85,72 -65,96 -25,102" fill="#0f172a" />
+    <!-- Top-left patch -->
+    <polygon points="-72,-23 -102,-45 -92,-10 -68,14" fill="#0f172a" />
+  </g>
+
+  <!-- Banner ribbon with "CLUB DE FÚTBOL" -->
+  <g transform="translate(0, 395)">
+    <path d="M 120 15 L 140 -5 L 372 -5 L 392 15 L 372 35 L 140 35 Z" fill="#0f172a" stroke="url(#goldGrad)" stroke-width="3" />
+    <text x="256" y="20" font-family="'Chakra Petch', 'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="20" fill="#ffffff" text-anchor="middle" letter-spacing="3">CLUB FÚTBOL</text>
+  </g>
+</svg>

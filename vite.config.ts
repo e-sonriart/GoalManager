@@ -16,7 +16,10 @@ export default defineConfig(() => {
           id: '/',
           name: 'Club Fútbol Manager',
           short_name: 'Club Fútbol',
-          description: 'Gestión integral del club de fútbol: plantillas, partidos, convocatorias, asistencias y porra.',
+          lang: 'es',
+          dir: 'ltr',
+          categories: ['sports', 'productivity'],
+          description: 'Gestión integral del club de fútbol: plantillas, partidos, convocatorias, asistencias y estadísticas.',
           theme_color: '#ea580c',
           background_color: '#111827',
           display: 'standalone',
@@ -56,6 +59,17 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+      },
+    },
+    build: {
+      chunkSizeWarningLimit: 700,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom'],
+            'icons': ['lucide-react'],
+          },
+        },
       },
     },
     server: {

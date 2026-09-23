@@ -4,6 +4,9 @@ import { User, RolUsuario, Categoria, Equipo, Entrenador, Jugador, Partido, Tipo
 import { Modal } from './Modal';
 import { SHIELD_PRESETS, DEFAULT_CLUB_SHIELD } from '../utils/shieldPresets';
 import { TeamShield } from './TeamShield';
+import { RolePermissionsMatrix } from './RolePermissionsMatrix';
+import { ROLE_ORDER, getRoleInfo, roleRequiresTeam, SCOPE_LABELS } from '../utils/roles';
+import { validateUserForm } from '../utils/validation';
 import {
   Settings,
   Users,
@@ -64,8 +67,13 @@ export const AdminPanel: React.FC = () => {
     currentUser,
     addToast,
     clubConfig,
-    saveClubConfig
+    saveClubConfig,
+    can
   } = useClub();
+
+  const canUsuarios = can('manage:usuarios');
+  const canSync = can('manage:sincronizacion');
+  const canIdentidad = can('manage:identidad');
 
   const [activeTab, setActiveTab] = useState<'identity' | 'database' | 'users' | 'appsScript'>('identity');
 
@@ -96,9 +104,10 @@ export const AdminPanel: React.FC = () => {
   const [formEquipo, setFormEquipo] = useState('');
   const [formPassword, setFormPassword] = useState('');
 
-  // Estados Visor y Editor Total de Hojas de Google Sheets
+  // Estados Visor y Editor Total de tablas Supabase
   const [selectedSheet, setSelectedSheet] = useState<string>('categorias');
   const [sheetSearch, setSheetSearch] = useState('');
+  const [userSearch, setUserSearch] = useState('');
 
   // Modal Categoría desde Administrador de Hojas
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
@@ -180,9 +189,24 @@ export const AdminPanel: React.FC = () => {
 
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formNombre.trim() || !formEmail.trim()) return;
 
-    if ((formRol === 'entrenador' || formRol === 'jugador') && !formEquipo.trim()) {
+    const validation = validateUserForm({
+      nombre: formNombre,
+      email: formEmail,
+      password: formPassword,
+      users,
+      editingId: editingUser?.id
+    });
+    if (!validation.valid) {
+      addToast({
+        type: 'error',
+        title: 'Datos incompletos',
+        message: validation.message || 'Revisa los datos del formulario.'
+      });
+      return;
+    }
+
+    if (roleRequiresTeam(formRol) && !formEquipo.trim()) {
       addToast({
         type: 'error',
         title: 'Equipo requerido',
@@ -196,7 +220,7 @@ export const AdminPanel: React.FC = () => {
       nombre: formNombre.trim(),
       email: formEmail.trim(),
       rol: formRol,
-      equipo: (formRol === 'entrenador' || formRol === 'jugador') ? formEquipo.trim() : undefined,
+      equipo: roleRequiresTeam(formRol) ? formEquipo.trim() : undefined,
       password: formPassword || '123456'
     });
 
@@ -226,7 +250,7 @@ export const AdminPanel: React.FC = () => {
       addToast({
         type: 'success',
         title: 'URL Actualizada',
-        message: 'Conectado exitosamente con Google Sheets y Apps Script.'
+        message: 'Conectado exitosamente con Supabase.'
       });
     } catch (e: any) {
       addToast({
@@ -258,6 +282,13 @@ export const AdminPanel: React.FC = () => {
     });
   };
 
+  const filteredUsers = users.filter(
+    u =>
+      u.nombre.toLowerCase().includes(userSearch.toLowerCase()) ||
+      u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
+      u.rol.toLowerCase().includes(userSearch.toLowerCase())
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -267,7 +298,7 @@ export const AdminPanel: React.FC = () => {
             PANEL DE <span className="text-orange-600">ADMINISTRACIÓN</span>
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Personalización de la identidad del club, Google Sheets y gestión de usuarios.
+            Personalización de la identidad del club, Supabase y gestión de usuarios.
           </p>
         </div>
 
@@ -285,7 +316,7 @@ export const AdminPanel: React.FC = () => {
                 resetDataToMock();
               }
             }}
-            className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+            className={`px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-colors items-center gap-1.5 ${canSync ? 'flex' : 'hidden'}`}
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Restablecer Datos
@@ -315,7 +346,7 @@ export const AdminPanel: React.FC = () => {
           }`}
         >
           <Database className="w-4 h-4" />
-          Hojas Google Sheets (9)
+          Tablas Supabase (9)
         </button>
         <button
           onClick={() => setActiveTab('users')}
@@ -337,7 +368,7 @@ export const AdminPanel: React.FC = () => {
           }`}
         >
           <Code className="w-4 h-4" />
-          Conexión Google Apps Script
+            Conexión Supabase
         </button>
       </div>
 
@@ -686,7 +717,7 @@ export const AdminPanel: React.FC = () => {
                   {selectedSheet === 'equipos' && 'Campos: escudo | nombre | categoria | entrenador'}
                   {selectedSheet === 'jugadores' && 'Campos: dorsal | nombre | posicion | equipo | categoria | fechaAlta'}
                   {selectedSheet === 'entrenadores' && 'Campos: nombre | telefono'}
-                  {selectedSheet === 'partidos' && 'Campos: local | visitante | fecha | categoria | equipo | hora | campo | tipo | jornada | golesLocal | golesVisitante | eventos | finalizado'}
+                  {selectedSheet === 'partidos' && 'Campos: local | visitante | fecha | categoria | equipo | hora | campo | tipo | jornada | golesLocal | golesVisitante | eventos | finalizado | convocados | titulares | formacion'}
                   {selectedSheet === 'usuarios' && 'Campos: nombre | email | rol | equipo'}
                   {selectedSheet === 'asistencias' && 'Campos: jugadorId | fecha | estado'}
                   {selectedSheet === 'estadisticas' && 'Campos: jugadorId | goles | asistencias | tarjetas | partidosJugados'}
@@ -704,7 +735,7 @@ export const AdminPanel: React.FC = () => {
                     Nueva Categoría
                   </button>
                 )}
-                {selectedSheet === 'usuarios' && (
+                {selectedSheet === 'usuarios' && canUsuarios && (
                   <button
                     onClick={openAddUser}
                     className="px-3.5 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
@@ -737,7 +768,7 @@ export const AdminPanel: React.FC = () => {
 
             {/* TABLA: CATEGORÍAS (con tipo F8/F11 y tiempojuego por parte, SIN ID) */}
             {selectedSheet === 'categorias' && (
-              <div className="overflow-x-auto rounded-xl border border-gray-150">
+              <div className="overflow-x-auto scroll-x rounded-xl border border-gray-150">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
                     <tr>
@@ -794,7 +825,7 @@ export const AdminPanel: React.FC = () => {
                                 </button>
                                 <button
                                   onClick={() => {
-                                    if (confirm(`¿Eliminar la categoría ${cat.nombre} de Google Sheets?`)) {
+                                    if (confirm(`¿Eliminar la categoría ${cat.nombre} de Supabase?`)) {
                                       deleteCategoria(cat.id);
                                     }
                                   }}
@@ -815,7 +846,7 @@ export const AdminPanel: React.FC = () => {
 
             {/* TABLA: EQUIPOS (SIN ID) */}
             {selectedSheet === 'equipos' && (
-              <div className="overflow-x-auto rounded-xl border border-gray-150">
+              <div className="overflow-x-auto scroll-x rounded-xl border border-gray-150">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
                     <tr>
@@ -867,7 +898,7 @@ export const AdminPanel: React.FC = () => {
 
             {/* TABLA: JUGADORES (SIN ID) */}
             {selectedSheet === 'jugadores' && (
-              <div className="overflow-x-auto rounded-xl border border-gray-150">
+              <div className="overflow-x-auto scroll-x rounded-xl border border-gray-150">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
                     <tr>
@@ -916,12 +947,11 @@ export const AdminPanel: React.FC = () => {
 
             {/* TABLA: ENTRENADORES (SIN ID) */}
             {selectedSheet === 'entrenadores' && (
-              <div className="overflow-x-auto rounded-xl border border-gray-150">
+              <div className="overflow-x-auto scroll-x rounded-xl border border-gray-150">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
                     <tr>
                       <th className="py-3 px-4">Nombre del Entrenador</th>
-                      <th className="py-3 px-4">Teléfono de Contacto</th>
                       <th className="py-3 px-4">Equipos Asignados</th>
                       <th className="py-3 px-4 text-right">Acciones</th>
                     </tr>
@@ -934,7 +964,6 @@ export const AdminPanel: React.FC = () => {
                         return (
                           <tr key={ent.id} className="hover:bg-orange-50/30 transition-colors">
                             <td className="py-3 px-4 font-bold text-gray-900 text-sm">{ent.nombre}</td>
-                            <td className="py-3 px-4 text-gray-600 font-mono">{ent.telefono || 'Sin teléfono'}</td>
                             <td className="py-3 px-4">
                               <div className="flex flex-wrap gap-1">
                                 {equiposAsignados.map(e => (
@@ -967,7 +996,7 @@ export const AdminPanel: React.FC = () => {
 
             {/* TABLA: PARTIDOS (SIN ID) */}
             {selectedSheet === 'partidos' && (
-              <div className="overflow-x-auto rounded-xl border border-gray-150">
+              <div className="overflow-x-auto scroll-x rounded-xl border border-gray-150">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
                     <tr>
@@ -1031,7 +1060,7 @@ export const AdminPanel: React.FC = () => {
 
             {/* TABLA: USUARIOS (SIN ID) */}
             {selectedSheet === 'usuarios' && (
-              <div className="overflow-x-auto rounded-xl border border-gray-150">
+              <div className="overflow-x-auto scroll-x rounded-xl border border-gray-150">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
                     <tr>
@@ -1056,7 +1085,7 @@ export const AdminPanel: React.FC = () => {
                           </td>
                           <td className="py-3 px-4 text-gray-700">{u.equipo || 'Sin equipo'}</td>
                           <td className="py-3 px-4 text-right">
-                            <div className="flex items-center justify-end gap-1">
+                            <div className={`items-center justify-end gap-1 ${canUsuarios ? 'flex' : 'hidden'}`}>
                               <button
                                 onClick={() => openEditUser(u)}
                                 className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
@@ -1082,7 +1111,7 @@ export const AdminPanel: React.FC = () => {
 
             {/* TABLA: ASISTENCIAS (SIN ID) */}
             {selectedSheet === 'asistencias' && (
-              <div className="overflow-x-auto rounded-xl border border-gray-150">
+              <div className="overflow-x-auto scroll-x rounded-xl border border-gray-150">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
                     <tr>
@@ -1121,7 +1150,7 @@ export const AdminPanel: React.FC = () => {
 
             {/* TABLA: ESTADÍSTICAS (SIN ID) */}
             {selectedSheet === 'estadisticas' && (
-              <div className="overflow-x-auto rounded-xl border border-gray-150">
+              <div className="overflow-x-auto scroll-x rounded-xl border border-gray-150">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
                     <tr>
@@ -1163,101 +1192,219 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
-      {/* 2. Tab Usuarios */}
+      {/* 2. Tab Usuarios y Roles */}
       {activeTab === 'users' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <p className="text-xs text-gray-500">
-              Gestiona el personal del club con acceso a la plataforma.
+              Gestiona el personal del club con acceso a la plataforma. El administrador asigna el rol y el equipo de cada usuario.
             </p>
-            <button
-              onClick={openAddUser}
-              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
-            >
-              <UserPlus className="w-4 h-4" />
-              Nuevo Usuario
-            </button>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs min-w-[620px]">
-                <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
-                <tr>
-                  <th className="py-3 px-4">Usuario</th>
-                  <th className="py-3 px-4">Correo Electrónico</th>
-                  <th className="py-3 px-4">Rol en el Club</th>
-                  <th className="py-3 px-4">Equipo Asignado</th>
-                  <th className="py-3 px-4 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {users.map(u => {
-                  let roleColor = 'bg-gray-100 text-gray-700';
-                  let roleLabel: string = u.rol;
-                  if (u.rol === 'admin') {
-                    roleColor = 'bg-red-50 text-red-700 border border-red-200';
-                    roleLabel = 'Administrador';
-                  } else if (u.rol === 'entrenador') {
-                    roleColor = 'bg-blue-50 text-blue-700 border border-blue-200';
-                    roleLabel = 'Entrenador';
-                  } else if (u.rol === 'direccion' || u.rol === 'directiva') {
-                    roleColor = 'bg-purple-50 text-purple-700 border border-purple-200';
-                    roleLabel = 'Dirección';
-                  } else if (u.rol === 'jugador') {
-                    roleColor = 'bg-orange-50 text-orange-700 border border-orange-200';
-                    roleLabel = 'Jugador';
-                  } else if (u.rol === 'aficionado') {
-                    roleColor = 'bg-slate-100 text-slate-700 border border-slate-200';
-                    roleLabel = 'Aficionado';
-                  }
-
-                  return (
-                    <tr key={u.id} className="hover:bg-gray-50">
-                      <td className="py-3 px-4 font-bold text-gray-900 text-sm">{u.nombre}</td>
-                      <td className="py-3 px-4 text-gray-600">{u.email}</td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${roleColor}`}>
-                          {roleLabel}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        {u.equipo ? (
-                          <span className="inline-flex items-center gap-1.5 font-bold text-gray-800 bg-orange-50 border border-orange-200 px-2.5 py-1 rounded-lg text-xs">
-                            <span className="text-orange-500">⚽</span>
-                            <span>{u.equipo}</span>
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 text-xs italic">Sin equipo</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => openEditUser(u)}
-                            className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteUser(u)}
-                            className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:flex-initial">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" />
+                <input
+                  type="text"
+                  value={userSearch}
+                  onChange={e => setUserSearch(e.target.value)}
+                  placeholder="Buscar usuario..."
+                  className="pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 focus:outline-none w-full sm:w-56"
+                />
+              </div>
+              <button
+                onClick={openAddUser}
+                className={`px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm items-center gap-1.5 shrink-0 ${canUsuarios ? 'flex' : 'hidden'}`}
+              >
+                <UserPlus className="w-4 h-4" />
+                Nuevo Usuario
+              </button>
             </div>
           </div>
+
+          {/* Resumen de usuarios por rol */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            {ROLE_ORDER.map(rol => {
+              const info = getRoleInfo(rol);
+              const count = users.filter(u => u.rol === rol).length;
+              return (
+                <div
+                  key={rol}
+                  className={`p-3 rounded-2xl border bg-white transition-opacity ${
+                    count > 0 ? 'border-gray-200' : 'border-gray-100 opacity-55'
+                  }`}
+                  title={info.description}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${info.dotClass}`} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 truncate">
+                      {info.shortLabel}
+                    </span>
+                  </div>
+                  <p className="text-xl font-black font-athletic text-gray-900 mt-1">{count}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hidden sm:block bg-white rounded-2xl border border-gray-150 shadow-sm overflow-x-auto scroll-x">
+              <table className="w-full text-left text-xs min-w-[680px]">
+                <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
+                  <tr>
+                    <th className="py-3 px-4">Usuario</th>
+                    <th className="py-3 px-4">Correo Electrónico</th>
+                    <th className="py-3 px-4">Rol en el Club</th>
+                    <th className="py-3 px-4">Equipo Asignado</th>
+                    <th className="py-3 px-4 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredUsers.map(u => {
+                    const info = getRoleInfo(u.rol);
+                    return (
+                      <tr key={u.id} className="hover:bg-gray-50">
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shadow-sm shrink-0 ${info.avatarBg}`}
+                            >
+                              {u.nombre.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
+                                {u.nombre}
+                                {u.id === currentUser?.id && (
+                                  <span className="text-[10px] text-orange-600 font-bold">(tú)</span>
+                                )}
+                              </p>
+                              <p className="text-[11px] text-gray-400">{SCOPE_LABELS[info.scope]}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-gray-600">{u.email}</td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${info.badgeClass}`}
+                          >
+                            {info.label}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {u.equipo ? (
+                            <span className="inline-flex items-center gap-1.5 font-bold text-gray-800 bg-orange-50 border border-orange-200 px-2.5 py-1 rounded-lg text-xs">
+                              <span className="text-orange-500">⚽</span>
+                              <span>{u.equipo}</span>
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs italic">Sin equipo</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className={`items-center justify-end gap-1 ${canUsuarios ? 'flex' : 'hidden'}`}>
+                            <button
+                              onClick={() => openEditUser(u)}
+                              title="Editar usuario y rol"
+                              className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(u)}
+                              title="Eliminar usuario"
+                              className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-gray-400 text-xs">
+                        No se encontraron usuarios que coincidan con la búsqueda.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+          </div>
+
+          {/* Usuarios en móvil (tarjetas) */}
+          <div className="sm:hidden bg-white rounded-2xl border border-gray-150 shadow-sm divide-y divide-gray-100 overflow-hidden">
+            {filteredUsers.length === 0 ? (
+              <div className="py-8 text-center text-gray-400 text-xs">
+                No se encontraron usuarios que coincidan con la búsqueda.
+              </div>
+            ) : (
+              filteredUsers.map(u => {
+                const info = getRoleInfo(u.rol);
+                return (
+                  <div key={u.id} className="p-3.5">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shadow-sm shrink-0 ${info.avatarBg}`}
+                      >
+                        {u.nombre.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-bold text-gray-900 text-sm flex items-center gap-1.5 min-w-0">
+                              <span className="truncate">{u.nombre}</span>
+                              {u.id === currentUser?.id && (
+                                <span className="shrink-0 text-[10px] text-orange-600 font-bold">(tú)</span>
+                              )}
+                            </p>
+                            <p className="text-[11px] text-gray-400 truncate">{u.email}</p>
+                          </div>
+                          {canUsuarios && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => openEditUser(u)}
+                                title="Editar usuario y rol"
+                                className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(u)}
+                                title="Eliminar usuario"
+                                className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${info.badgeClass}`}
+                          >
+                            {info.label}
+                          </span>
+                          <span className="text-[10px] text-gray-400">{SCOPE_LABELS[info.scope]}</span>
+                          {u.equipo ? (
+                            <span className="inline-flex items-center gap-1 font-bold text-gray-800 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-lg text-[10px]">
+                              <span className="text-orange-500">⚽</span>
+                              <span className="truncate max-w-[140px]">{u.equipo}</span>
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-[10px] italic">Sin equipo</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <RolePermissionsMatrix currentRole={currentUser?.rol} canManageUsers={canUsuarios} />
         </div>
       )}
 
-      {/* 3. Tab Apps Script & Setup */}
+      {/* 3. Tab Conexión & Setup */}
       {activeTab === 'appsScript' && (
         <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm space-y-6">
           <div>
@@ -1271,7 +1418,7 @@ export const AdminPanel: React.FC = () => {
 
           <div className="space-y-3">
             <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-              URL de la Aplicación Web (Google Apps Script):
+              URL de Supabase (Project URL):
             </label>
             <div className="flex gap-2">
               <input
@@ -1307,25 +1454,25 @@ export const AdminPanel: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-gray-600">
               <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-1">
                 <span className="font-bold text-orange-600 text-sm font-athletic">PASO 1</span>
-                <p className="font-bold text-gray-800">Crear Google Sheets</p>
+                <p className="font-bold text-gray-800">Crear proyecto Supabase</p>
                 <p className="text-gray-500">
-                  Crea una hoja de cálculo nueva en tu Google Drive y ve a <em>Extensiones &gt; Apps Script</em>.
+                  Crea un proyecto en supabase.com y ejecuta <em>supabase-schema.sql</em> en el SQL Editor.
                 </p>
               </div>
 
               <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-1">
                 <span className="font-bold text-orange-600 text-sm font-athletic">PASO 2</span>
-                <p className="font-bold text-gray-800">Pegar Código `Code.gs`</p>
+                <p className="font-bold text-gray-800">Configurar .env</p>
                 <p className="text-gray-500">
-                  Pega el archivo <code>Code.gs</code> generado en la carpeta <code>google-apps-script/</code> y ejecuta <code>initDatabase()</code>.
+                  Define <code>VITE_SUPABASE_URL</code> y <code>VITE_SUPABASE_ANON_KEY</code> en el archivo <code>.env</code>.
                 </p>
               </div>
 
               <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 space-y-1">
                 <span className="font-bold text-orange-600 text-sm font-athletic">PASO 3</span>
-                <p className="font-bold text-gray-800">Publicar Aplicación Web</p>
+                <p className="font-bold text-gray-800">Probar conexión</p>
                 <p className="text-gray-500">
-                  Haz clic en <em>Implementar &gt; Nueva implementación &gt; Aplicación web</em>, acceso "Cualquiera" y pega la URL arriba.
+                  Pulsa "Probar conexión" aquí o en el modal de Supabase y sincroniza los datos.
                 </p>
               </div>
             </div>
@@ -1377,25 +1524,26 @@ export const AdminPanel: React.FC = () => {
               onChange={e => setFormRol(e.target.value as RolUsuario)}
               className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
             >
-              <option value="entrenador">Entrenador</option>
-              <option value="coordinador_f7">Coordinador F7</option>
-              <option value="coordinador_f11">Coordinador F11</option>
-              <option value="jugador">Jugador</option>
-              <option value="autorizado">Autorizado</option>
-              <option value="direccion">Dirección deportiva</option>
-              <option value="admin">Administrador</option>
-              <option value="aficionado">Aficionado</option>
+              {ROLE_ORDER.map(rol => (
+                <option key={rol} value={rol}>
+                  {getRoleInfo(rol).label}
+                </option>
+              ))}
             </select>
+            <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-xl flex items-start gap-2">
+              <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${getRoleInfo(formRol).dotClass}`} />
+              <p className="text-[11px] text-gray-600 leading-snug">{getRoleInfo(formRol).description}</p>
+            </div>
           </div>
 
-          {(formRol === 'entrenador' || formRol === 'jugador') && (
+          {roleRequiresTeam(formRol) && (
             <div className="p-3.5 bg-orange-50/80 border border-orange-200 rounded-xl space-y-1.5 animate-in fade-in duration-200">
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-bold text-gray-900 uppercase tracking-wider">
                   Equipo Asignado *
                 </label>
                 <span className="text-[10px] font-bold text-orange-700 bg-orange-100 px-2 py-0.5 rounded-full border border-orange-200">
-                  Obligatorio ({formRol})
+                  Obligatorio ({getRoleInfo(formRol).label})
                 </span>
               </div>
               <select
@@ -1478,7 +1626,7 @@ export const AdminPanel: React.FC = () => {
           {/* Campo tipo: F8 o F11 */}
           <div>
             <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-              Modalidad de Fútbol (tipo en Google Sheets)
+              Modalidad de Fútbol (tipo en Supabase)
             </label>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -1572,7 +1720,7 @@ export const AdminPanel: React.FC = () => {
               ))}
             </div>
             <p className="text-[11px] text-gray-500 mt-1.5">
-              Se guarda en la columna <code className="text-orange-600 bg-orange-50 px-1 py-0.5 rounded font-mono">tiempojuego</code> de Google Sheets como la duración de cada una de las 2 partes.
+              Se guarda en la columna <code className="text-orange-600 bg-orange-50 px-1 py-0.5 rounded font-mono">tiempojuego</code> de Supabase como la duración de cada una de las 2 partes.
             </p>
           </div>
 

@@ -12,6 +12,18 @@
     color: #111827;
     background-color: #F8FAFC;
     overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* iOS hace zoom al enfocar inputs con fuente < 16px. Evitarlo en móvil. */
+  @media (max-width: 640px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
   }
 
   h1, h2, h3, .font-athletic {
@@ -44,5 +56,17 @@
 
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0.5rem);
+}
+
+/* Scroll con inercia en iOS dentro de regiones con overflow */
+.scroll-touch {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Región de scroll horizontal sin barra visible (tablas anchas) */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 

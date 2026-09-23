@@ -1,43 +1,69 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useClub } from '../context/ClubContext';
-import { EstadoConvocatoria } from '../types';
 import { TeamShield } from './TeamShield';
+import { resolveVisitorShield } from '../utils/shieldPresets';
+import { convocatoriaStatsDeltas } from '../utils/playerStatsFromEvents';
 import {
   ClipboardList,
   CheckCircle2,
   XCircle,
-  Copy,
-  Download,
-  Calendar,
-  Shield,
   Clock,
   Check,
-  Share2
+  Share2,
+  ArrowLeft,
+  Users,
+  ListChecks
 } from 'lucide-react';
 
 interface ConvocatoriasViewProps {
   initialPartidoId?: string;
+  onBack?: (partidoId: string) => void;
 }
 
-export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPartidoId }) => {
+export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPartidoId, onBack }) => {
   const {
     partidos,
     jugadores,
-    toggleConvocatoria,
-    setConvocatoriaEstado,
-    exportSheet,
-    addToast,
-    getTeamEscudo
+    equipos,
+    savePartido,
+    applyEventStats,
+    getTeamEscudo,
+    can
   } = useClub();
+
+  const canManage = can('manage:convocatorias');
 
   const [selectedPartidoId, setSelectedPartidoId] = useState<string>(
     initialPartidoId || partidos[0]?.id || ''
   );
   const [copied, setCopied] = useState(false);
 
+  // Selección local: NO se guarda hasta pulsar "Convocar" (aceptar)
+  const [localConvocados, setLocalConvocados] = useState<Set<string>>(new Set());
+
   const selectedPartido = useMemo(() => {
     return partidos.find(p => p.id === selectedPartidoId) || partidos[0];
   }, [partidos, selectedPartidoId]);
+
+  const selectedId = selectedPartido?.id;
+
+  // Cargar la convocatoria guardada al entrar o cambiar de partido (descarta cambios pendientes)
+  useEffect(() => {
+    if (selectedId) {
+      const stored = partidos.find(p => p.id === selectedId);
+      setLocalConvocados(new Set(stored?.convocados || []));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  const clubTeamName = useMemo(() => {
+    if (!selectedPartido) return '';
+    return selectedPartido.equipo || (
+      equipos.some(e => e.nombre === selectedPartido.local)
+        ? selectedPartido.local
+        : selectedPartido.visitante
+    );
+  }, [selectedPartido, equipos]);
 
   // Jugadores elegibles (del mismo equipo o categoría, o todos si no hay coincidencia)
   const eligibleJugadores = useMemo(() => {
@@ -49,56 +75,65 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     return matchByTeam.length > 0 ? matchByTeam : jugadores;
   }, [jugadores, selectedPartido]);
 
-  // Mapa de estados de convocatoria para el partido actual
-  const convocatoriasMap = useMemo(() => {
-    const map = new Map<string, EstadoConvocatoria>();
-    if (!selectedPartido) return map;
-    const convocadosList = selectedPartido.convocados || [];
-    eligibleJugadores.forEach(j => {
-      map.set(j.id, convocadosList.includes(j.id) ? 'convocado' : 'no convocado');
-    });
-    return map;
-  }, [selectedPartido, eligibleJugadores]);
-
   const totalConvocados = useMemo(() => {
     let count = 0;
     eligibleJugadores.forEach(j => {
-      if (convocatoriasMap.get(j.id) === 'convocado') {
-        count++;
-      }
+      if (localConvocados.has(j.id)) count++;
     });
     return count;
-  }, [eligibleJugadores, convocatoriasMap]);
+  }, [eligibleJugadores, localConvocados]);
 
-  // Acciones en lote
-  const handleConvocarTodos = async () => {
-    if (!selectedPartido) return;
-    for (const j of eligibleJugadores) {
-      await setConvocatoriaEstado(selectedPartido.id, j.id, 'convocado');
-    }
-    addToast({
-      type: 'success',
-      title: 'Convocatoria completa',
-      message: `Se han convocado ${eligibleJugadores.length} jugadores.`
+  const toggleLocal = (jugadorId: string) => {
+    if (!canManage) return;
+    setLocalConvocados(prev => {
+      const next = new Set(prev);
+      if (next.has(jugadorId)) next.delete(jugadorId);
+      else next.add(jugadorId);
+      return next;
     });
   };
 
-  const handleDesconvocarTodos = async () => {
-    if (!selectedPartido) return;
-    for (const j of eligibleJugadores) {
-      await setConvocatoriaEstado(selectedPartido.id, j.id, 'no convocado');
-    }
-    addToast({
-      type: 'info',
-      title: 'Convocatoria reiniciada',
-      message: 'Todos los jugadores marcados como no convocados.'
+  const handleSelectAll = () => {
+    if (!canManage) return;
+    setLocalConvocados(new Set(eligibleJugadores.map(j => j.id)));
+  };
+
+  const handleClear = () => {
+    if (!canManage) return;
+    setLocalConvocados(new Set());
+  };
+
+  // ACEPTAR: guarda la selección y suma +1 partido jugado a cada convocado nuevo
+  const handleAccept = async () => {
+    if (!selectedPartido || !canManage) return;
+    const prev: string[] = Array.isArray(selectedPartido.convocados)
+      ? selectedPartido.convocados.filter((id): id is string => typeof id === 'string')
+      : [];
+    const next: string[] = Array.from(localConvocados).filter((id): id is string => typeof id === 'string');
+    await savePartido({
+      ...selectedPartido,
+      convocados: next
     });
+    const titulares: string[] = Array.isArray(selectedPartido.titulares)
+      ? selectedPartido.titulares.filter((id): id is string => typeof id === 'string')
+      : [];
+    const deltas = convocatoriaStatsDeltas(prev, next, titulares);
+    if (deltas.length) await applyEventStats(deltas, 1);
+    onBack?.(selectedPartido.id);
+  };
+
+  // CANCELAR: descarta cambios y vuelve a la tarjeta del partido
+  const handleCancel = () => {
+    if (selectedPartido) {
+      setLocalConvocados(new Set(selectedPartido.convocados || []));
+    }
+    onBack?.(selectedPartido.id);
   };
 
   const handleShareSquad = async () => {
     if (!selectedPartido) return;
     const convocadosList = eligibleJugadores
-      .filter(j => convocatoriasMap.get(j.id) === 'convocado')
+      .filter(j => localConvocados.has(j.id))
       .map(j => `• #${j.dorsal} ${j.nombre} (${j.posicion})`)
       .join('\n');
 
@@ -120,11 +155,6 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
       await navigator.clipboard.writeText(text);
     }
     setCopied(true);
-    addToast({
-      type: 'success',
-      title: 'Copiado al portapapeles',
-      message: 'Lista de convocatoria lista para compartir por WhatsApp o redes.'
-    });
     setTimeout(() => setCopied(false), 3000);
   };
 
@@ -150,14 +180,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => exportSheet('convocatorias')}
-            className="px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
-          >
-            <Download className="w-3.5 h-3.5 text-gray-500" />
-            Exportar Convocatorias
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleShareSquad}
             className="px-4 py-2 bg-gray-900 hover:bg-black text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
@@ -188,16 +211,20 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={handleConvocarTodos}
-              className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors"
+              onClick={handleSelectAll}
+              disabled={!canManage}
+              title={canManage ? 'Marcar a toda la plantilla elegible' : 'Solo lectura'}
+              className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Convocar a Todos
+              Seleccionar Todos
             </button>
             <button
-              onClick={handleDesconvocarTodos}
-              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-colors"
+              onClick={handleClear}
+              disabled={!canManage}
+              title={canManage ? 'Vaciar la selección actual' : 'Solo lectura'}
+              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-xl text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-100"
             >
               Limpiar Selección
             </button>
@@ -210,7 +237,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
             <div className="flex items-center gap-1.5 shrink-0">
               <div className="w-10 h-10 rounded-xl bg-white/10 p-1 flex items-center justify-center border border-white/20 overflow-hidden">
                 <TeamShield
-                  escudoUrl={getTeamEscudo(selectedPartido.local)}
+                  escudoUrl={selectedPartido.local === clubTeamName ? getTeamEscudo(selectedPartido.local) : resolveVisitorShield(selectedPartido)}
                   teamName={selectedPartido.local}
                   size="sm"
                   className="w-full h-full"
@@ -219,7 +246,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
               <span className="text-xs font-bold text-orange-400 font-athletic">VS</span>
               <div className="w-10 h-10 rounded-xl bg-white/10 p-1 flex items-center justify-center border border-white/20 overflow-hidden">
                 <TeamShield
-                  escudoUrl={getTeamEscudo(selectedPartido.visitante)}
+                  escudoUrl={selectedPartido.visitante === clubTeamName ? getTeamEscudo(selectedPartido.visitante) : resolveVisitorShield(selectedPartido)}
                   teamName={selectedPartido.visitante}
                   size="sm"
                   className="w-full h-full"
@@ -259,26 +286,30 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
           <h3 className="font-bold text-xs uppercase tracking-wider text-gray-700">
             Plantilla disponible ({eligibleJugadores.length} futbolistas)
           </h3>
-          <span className="text-xs text-gray-500">Haz clic para cambiar estado</span>
+          <span className="text-xs text-gray-500">
+            {canManage ? 'Haz clic para cambiar estado' : 'Modo solo lectura'}
+          </span>
         </div>
 
         <div className="divide-y divide-gray-100">
           {eligibleJugadores.map(jugador => {
-            const isConvocado = convocatoriasMap.get(jugador.id) === 'convocado';
+            const isConvocado = localConvocados.has(jugador.id);
 
             return (
               <div
                 key={jugador.id}
-                onClick={() => toggleConvocatoria(selectedPartido.id, jugador.id)}
-                className={`p-4 flex items-center justify-between transition-all cursor-pointer select-none ${
+                onClick={() => toggleLocal(jugador.id)}
+                className={`p-3.5 sm:p-4 flex items-center justify-between gap-2 transition-all select-none ${
+                  canManage ? 'cursor-pointer' : 'cursor-default'
+                } ${
                   isConvocado
                     ? 'bg-orange-50/40 hover:bg-orange-50/70'
                     : 'hover:bg-gray-50'
                 }`}
               >
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
                   <span
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center font-black font-athletic text-sm transition-colors ${
+                    className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center font-black font-athletic text-sm transition-colors ${
                       isConvocado
                         ? 'bg-orange-500 text-white shadow-sm shadow-orange-500/30'
                         : 'bg-gray-200 text-gray-700'
@@ -287,20 +318,20 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
                     #{jugador.dorsal || '-'}
                   </span>
 
-                  <div>
-                    <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                      {jugador.nombre}
-                      <span className="text-[11px] font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2 min-w-0">
+                      <span className="truncate">{jugador.nombre}</span>
+                      <span className="shrink-0 text-[11px] font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
                         {jugador.posicion}
                       </span>
                     </h4>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <p className="text-xs text-gray-400 mt-0.5 truncate">
                       {jugador.equipo} • {jugador.categoria}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 shrink-0">
                   <span
                     className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all ${
                       isConvocado
@@ -325,6 +356,26 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
             );
           })}
         </div>
+      </div>
+
+      {/* Acciones inferiores: Convocar (aceptar) y Atrás (cancelar) */}
+      <div className="flex gap-3 pb-4">
+        <button
+          onClick={handleCancel}
+          className="flex-1 py-3 bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
+        >
+          <ArrowLeft className="w-4 h-4 text-gray-500" />
+          Atrás
+        </button>
+        <button
+          onClick={handleAccept}
+          disabled={!canManage}
+          title={canManage ? 'Guardar convocatoria y volver a la tarjeta' : 'Solo lectura: no tienes permisos para convocar'}
+          className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <ListChecks className="w-4 h-4" />
+          Convocar
+        </button>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import {
   Jugador,
   Equipo,
@@ -12,7 +12,9 @@ import {
   ToastMessage,
   EstadoConvocatoria,
   EstadoAsistencia,
-  ClubConfig
+  ClubConfig,
+  SesionEntrenamiento,
+  AppTab
 } from '../types';
 import { DEFAULT_CLUB_SHIELD } from '../utils/shieldPresets';
 import { jugadoresService } from '../services/jugadores';
@@ -20,19 +22,30 @@ import { equiposService } from '../services/equipos';
 import { categoriasService } from '../services/categorias';
 import { entrenadoresService } from '../services/entrenadores';
 import { partidosService } from '../services/partidos';
+import { sesionesService } from '../services/sesiones';
 import { asistenciasService } from '../services/asistencias';
 import { estadisticasService } from '../services/estadisticas';
 import { usuariosService } from '../services/usuarios';
 import { apiClient, getGasUrl, setGasUrl as setGasUrlStore } from '../services/apiClient';
+import { getSupabaseUrl, getSupabaseAnonKey } from '../services/supabaseClient';
 import { exportToCsv } from '../utils/exportUtils';
+import { Permission, canRole, allowedTabsFor } from '../utils/permissions';
+import type { PlayerStatsDelta } from '../utils/playerStatsFromEvents';
+import { convocatoriaStatsDeltas } from '../utils/playerStatsFromEvents';
 
 interface ClubContextType {
   // Estado de usuario y autenticación
   currentUser: Usuario | null;
   setCurrentUser: (user: Usuario | null) => void;
   users: Usuario[];
-  loginAs: (userId: string) => void;
-  registerUser: (nombre: string, email: string, rol: RolUsuario, equipo?: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean>;
+  logout: () => void;
+  can: (permission: Permission) => boolean;
+  allowedTabs: AppTab[];
+  /** true si el rol actual solo puede ver los equipos que tenga asignados. */
+  isTeamScoped: boolean;
+  /** Nombres de los equipos asignados al usuario actual. */
+  assignedTeams: string[];
 
   // Entidades principales
   jugadores: Jugador[];
@@ -42,6 +55,8 @@ interface ClubContextType {
   partidos: Partido[];
   asistencias: Asistencia[];
   estadisticas: Estadistica[];
+  sesiones: SesionEntrenamiento[];
+  visibleSesiones: SesionEntrenamiento[];
 
   // Identidad y Personalización del Club
   clubConfig: ClubConfig;
@@ -83,9 +98,14 @@ interface ClubContextType {
   savePartido: (partido: Partial<Partido>) => Promise<boolean>;
   deletePartido: (id: string) => Promise<boolean>;
 
+  // Operaciones Sesiones de Entrenamiento
+  saveSesion: (sesion: Partial<SesionEntrenamiento>) => Promise<boolean>;
+  deleteSesion: (id: string) => Promise<boolean>;
+
   // Convocatorias
   toggleConvocatoria: (partidoId: string, jugadorId: string) => Promise<void>;
   setConvocatoriaEstado: (partidoId: string, jugadorId: string, estado: EstadoConvocatoria) => Promise<void>;
+  batchSetConvocatoriaEstado: (partidoId: string, jugadorIds: string[], estado: EstadoConvocatoria) => Promise<void>;
 
   // Asistencias
   toggleAsistencia: (jugadorId: string, fecha: string, estado: EstadoAsistencia) => Promise<void>;
@@ -93,6 +113,7 @@ interface ClubContextType {
 
   // Estadísticas
   saveEstadistica: (estadistica: Partial<Estadistica> & { jugadorId: string }) => Promise<boolean>;
+  applyEventStats: (deltas: PlayerStatsDelta[], sign: 1 | -1) => Promise<boolean>;
 
   // Apuestas (Porra)
   submitApuesta: (partidoId: string, resultado: string) => Promise<boolean>;
@@ -115,6 +136,11 @@ interface ClubContextType {
   exportSheet: (sheetName: string) => void;
 }
 
+/**
+ * Roles que solo pueden ver la información de los equipos que tengan asignados.
+ */
+const TEAM_SCOPED_ROLES = new Set<RolUsuario>(['entrenador', 'jugador']);
+
 const ClubContext = createContext<ClubContextType | undefined>(undefined);
 
 export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -132,6 +158,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [partidos, setPartidos] = useState<Partido[]>([]);
   const [asistencias, setAsistencias] = useState<Asistencia[]>([]);
   const [estadisticas, setEstadisticas] = useState<Estadistica[]>([]);
+  const [sesiones, setSesiones] = useState<SesionEntrenamiento[]>([]);
   const [users, setUsers] = useState<Usuario[]>([]);
 
   // Configuración e Identidad del Club
@@ -180,18 +207,120 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   }, [addToast]);
 
+  // Mapa de escudos por equipo (cacheado para evitar búsquedas lineales en cada render)
+  const escudoByTeam = useMemo(() => {
+    const map = new Map<string, string>();
+    equipos.forEach(e => {
+      if (e.nombre) map.set(e.nombre.toLowerCase().trim(), e.escudo || clubConfig.escudo);
+    });
+    return map;
+  }, [equipos, clubConfig.escudo]);
+
   const getTeamEscudo = useCallback((teamName: string): string => {
     if (!teamName) return clubConfig.escudo;
-    const clean = teamName.toLowerCase().trim();
-    // Búsqueda en equipos registrados del club
-    const match = equipos.find(
-      e => e.nombre.toLowerCase().trim() === clean
-    );
-    if (match) {
-      return match.escudo || clubConfig.escudo;
+    return escudoByTeam.get(teamName.toLowerCase().trim()) || clubConfig.escudo;
+  }, [clubConfig.escudo, escudoByTeam]);
+
+  // Roles cuyo acceso a datos queda limitado a los equipos que tengan asignados.
+  const scopedTeamNames = useMemo<Set<string> | null>(() => {
+    if (!currentUser || !TEAM_SCOPED_ROLES.has(currentUser.rol)) return null;
+    const names = new Set<string>();
+    const add = (value?: string) => {
+      if (value && value.trim()) names.add(value.toLowerCase().trim());
+    };
+    add(currentUser.equipo);
+    // Un entrenador puede figurar en varios equipos por su nombre en la plantilla técnica.
+    if (currentUser.rol === 'entrenador') {
+      const coachName = currentUser.nombre.trim().toLowerCase();
+      equipos.forEach(e => {
+        const list = e.entrenadores && e.entrenadores.length
+          ? e.entrenadores
+          : (e.entrenador ? e.entrenador.split(',').map(s => s.trim()) : []);
+        if (list.some(n => n.trim().toLowerCase() === coachName)) add(e.nombre);
+      });
     }
-    return clubConfig.escudo;
-  }, [equipos, clubConfig]);
+    return names;
+  }, [currentUser, equipos]);
+
+  const visibleEquipos = useMemo(
+    () => (scopedTeamNames ? equipos.filter(e => scopedTeamNames.has(e.nombre.toLowerCase().trim())) : equipos),
+    [equipos, scopedTeamNames]
+  );
+
+  const isTeamScoped = scopedTeamNames !== null;
+  const assignedTeams = useMemo(() => visibleEquipos.map(e => e.nombre), [visibleEquipos]);
+
+  const visibleCategorias = useMemo(() => {
+    if (!scopedTeamNames) return categorias;
+    const catNames = new Set(visibleEquipos.map(e => (e.categoria || '').toLowerCase().trim()));
+    return categorias.filter(c => catNames.has(c.nombre.toLowerCase().trim()));
+  }, [categorias, scopedTeamNames, visibleEquipos]);
+
+  const visibleEntrenadores = useMemo(() => {
+    if (!scopedTeamNames) return entrenadores;
+    const names = new Set<string>();
+    visibleEquipos.forEach(e => {
+      const list = e.entrenadores && e.entrenadores.length
+        ? e.entrenadores
+        : (e.entrenador ? e.entrenador.split(',').map(s => s.trim()) : []);
+      list.forEach(n => names.add(n.trim().toLowerCase()));
+    });
+    if (currentUser?.nombre) names.add(currentUser.nombre.trim().toLowerCase());
+    return entrenadores.filter(en => names.has(en.nombre.trim().toLowerCase()));
+  }, [entrenadores, scopedTeamNames, visibleEquipos, currentUser?.nombre]);
+
+  const visibleJugadores = useMemo(
+    () => (scopedTeamNames ? jugadores.filter(j => scopedTeamNames.has(j.equipo.toLowerCase().trim())) : jugadores),
+    [jugadores, scopedTeamNames]
+  );
+
+  const visibleJugadorIds = useMemo(() => new Set(visibleJugadores.map(j => j.id)), [visibleJugadores]);
+
+  const visiblePartidos = useMemo(() => {
+    if (!scopedTeamNames) return partidos;
+    return partidos.filter(p => {
+      const equipo = (p.equipo || '').toLowerCase().trim();
+      if (equipo && scopedTeamNames.has(equipo)) return true;
+      const local = (p.local || '').toLowerCase().trim();
+      const visitante = (p.visitante || '').toLowerCase().trim();
+      return scopedTeamNames.has(local) || scopedTeamNames.has(visitante);
+    });
+  }, [partidos, scopedTeamNames]);
+
+  const visibleAsistencias = useMemo(
+    () => (scopedTeamNames ? asistencias.filter(a => visibleJugadorIds.has(a.jugadorId)) : asistencias),
+    [asistencias, scopedTeamNames, visibleJugadorIds]
+  );
+
+  const visibleEstadisticas = useMemo(
+    () => (scopedTeamNames ? estadisticas.filter(s => visibleJugadorIds.has(s.jugadorId)) : estadisticas),
+    [estadisticas, scopedTeamNames, visibleJugadorIds]
+  );
+
+  // Sesiones de entrenamiento: los roles con equipo asignado solo ven las suyas y los
+  // coordinadores por categoría (F8, F11) ven solo su modalidad.
+  const visibleSesiones = useMemo(() => {
+    let scoped = sesiones;
+    if (scopedTeamNames) {
+      scoped = sesiones.filter(s => {
+        const equipo = (s.equipo || '').toLowerCase().trim();
+        return equipo && scopedTeamNames.has(equipo);
+      });
+    }
+    const rol = currentUser?.rol;
+    if (rol === 'coordinador_f8' || rol === 'coordinador_f11') {
+      const soloF8 = rol === 'coordinador_f8';
+      return scoped.filter(s => {
+        const tipo = (s.tipo || '').toUpperCase();
+        if (!tipo) {
+          const cat = categorias.find(c => (c.nombre || '').toLowerCase().trim() === (s.categoria || '').toLowerCase().trim());
+          return cat ? (cat.tipo === 'F8') === soloF8 : true;
+        }
+        return (tipo === 'F8') === soloF8;
+      });
+    }
+    return scoped;
+  }, [sesiones, scopedTeamNames, categorias, currentUser?.rol]);
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
@@ -204,6 +333,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         pars,
         asists,
         stats,
+        sesses,
         usrs
       ] = await Promise.all([
         jugadoresService.getAll(),
@@ -213,6 +343,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         partidosService.getAll(),
         asistenciasService.getAll(),
         estadisticasService.getAll(),
+        sesionesService.getAll(),
         usuariosService.getAll()
       ]);
 
@@ -223,30 +354,40 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setPartidos(pars);
       setAsistencias(asists);
       setEstadisticas(stats);
+      setSesiones(sesses);
       // Asegurar que jugadores y entrenadores tengan un equipo asignado de los registrados
       const defaultTeam = eqs[0]?.nombre || 'Club Naranja Principal';
       const sanitizedUsrs = usrs.map(u => {
+        let next = u;
         if ((u.rol === 'entrenador' || u.rol === 'jugador') && !u.equipo) {
           if (u.rol === 'entrenador') {
             const match = eqs.find(e => e.entrenador && (e.entrenador.toLowerCase().includes(u.nombre.toLowerCase()) || u.nombre.toLowerCase().includes(e.entrenador.toLowerCase())));
-            return { ...u, equipo: match ? match.nombre : defaultTeam };
-          }
-          if (u.rol === 'jugador') {
+            next = { ...u, equipo: match ? match.nombre : defaultTeam };
+          } else if (u.rol === 'jugador') {
             const match = jugs.find(j => j.nombre && (j.nombre.toLowerCase().includes(u.nombre.toLowerCase()) || u.nombre.toLowerCase().includes(j.nombre.toLowerCase())));
-            return { ...u, equipo: match ? match.equipo : defaultTeam };
+            next = { ...u, equipo: match ? match.equipo : defaultTeam };
+          } else {
+            next = { ...u, equipo: defaultTeam };
           }
-          return { ...u, equipo: defaultTeam };
         }
-        return u;
+        // Cuentas antiguas guardadas sin contraseña: se les asigna la temporal por defecto
+        if (!next.password) {
+          next = { ...next, password: '123456' };
+        }
+        return next;
       });
 
       setUsers(sanitizedUsrs);
 
-      // Si no hay usuario activo, seleccionar el primer admin por defecto
+      // Restaurar SOLO la sesión guardada; si no hay sesión válida, mostrar pantalla de login
       if (!currentUser && sanitizedUsrs.length > 0) {
         const storedUser = localStorage.getItem('cf_current_user_id');
-        const found = sanitizedUsrs.find(u => u.id === storedUser) || sanitizedUsrs[0];
-        setCurrentUser(found);
+        const found = storedUser ? sanitizedUsrs.find(u => u.id === storedUser) : undefined;
+        if (found) {
+          setCurrentUser(found);
+        } else {
+          localStorage.removeItem('cf_current_user_id');
+        }
       } else if (currentUser) {
         const refreshed = sanitizedUsrs.find(u => u.id === currentUser.id);
         if (refreshed) setCurrentUser(refreshed);
@@ -267,81 +408,60 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     refreshAll();
   }, []);
 
-  const updateGasUrl = (url: string) => {
+  const updateGasUrl = useCallback((url: string) => {
     setGasUrlStore(url);
     setGasUrlState(url);
     addToast({
       type: 'info',
       title: 'Configuración actualizada',
-      message: url ? 'URL de Google Apps Script guardada.' : 'Modo local sin conexión activado.'
+      message: url ? 'URL de backend guardada.' : 'Modo local sin conexión activado.'
     });
     refreshAll();
-  };
+  }, [addToast, refreshAll]);
 
-  const loginAs = (userId: string) => {
-    const found = users.find(u => u.id === userId);
-    if (found) {
-      setCurrentUser(found);
-      localStorage.setItem('cf_current_user_id', found.id);
-      const teamInfo = (found.rol === 'entrenador' || found.rol === 'jugador') && found.equipo ? ` - ${found.equipo}` : '';
-      addToast({
-        type: 'success',
-        title: 'Sesión iniciada',
-        message: `Bienvenido, ${found.nombre} (${found.rol.toUpperCase()}${teamInfo})`
-      });
-    }
-  };
-
-  const registerUser = async (nombre: string, email: string, rol: RolUsuario, equipo?: string): Promise<boolean> => {
-    try {
-      if ((rol === 'entrenador' || rol === 'jugador') && !equipo) {
-        addToast({
-          type: 'error',
-          title: 'Equipo requerido',
-          message: `Los usuarios con rol de ${rol} deben ser asignados obligatoriamente a un equipo registrado.`
-        });
-        return false;
-      }
-
-      const existing = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-      if (existing) {
-        addToast({
-          type: 'error',
-          title: 'Usuario existente',
-          message: 'Ya existe un usuario con este correo electrónico.'
-        });
-        return false;
-      }
-
-      const userData: Omit<Usuario, 'id'> = {
-        nombre,
-        email,
-        rol,
-        ...(equipo ? { equipo } : {})
-      };
-
-      const newUser = await usuariosService.create(userData);
-      setUsers(prev => [...prev, newUser]);
-      setCurrentUser(newUser);
-      localStorage.setItem('cf_current_user_id', newUser.id);
-      addToast({
-        type: 'success',
-        title: 'Registro exitoso',
-        message: `Usuario ${nombre} creado y asignado a ${equipo || 'el club'}.`
-      });
-      return true;
-    } catch (err) {
+  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+    const target = email.trim().toLowerCase();
+    const found = users.find(u => u.email.trim().toLowerCase() === target);
+    if (!found || !found.password || found.password !== password) {
       addToast({
         type: 'error',
-        title: 'Error de registro',
-        message: 'No se pudo crear el usuario.'
+        title: 'Acceso denegado',
+        message: 'El correo electrónico o la contraseña no son correctos.'
       });
       return false;
     }
-  };
+    setCurrentUser(found);
+    localStorage.setItem('cf_current_user_id', found.id);
+    const teamInfo = (found.rol === 'entrenador' || found.rol === 'jugador') && found.equipo ? ` - ${found.equipo}` : '';
+    addToast({
+      type: 'success',
+      title: 'Sesión iniciada',
+      message: `Bienvenido, ${found.nombre} (${found.rol.toUpperCase()}${teamInfo})`
+    });
+    return true;
+  }, [addToast, users]);
+
+  const logout = useCallback(() => {
+    setCurrentUser(null);
+    localStorage.removeItem('cf_current_user_id');
+    addToast({
+      type: 'info',
+      title: 'Sesión cerrada',
+      message: 'Has salido de tu cuenta de forma segura.'
+    });
+  }, [addToast]);
+
+  // Permisos del usuario activo
+  const can = useCallback((permission: Permission): boolean => {
+    return canRole(currentUser?.rol, permission);
+  }, [currentUser?.rol]);
+
+  const allowedTabs = useMemo(() => {
+    return allowedTabsFor(currentUser?.rol);
+  }, [currentUser?.rol]);
 
   // CRUD Jugador
-  const saveJugador = async (jugador: Partial<Jugador>): Promise<boolean> => {
+  const saveJugador = useCallback(async (jugador: Partial<Jugador>): Promise<boolean> => {
     try {
       if (jugador.id) {
         const updated = await jugadoresService.update(jugador as Jugador);
@@ -373,9 +493,9 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar el jugador.' });
       return false;
     }
-  };
+  }, [addToast]);
 
-  const deleteJugador = async (id: string): Promise<boolean> => {
+  const deleteJugador = useCallback(async (id: string): Promise<boolean> => {
     try {
       await jugadoresService.delete(id);
       setJugadores(prev => prev.filter(j => j.id !== id));
@@ -385,10 +505,10 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addToast({ type: 'error', title: 'Error', message: 'No se pudo eliminar el jugador.' });
       return false;
     }
-  };
+  }, [addToast]);
 
   // CRUD Equipos
-  const saveEquipo = async (equipo: Partial<Equipo>): Promise<boolean> => {
+  const saveEquipo = useCallback(async (equipo: Partial<Equipo>): Promise<boolean> => {
     try {
       const payload = {
         ...equipo,
@@ -397,20 +517,18 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (payload.id) {
         const updated = await equiposService.update(payload as Equipo);
         setEquipos(prev => prev.map(e => e.id === updated.id ? updated : e));
-        addToast({ type: 'success', title: 'Equipo actualizado', message: `${updated.nombre} guardado.` });
       } else {
         const created = await equiposService.create(payload as Omit<Equipo, 'id'>);
         setEquipos(prev => [...prev, created]);
-        addToast({ type: 'success', title: 'Equipo creado', message: `${created.nombre} registrado.` });
       }
       return true;
     } catch (err) {
       addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar el equipo.' });
       return false;
     }
-  };
+  }, [addToast, clubConfig.escudo]);
 
-  const deleteEquipo = async (id: string): Promise<boolean> => {
+  const deleteEquipo = useCallback(async (id: string): Promise<boolean> => {
     try {
       await equiposService.delete(id);
       setEquipos(prev => prev.filter(e => e.id !== id));
@@ -420,10 +538,10 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addToast({ type: 'error', title: 'Error', message: 'No se pudo eliminar el equipo.' });
       return false;
     }
-  };
+  }, [addToast]);
 
   // CRUD Categorías
-  const saveCategoria = async (categoria: Partial<Categoria>): Promise<boolean> => {
+  const saveCategoria = useCallback(async (categoria: Partial<Categoria>): Promise<boolean> => {
     try {
       if (categoria.id) {
         const updated = await categoriasService.update(categoria as Categoria);
@@ -439,9 +557,9 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar la categoría.' });
       return false;
     }
-  };
+  }, [addToast]);
 
-  const deleteCategoria = async (id: string): Promise<boolean> => {
+  const deleteCategoria = useCallback(async (id: string): Promise<boolean> => {
     try {
       await categoriasService.delete(id);
       setCategorias(prev => prev.filter(c => c.id !== id));
@@ -451,10 +569,10 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addToast({ type: 'error', title: 'Error', message: 'No se pudo eliminar la categoría.' });
       return false;
     }
-  };
+  }, [addToast]);
 
   // CRUD Entrenadores
-  const saveEntrenador = async (entrenador: Partial<Entrenador>): Promise<boolean> => {
+  const saveEntrenador = useCallback(async (entrenador: Partial<Entrenador>): Promise<boolean> => {
     try {
       if (entrenador.id) {
         const updated = await entrenadoresService.update(entrenador as Entrenador);
@@ -470,9 +588,9 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar el entrenador.' });
       return false;
     }
-  };
+  }, [addToast]);
 
-  const deleteEntrenador = async (id: string): Promise<boolean> => {
+  const deleteEntrenador = useCallback(async (id: string): Promise<boolean> => {
     try {
       await entrenadoresService.delete(id);
       setEntrenadores(prev => prev.filter(e => e.id !== id));
@@ -482,88 +600,69 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addToast({ type: 'error', title: 'Error', message: 'No se pudo eliminar el entrenador.' });
       return false;
     }
-  };
+  }, [addToast]);
 
   // CRUD Partidos
-  const savePartido = async (partido: Partial<Partido>): Promise<boolean> => {
+  const savePartido = useCallback(async (partido: Partial<Partido>): Promise<boolean> => {
     try {
       if (partido.id) {
         const updated = await partidosService.update(partido as Partido);
         setPartidos(prev => prev.map(p => p.id === updated.id ? updated : p));
-        addToast({ type: 'success', title: 'Partido actualizado', message: `${updated.local} vs ${updated.visitante}` });
       } else {
         const created = await partidosService.create(partido as Omit<Partido, 'id'>);
         setPartidos(prev => [...prev, created]);
-        addToast({ type: 'success', title: 'Partido programado', message: `${created.local} vs ${created.visitante}` });
       }
       return true;
     } catch (err) {
       addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar el partido.' });
       return false;
     }
-  };
+  }, [addToast]);
 
-  const deletePartido = async (id: string): Promise<boolean> => {
+  const deletePartido = useCallback(async (id: string): Promise<boolean> => {
     try {
       await partidosService.delete(id);
       setPartidos(prev => prev.filter(p => p.id !== id));
-      addToast({ type: 'info', title: 'Partido eliminado', message: 'Partido retirado del calendario.' });
       return true;
     } catch (err) {
       addToast({ type: 'error', title: 'Error', message: 'No se pudo eliminar el partido.' });
       return false;
     }
-  };
+  }, [addToast]);
 
-  // Convocatorias
-  const toggleConvocatoria = async (partidoId: string, jugadorId: string): Promise<void> => {
-    const partido = partidos.find(p => p.id === partidoId);
-    if (!partido) return;
-    const current = partido.convocados || [];
-    const updatedConvocados = current.includes(jugadorId)
-      ? current.filter(id => id !== jugadorId)
-      : [...current, jugadorId];
-    await savePartido({ ...partido, convocados: updatedConvocados });
-  };
-
-  const setConvocatoriaEstado = async (partidoId: string, jugadorId: string, estado: EstadoConvocatoria): Promise<void> => {
-    const partido = partidos.find(p => p.id === partidoId);
-    if (!partido) return;
-    const current = partido.convocados || [];
-    let updatedConvocados = [...current];
-    if (estado === 'convocado' && !updatedConvocados.includes(jugadorId)) {
-      updatedConvocados.push(jugadorId);
-    } else if (estado === 'no convocado') {
-      updatedConvocados = updatedConvocados.filter(id => id !== jugadorId);
+  // CRUD Sesiones de Entrenamiento
+  const saveSesion = useCallback(async (sesion: Partial<SesionEntrenamiento>): Promise<boolean> => {
+    try {
+      if (sesion.id) {
+        const updated = await sesionesService.update(sesion as SesionEntrenamiento);
+        setSesiones(prev => prev.map(s => s.id === updated.id ? updated : s));
+        addToast({ type: 'success', title: 'Sesión actualizada', message: `${updated.equipo || ''} · ${updated.fecha}` });
+      } else {
+        const created = await sesionesService.create(sesion as Omit<SesionEntrenamiento, 'id'>);
+        setSesiones(prev => [...prev, created]);
+        addToast({ type: 'success', title: 'Sesión programada', message: `${created.equipo || ''} · ${created.fecha}` });
+      }
+      return true;
+    } catch (err) {
+      addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar la sesión.' });
+      return false;
     }
-    await savePartido({ ...partido, convocados: updatedConvocados });
-  };
+  }, [addToast]);
 
-  // Asistencias
-  const toggleAsistencia = async (jugadorId: string, fecha: string, estado: EstadoAsistencia): Promise<void> => {
-    const existing = asistencias.find(a => a.jugadorId === jugadorId && a.fecha === fecha);
-    if (existing) {
-      const updated = await asistenciasService.update({ ...existing, estado });
-      setAsistencias(prev => prev.map(a => a.id === updated.id ? updated : a));
-    } else {
-      const created = await asistenciasService.create({ jugadorId, fecha, estado });
-      setAsistencias(prev => [...prev, created]);
+  const deleteSesion = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      await sesionesService.delete(id);
+      setSesiones(prev => prev.filter(s => s.id !== id));
+      addToast({ type: 'info', title: 'Sesión eliminada', message: 'Sesión retirada del calendario de entrenamientos.' });
+      return true;
+    } catch (err) {
+      addToast({ type: 'error', title: 'Error', message: 'No se pudo eliminar la sesión.' });
+      return false;
     }
-  };
-
-  const batchMarkAsistencia = async (fecha: string, jugadorIds: string[], estado: EstadoAsistencia): Promise<void> => {
-    for (const jId of jugadorIds) {
-      await toggleAsistencia(jId, fecha, estado);
-    }
-    addToast({
-      type: 'success',
-      title: 'Asistencias actualizadas',
-      message: `Marcados ${jugadorIds.length} jugadores como "${estado}".`
-    });
-  };
+  }, [addToast]);
 
   // Estadísticas
-  const saveEstadistica = async (stat: Partial<Estadistica> & { jugadorId: string }): Promise<boolean> => {
+  const saveEstadistica = useCallback(async (stat: Partial<Estadistica> & { jugadorId: string }): Promise<boolean> => {
     try {
       const existing = estadisticas.find(s => s.jugadorId === stat.jugadorId);
       if (existing) {
@@ -592,34 +691,157 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addToast({ type: 'error', title: 'Error', message: 'No se pudieron guardar las estadísticas.' });
       return false;
     }
-  };
+  }, [addToast, estadisticas]);
 
+  /** Deltas de jugadores → estadísticas (convocatoria/alineación/eventos; sign +1 aplica, -1 revierte) */
+  const applyEventStats = useCallback(async (deltas: PlayerStatsDelta[], sign: 1 | -1): Promise<boolean> => {
+    if (!deltas.length) return true;
+    try {
+      const saved: Estadistica[] = [];
+      for (const d of deltas) {
+        const existing = estadisticas.find(s => s.jugadorId === d.jugadorId);
+        const next: Estadistica = {
+          id: existing?.id || '',
+          jugadorId: d.jugadorId,
+          temporada: existing?.temporada,
+          goles: Math.max(0, (Number(existing?.goles) || 0) + sign * d.goles),
+          asistencias: Math.max(0, (Number(existing?.asistencias) || 0) + sign * d.asistencias),
+          tarjetas: Math.max(0, (Number(existing?.tarjetas) || 0) + sign * d.tarjetas),
+          tarjetasAmarillas: Math.max(0, (Number(existing?.tarjetasAmarillas) || 0) + sign * d.tarjetasAmarillas),
+          tarjetasRojas: Math.max(0, (Number(existing?.tarjetasRojas) || 0) + sign * d.tarjetasRojas),
+          partidosJugados: Math.max(0, (Number(existing?.partidosJugados) || 0) + sign * d.partidosJugados),
+          titular: Math.max(0, (Number(existing?.titular) || 0) + sign * d.titular),
+          historico: existing?.historico
+        };
+        if (existing) {
+          saved.push(await estadisticasService.update(next));
+        } else {
+          const created = await estadisticasService.create({
+            jugadorId: next.jugadorId,
+            temporada: next.temporada,
+            goles: next.goles,
+            asistencias: next.asistencias,
+            tarjetas: next.tarjetas,
+            tarjetasAmarillas: next.tarjetasAmarillas,
+            tarjetasRojas: next.tarjetasRojas,
+            partidosJugados: next.partidosJugados,
+            titular: next.titular,
+            historico: next.historico
+          });
+          saved.push(created);
+        }
+      }
+      const map = new Map<string, Estadistica>();
+      estadisticas.forEach(s => map.set(s.jugadorId, s));
+      saved.forEach(s => {
+        const cur = map.get(s.jugadorId);
+        map.set(s.jugadorId, cur ? { ...cur, ...s, id: s.id || cur.id } : s);
+      });
+      setEstadisticas(Array.from(map.values()));
+      return true;
+    } catch (err) {
+      console.error('[applyEventStats]', err);
+      return false;
+    }
+  }, [estadisticas]);
 
+  // Convocatorias (suman/reversan +1 partido jugado en estadísticas)
+  const asIdList = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((id): id is string => typeof id === 'string') : [];
+
+  const toggleConvocatoria = useCallback(async (partidoId: string, jugadorId: string): Promise<void> => {
+    const partido = partidos.find(p => p.id === partidoId);
+    if (!partido) return;
+    const prev = asIdList(partido.convocados);
+    const updatedConvocados = prev.includes(jugadorId)
+      ? prev.filter(id => id !== jugadorId)
+      : [...prev, jugadorId];
+    await savePartido({ ...partido, convocados: updatedConvocados });
+    const deltas = convocatoriaStatsDeltas(prev, updatedConvocados, asIdList(partido.titulares));
+    if (deltas.length) await applyEventStats(deltas, 1);
+  }, [partidos, savePartido, applyEventStats]);
+
+  const setConvocatoriaEstado = useCallback(async (partidoId: string, jugadorId: string, estado: EstadoConvocatoria): Promise<void> => {
+    const partido = partidos.find(p => p.id === partidoId);
+    if (!partido) return;
+    const prev = asIdList(partido.convocados);
+    let updatedConvocados = [...prev];
+    if (estado === 'convocado' && !updatedConvocados.includes(jugadorId)) {
+      updatedConvocados.push(jugadorId);
+    } else if (estado === 'no convocado') {
+      updatedConvocados = updatedConvocados.filter(id => id !== jugadorId);
+    }
+    await savePartido({ ...partido, convocados: updatedConvocados });
+    const deltas = convocatoriaStatsDeltas(prev, updatedConvocados, asIdList(partido.titulares));
+    if (deltas.length) await applyEventStats(deltas, 1);
+  }, [partidos, savePartido, applyEventStats]);
+
+  const batchSetConvocatoriaEstado = useCallback(async (partidoId: string, jugadorIds: string[], estado: EstadoConvocatoria): Promise<void> => {
+    const partido = partidos.find(p => p.id === partidoId);
+    if (!partido) return;
+    const prev = asIdList(partido.convocados);
+    const current = new Set(prev);
+    if (estado === 'convocado') {
+      jugadorIds.forEach(id => current.add(id));
+    } else {
+      jugadorIds.forEach(id => current.delete(id));
+    }
+    const updated = Array.from(current);
+    await savePartido({ ...partido, convocados: updated });
+    const deltas = convocatoriaStatsDeltas(prev, updated, asIdList(partido.titulares));
+    if (deltas.length) await applyEventStats(deltas, 1);
+  }, [partidos, savePartido, applyEventStats]);
+
+  // Asistencias
+  const toggleAsistencia = useCallback(async (jugadorId: string, fecha: string, estado: EstadoAsistencia): Promise<void> => {
+    const existing = asistencias.find(a => a.jugadorId === jugadorId && a.fecha === fecha);
+    if (existing) {
+      const updated = await asistenciasService.update({ ...existing, estado });
+      setAsistencias(prev => prev.map(a => a.id === updated.id ? updated : a));
+    } else {
+      const created = await asistenciasService.create({ jugadorId, fecha, estado });
+      setAsistencias(prev => [...prev, created]);
+    }
+  }, [asistencias]);
+
+  const batchMarkAsistencia = useCallback(async (fecha: string, jugadorIds: string[], estado: EstadoAsistencia): Promise<void> => {
+    for (const jId of jugadorIds) {
+      await toggleAsistencia(jId, fecha, estado);
+    }
+    addToast({
+      type: 'success',
+      title: 'Asistencias actualizadas',
+      message: `Marcados ${jugadorIds.length} jugadores como "${estado}".`
+    });
+  }, [addToast, toggleAsistencia]);
 
   // Exportar a Excel/CSV
-  const exportSheet = (sheetName: string): void => {
+  const exportSheet = useCallback((sheetName: string): void => {
     let rows: Record<string, unknown>[] = [];
     switch (sheetName) {
       case 'jugadores':
-        rows = jugadores.map(j => ({ ...j }));
+        rows = visibleJugadores.map(j => ({ ...j }));
         break;
       case 'equipos':
-        rows = equipos.map(e => ({ ...e }));
+        rows = visibleEquipos.map(e => ({ ...e }));
         break;
       case 'categorias':
-        rows = categorias.map(c => ({ ...c }));
+        rows = visibleCategorias.map(c => ({ ...c }));
         break;
       case 'entrenadores':
-        rows = entrenadores.map(e => ({ ...e }));
+        rows = visibleEntrenadores.map(e => ({ ...e }));
         break;
       case 'partidos':
-        rows = partidos.map(p => ({ ...p }));
+        rows = visiblePartidos.map(p => ({ ...p }));
         break;
       case 'asistencias':
-        rows = asistencias.map(a => ({ ...a }));
+        rows = visibleAsistencias.map(a => ({ ...a }));
         break;
       case 'estadisticas':
-        rows = estadisticas.map(s => ({ ...s }));
+        rows = visibleEstadisticas.map(s => ({ ...s }));
+        break;
+      case 'sesiones':
+        rows = visibleSesiones.map(s => ({ ...s }));
         break;
       case 'usuarios':
         rows = users.map(u => ({ ...u }));
@@ -635,17 +857,28 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     exportToCsv(`club_futbol_${sheetName}`, rows);
     addToast({ type: 'success', title: 'Exportación completada', message: `Archivo CSV descargado: ${sheetName}` });
-  };
+  }, [
+    addToast,
+    visibleJugadores,
+    visibleEquipos,
+    visibleCategorias,
+    visibleEntrenadores,
+    visiblePartidos,
+    visibleAsistencias,
+    visibleEstadisticas,
+    visibleSesiones,
+    users
+  ]);
 
-  const testGoogleConnection = async (targetUrl?: string) => {
+  const testGoogleConnection = useCallback((targetUrl?: string) => {
     return apiClient.testConnection(targetUrl);
-  };
+  }, []);
 
-  const initRemoteSheets = async () => {
+  const initRemoteSheets = useCallback(() => {
     return apiClient.initRemoteDatabase();
-  };
+  }, []);
 
-  const saveUser = async (user: Partial<Usuario>): Promise<boolean> => {
+  const saveUser = useCallback(async (user: Partial<Usuario>): Promise<boolean> => {
     try {
       if ((user.rol === 'entrenador' || user.rol === 'jugador') && !user.equipo) {
         addToast({
@@ -654,6 +887,21 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           message: `El rol "${user.rol}" debe estar asignado a un equipo registrado.`
         });
         return false;
+      }
+
+      if (user.email) {
+        const normalized = user.email.trim().toLowerCase();
+        const emailTaken = users.some(
+          u => u.id !== user.id && u.email.trim().toLowerCase() === normalized
+        );
+        if (emailTaken) {
+          addToast({
+            type: 'error',
+            title: 'Correo duplicado',
+            message: 'Ya existe un usuario registrado con este correo electrónico.'
+          });
+          return false;
+        }
       }
 
       if (user.id) {
@@ -673,9 +921,9 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addToast({ type: 'error', title: 'Error al guardar usuario', message: e.message || 'No se pudo guardar el usuario.' });
       return false;
     }
-  };
+  }, [addToast, currentUser?.id, users]);
 
-  const deleteUser = async (id: string): Promise<boolean> => {
+  const deleteUser = useCallback(async (id: string): Promise<boolean> => {
     try {
       await usuariosService.delete(id);
       setUsers(prev => prev.filter(u => u.id !== id));
@@ -685,9 +933,9 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       addToast({ type: 'error', title: 'Error al eliminar', message: e.message || 'No se pudo eliminar el usuario.' });
       return false;
     }
-  };
+  }, [addToast]);
 
-  const exportAllSheets = () => {
+  const exportAllSheets = useCallback(() => {
     const allSheets = [
       'jugadores',
       'equipos',
@@ -706,85 +954,112 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       title: 'Exportación completa',
       message: 'Se han descargado las 8 hojas en formato CSV.'
     });
-  };
+  }, [addToast, exportSheet]);
 
-  const resetDatabase = () => {
+  const resetDatabase = useCallback(() => {
     apiClient.resetLocalDatabase();
     refreshAll();
     addToast({ type: 'info', title: 'Base de datos restaurada', message: 'Se han recargado los datos predeterminados.' });
-  };
+  }, [addToast, refreshAll]);
+
+  const value = useMemo<ClubContextType>(() => ({
+    currentUser,
+    setCurrentUser,
+    users,
+    login,
+    logout,
+    can,
+    allowedTabs,
+    isTeamScoped,
+    assignedTeams,
+
+    jugadores: visibleJugadores,
+    equipos: visibleEquipos,
+    categorias: visibleCategorias,
+    entrenadores: visibleEntrenadores,
+    partidos: visiblePartidos,
+    asistencias: visibleAsistencias,
+    estadisticas: visibleEstadisticas,
+    sesiones: visibleSesiones,
+    visibleSesiones,
+
+    clubConfig,
+    saveClubConfig,
+    getTeamEscudo,
+
+    loading,
+    refreshAll,
+    gasUrl,
+    updateGasUrl,
+    isOnlineConfigured: Boolean(getSupabaseUrl() && getSupabaseAnonKey()) || Boolean(gasUrl),
+    testGoogleConnection,
+    initRemoteSheets,
+    resetDatabase,
+
+    toasts,
+    addToast,
+    removeToast,
+
+    saveJugador,
+    deleteJugador,
+
+    saveEquipo,
+    deleteEquipo,
+
+    saveCategoria,
+    deleteCategoria,
+
+    saveEntrenador,
+    deleteEntrenador,
+
+    savePartido,
+    deletePartido,
+
+    saveSesion,
+    deleteSesion,
+
+    toggleConvocatoria,
+    setConvocatoriaEstado,
+    batchSetConvocatoriaEstado,
+
+    toggleAsistencia,
+    batchMarkAsistencia,
+
+    saveEstadistica,
+    applyEventStats,
+
+    submitApuesta: async () => false,
+    deleteApuesta: async () => false,
+
+    isConfigModalOpen,
+    setIsConfigModalOpen,
+    googleScriptUrl: gasUrl,
+    setGoogleScriptUrl: updateGasUrl,
+    syncAllData: refreshAll,
+    resetDataToMock: resetDatabase,
+    exportAllSheets,
+
+    saveUser,
+    deleteUser,
+
+    exportSheet
+  }), [
+    currentUser, users, login, logout, can, allowedTabs, isTeamScoped, assignedTeams,
+    visibleJugadores, visibleEquipos, visibleCategorias, visibleEntrenadores,
+    visiblePartidos, visibleAsistencias, visibleEstadisticas, visibleSesiones,
+    clubConfig, saveClubConfig, getTeamEscudo,
+    loading, refreshAll, gasUrl, updateGasUrl, testGoogleConnection, initRemoteSheets, resetDatabase,
+    toasts, addToast, removeToast,
+    saveJugador, deleteJugador, saveEquipo, deleteEquipo, saveCategoria, deleteCategoria,
+    saveEntrenador, deleteEntrenador, savePartido, deletePartido, saveSesion, deleteSesion,
+    toggleConvocatoria, setConvocatoriaEstado, batchSetConvocatoriaEstado,
+    toggleAsistencia, batchMarkAsistencia, saveEstadistica, applyEventStats,
+    isConfigModalOpen, setIsConfigModalOpen, exportAllSheets,
+    saveUser, deleteUser, exportSheet
+  ]);
 
   return (
-    <ClubContext.Provider
-      value={{
-        currentUser,
-        setCurrentUser,
-        users,
-        loginAs,
-        registerUser,
-
-        jugadores,
-        equipos,
-        categorias,
-        entrenadores,
-        partidos,
-        asistencias,
-        estadisticas,
-
-        clubConfig,
-        saveClubConfig,
-        getTeamEscudo,
-
-        loading,
-        refreshAll,
-        gasUrl,
-        updateGasUrl,
-        isOnlineConfigured: Boolean(gasUrl),
-        testGoogleConnection,
-        initRemoteSheets,
-        resetDatabase,
-
-        toasts,
-        addToast,
-        removeToast,
-
-        saveJugador,
-        deleteJugador,
-
-        saveEquipo,
-        deleteEquipo,
-
-        saveCategoria,
-        deleteCategoria,
-
-        saveEntrenador,
-        deleteEntrenador,
-
-        savePartido,
-        deletePartido,
-
-        toggleConvocatoria,
-        setConvocatoriaEstado,
-
-        toggleAsistencia,
-        batchMarkAsistencia,
-
-        saveEstadistica,
-
-        isConfigModalOpen,
-        setIsConfigModalOpen,
-        googleScriptUrl: gasUrl,
-        setGoogleScriptUrl: updateGasUrl,
-        syncAllData: refreshAll,
-        resetDataToMock: resetDatabase,
-        exportAllSheets,
-
-        saveUser,
-        deleteUser,
-
-        exportSheet
-      }}
-    >
+    <ClubContext.Provider value={value}>
       {children}
     </ClubContext.Provider>
   );

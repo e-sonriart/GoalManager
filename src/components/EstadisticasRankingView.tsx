@@ -17,7 +17,9 @@ import {
 } from 'lucide-react';
 
 export const EstadisticasRankingView: React.FC = () => {
-  const { jugadores, estadisticas, saveEstadistica, exportSheet, getTeamEscudo } = useClub();
+  const { jugadores, estadisticas, saveEstadistica, exportSheet, getTeamEscudo, can } = useClub();
+
+  const canManage = can('manage:estadisticas');
 
   const [activeTab, setActiveTab] = useState<'pichichi' | 'asistencias' | 'general'>('pichichi');
   const [editingStat, setEditingStat] = useState<Estadistica | null>(null);
@@ -59,6 +61,7 @@ export const EstadisticasRankingView: React.FC = () => {
   }, [playerStatsList]);
 
   const top3Pichichi = rankingGoleadores.slice(0, 3);
+  const currentRanking = activeTab === 'asistencias' ? rankingAsistentes : rankingGoleadores;
 
   const handleUpdateStat = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -281,90 +284,145 @@ export const EstadisticasRankingView: React.FC = () => {
         </button>
       </div>
 
-      {/* Tabla de Ranking */}
-      <div className="bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs min-w-[640px]">
+      {/* Tabla de Ranking (escritorio) */}
+      <div className="hidden sm:block bg-white rounded-2xl border border-gray-150 shadow-sm overflow-x-auto scroll-x">
+        <table className="w-full text-left text-xs min-w-[640px]">
           <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
             <tr>
-              <th className="py-3 px-4 text-center w-14">Pos.</th>
-              <th className="py-3 px-4">Jugador</th>
-              <th className="py-3 px-4">Equipo</th>
-              <th className="py-3 px-4 text-center">Partidos</th>
-              <th className="py-3 px-4 text-center">Goles</th>
-              <th className="py-3 px-4 text-center">Asistencias</th>
-              <th className="py-3 px-4 text-center">G/P</th>
-              <th className="py-3 px-4 text-center">Tarjetas</th>
-              <th className="py-3 px-4 text-right">Acción</th>
+              <th className="py-3 px-4 text-center w-14 whitespace-nowrap">Pos.</th>
+              <th className="py-3 px-4 whitespace-nowrap">Jugador</th>
+              <th className="py-3 px-4 whitespace-nowrap">Equipo</th>
+              <th className="py-3 px-4 text-center whitespace-nowrap">Partidos</th>
+              <th className="py-3 px-4 text-center whitespace-nowrap">Goles</th>
+              <th className="py-3 px-4 text-center whitespace-nowrap">Asistencias</th>
+              <th className="py-3 px-4 text-center whitespace-nowrap">G/P</th>
+              <th className="py-3 px-4 text-center whitespace-nowrap">Tarjetas</th>
+              <th className="py-3 px-4 text-right whitespace-nowrap">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {(activeTab === 'asistencias' ? rankingAsistentes : rankingGoleadores).map(
-              (item, idx) => {
-                return (
-                  <tr key={item.jugadorId} className="hover:bg-orange-50/30 transition-colors">
-                    <td className="py-3 px-4 text-center">{getRankBadge(idx)}</td>
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-gray-900 text-sm">{item.jugador.nombre}</div>
-                      <div className="text-[11px] text-gray-400">
-                        #{item.jugador.dorsal} • {item.jugador.posicion}
+            {currentRanking.map((item, idx) => {
+              return (
+                <tr key={item.jugadorId} className="hover:bg-orange-50/30 transition-colors">
+                  <td className="py-3 px-4 text-center">{getRankBadge(idx)}</td>
+                  <td className="py-3 px-4">
+                    <div className="font-bold text-gray-900 text-sm">{item.jugador.nombre}</div>
+                    <div className="text-[11px] text-gray-400">
+                      #{item.jugador.dorsal} • {item.jugador.posicion}
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 text-gray-700 font-medium">
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded-md bg-white border border-gray-200 p-0.5 flex items-center justify-center shrink-0">
+                        <TeamShield
+                          escudoUrl={getTeamEscudo(item.jugador.equipo)}
+                          teamName={item.jugador.equipo}
+                          size="xs"
+                          className="w-full h-full"
+                        />
                       </div>
-                    </td>
-                    <td className="py-3 px-4 text-gray-700 font-medium">
-                      <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-md bg-white border border-gray-200 p-0.5 flex items-center justify-center shrink-0">
-                          <TeamShield
-                            escudoUrl={getTeamEscudo(item.jugador.equipo)}
-                            teamName={item.jugador.equipo}
-                            size="xs"
-                            className="w-full h-full"
-                          />
-                        </div>
-                        <span className="truncate">{item.jugador.equipo}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-center font-semibold text-gray-700">
-                      {item.partidosJugados}
-                    </td>
-                    <td className="py-3 px-4 text-center font-black text-orange-600 font-athletic text-base">
-                      {item.goles}
-                    </td>
-                    <td className="py-3 px-4 text-center font-bold text-blue-600 font-athletic text-base">
-                      {item.asistencias}
-                    </td>
-                    <td className="py-3 px-4 text-center text-gray-500 font-mono">
-                      {item.golesPorPartido}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold">
-                        {item.tarjetas}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() =>
-                          setEditingStat({
-                            id: item.id,
-                            jugadorId: item.jugadorId,
-                            goles: item.goles,
-                            asistencias: item.asistencias,
-                            tarjetas: item.tarjetas,
-                            partidosJugados: item.partidosJugados
-                          })
-                        }
-                        className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                        title="Modificar estadísticas"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              }
-            )}
+                      <span className="truncate">{item.jugador.equipo}</span>
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 text-center font-semibold text-gray-700">
+                    {item.partidosJugados}
+                  </td>
+                  <td className="py-3 px-4 text-center font-black text-orange-600 font-athletic text-base">
+                    {item.goles}
+                  </td>
+                  <td className="py-3 px-4 text-center font-bold text-blue-600 font-athletic text-base">
+                    {item.asistencias}
+                  </td>
+                  <td className="py-3 px-4 text-center text-gray-500 font-mono">
+                    {item.golesPorPartido}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold">
+                      {item.tarjetas}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <button
+                      onClick={() =>
+                        setEditingStat({
+                          id: item.id,
+                          jugadorId: item.jugadorId,
+                          goles: item.goles,
+                          asistencias: item.asistencias,
+                          tarjetas: item.tarjetas,
+                          partidosJugados: item.partidosJugados
+                        })
+                      }
+                      className={`p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors ${canManage ? 'inline-flex' : 'hidden'}`}
+                      title="Modificar estadísticas"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-        </div>
+      </div>
+
+      {/* Ranking en móvil (tarjetas) */}
+      <div className="sm:hidden bg-white rounded-2xl border border-gray-150 shadow-sm divide-y divide-gray-100 overflow-hidden">
+        {currentRanking.map((item, idx) => (
+          <div key={item.jugadorId} className="p-3.5">
+            <div className="flex items-start gap-3">
+              <div className="shrink-0 pt-0.5">{getRankBadge(idx)}</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-900 text-sm truncate">{item.jugador.nombre}</p>
+                    <p className="text-[11px] text-gray-400 truncate">
+                      #{item.jugador.dorsal} • {item.jugador.posicion} • {item.jugador.equipo}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() =>
+                      setEditingStat({
+                        id: item.id,
+                        jugadorId: item.jugadorId,
+                        goles: item.goles,
+                        asistencias: item.asistencias,
+                        tarjetas: item.tarjetas,
+                        partidosJugados: item.partidosJugados
+                      })
+                    }
+                    className={`w-9 h-9 shrink-0 items-center justify-center text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors ${canManage ? 'inline-flex' : 'hidden'}`}
+                    title="Modificar estadísticas"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
+                  <div className="rounded-lg bg-gray-50 py-1.5">
+                    <p className="text-[9px] font-bold uppercase text-gray-400">PJ</p>
+                    <p className="text-sm font-bold text-gray-800">{item.partidosJugados}</p>
+                  </div>
+                  <div className="rounded-lg bg-orange-50 py-1.5">
+                    <p className="text-[9px] font-bold uppercase text-orange-400">Goles</p>
+                    <p className="text-sm font-black text-orange-600 font-athletic">{item.goles}</p>
+                  </div>
+                  <div className="rounded-lg bg-blue-50 py-1.5">
+                    <p className="text-[9px] font-bold uppercase text-blue-400">Asist.</p>
+                    <p className="text-sm font-bold text-blue-600 font-athletic">{item.asistencias}</p>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 py-1.5">
+                    <p className="text-[9px] font-bold uppercase text-gray-400">G/P</p>
+                    <p className="text-sm font-bold text-gray-700 font-mono">{item.golesPorPartido}</p>
+                  </div>
+                  <div className="rounded-lg bg-amber-50 py-1.5">
+                    <p className="text-[9px] font-bold uppercase text-amber-500">Tarj.</p>
+                    <p className="text-sm font-bold text-amber-700">{item.tarjetas}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Modal Edición de Estadísticas */}

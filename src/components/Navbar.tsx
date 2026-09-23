@@ -1,6 +1,7 @@
 import React from 'react';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
+import { AppTab } from '../types';
 import {
   BarChart3,
   Calendar,
@@ -14,22 +15,17 @@ import {
   Menu,
   User,
   Radio,
-  ExternalLink
+  ExternalLink,
+  Dumbbell,
+  LogOut
 } from 'lucide-react';
 
-export type ActiveTab =
-  | 'dashboard'
-  | 'equipos'
-  | 'partidos'
-  | 'convocatorias'
-  | 'asistencias'
-  | 'estadisticas'
-  | 'admin';
+// Compatibilidad: ActiveTab = AppTab (tipos unificados para permisos)
+export type ActiveTab = AppTab;
 
 interface NavbarProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
-  onOpenAuth: () => void;
   onOpenGoogleConfig: () => void;
   onOpenSidePanel?: () => void;
   onOpenMoreMobile?: () => void;
@@ -38,30 +34,31 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
-  onOpenAuth,
   onOpenGoogleConfig,
   onOpenSidePanel,
   onOpenMoreMobile
 }) => {
-  const { currentUser, isOnlineConfigured, refreshAll, loading, clubConfig } = useClub();
+  const { currentUser, isOnlineConfigured, refreshAll, loading, clubConfig, allowedTabs, logout } = useClub();
   const handleOpenPanel = onOpenSidePanel || onOpenMoreMobile;
 
-  const navItems: { id: ActiveTab; label: string; icon: React.FC<{ className?: string }> }[] = [
+  const allNavItems: { id: ActiveTab; label: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'dashboard', label: 'Inicio', icon: BarChart3 },
     { id: 'partidos', label: 'Partidos', icon: Calendar },
+    { id: 'entrenamientos', label: 'Entrenamientos', icon: Dumbbell },
     { id: 'equipos', label: 'Equipos', icon: Shield },
     { id: 'convocatorias', label: 'Convocatorias', icon: ClipboardList },
     { id: 'asistencias', label: 'Asistencias', icon: CheckSquare },
     { id: 'estadisticas', label: 'Estadísticas', icon: Trophy },
     { id: 'admin', label: 'Admin', icon: Settings }
   ];
+  const navItems = allNavItems.filter(item => allowedTabs.includes(item.id));
 
   return (
     <header className="sticky top-0 z-40 bg-gray-950/98 backdrop-blur-md border-b border-gray-800 text-white shadow-md w-full shrink-0 select-none">
-      <div className="w-full max-w-7xl 2xl:max-w-[1680px] mx-auto px-3 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-3 h-16">
+      <div className="w-full max-w-7xl 2xl:max-w-[1680px] mx-auto px-3 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-2 sm:gap-3 h-16">
         {/* Logo & Brand Personalizado del Club */}
         <div
-          className="flex items-center gap-3 cursor-pointer min-w-0 shrink-0"
+          className="flex items-center gap-2 sm:gap-3 cursor-pointer min-w-0 shrink"
           onClick={() => setActiveTab('dashboard')}
           title="Ir al Inicio del Club"
         >
@@ -109,23 +106,23 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
 
         {/* Acciones Rápidas con Espaciado Consistente */}
-        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-          {/* Botón Sincronizar */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* Botón Sincronizar (en móvil vive en el panel "Más") */}
           <button
             onClick={() => refreshAll()}
             disabled={loading}
-            title={loading ? 'Sincronizando...' : 'Sincronizar con Google Sheets'}
-            className="h-10 px-2.5 sm:px-3 text-gray-300 hover:text-white hover:bg-gray-900 border border-transparent hover:border-gray-800 rounded-xl transition-all flex items-center gap-2 active:scale-95"
+            title={loading ? 'Sincronizando...' : 'Sincronizar con Supabase'}
+            className="hidden sm:flex h-10 px-2.5 sm:px-3 text-gray-300 hover:text-white hover:bg-gray-900 border border-transparent hover:border-gray-800 rounded-xl transition-all items-center gap-2 active:scale-95"
           >
             <RefreshCw className={`w-4 h-4 shrink-0 ${loading ? 'animate-spin text-orange-400' : ''}`} />
             <span className="hidden xl:inline text-xs font-semibold">Sincronizar</span>
           </button>
 
-          {/* Indicador de Estado Conexión Sheets */}
+          {/* Indicador de Estado Conexión Sheets (en móvil vive en el panel "Más") */}
           <button
             onClick={onOpenGoogleConfig}
-            title={isOnlineConfigured ? 'Conectado a Google Sheets' : 'Modo Local / Configurar Sheets'}
-            className={`h-10 px-2.5 sm:px-3 rounded-xl text-xs font-semibold border transition-all flex items-center gap-2 active:scale-95 ${
+            title={isOnlineConfigured ? 'Conectado a Supabase' : 'Modo Local / Configurar Supabase'}
+            className={`hidden sm:flex h-10 px-2.5 sm:px-3 rounded-xl text-xs font-semibold border transition-all items-center gap-2 active:scale-95 ${
               isOnlineConfigured
                 ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/50'
                 : 'bg-orange-950/30 border-orange-700/60 text-orange-300 hover:bg-orange-900/40'
@@ -140,16 +137,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               />
             </div>
             <span className="hidden sm:inline text-xs">
-              {isOnlineConfigured ? 'Online Sheets' : 'Modo Local'}
+              {isOnlineConfigured ? 'Supabase Online' : 'Modo Local'}
             </span>
           </button>
 
-          {/* User Profile Chip */}
-          <button
+          {/* User Profile Chip (solo visual: la creación de usuarios es exclusiva del Admin) */}
+          <div
             id="user-profile-button"
-            onClick={onOpenAuth}
-            title={currentUser ? `${currentUser.nombre} (${currentUser.rol})` : 'Iniciar Sesión'}
-            className="h-10 pl-2 pr-2.5 sm:pr-3 bg-gray-900 hover:bg-gray-800/90 rounded-full border border-gray-700/80 transition-all flex items-center gap-2.5 active:scale-95 shadow-sm"
+            title={currentUser ? `${currentUser.nombre} (${currentUser.rol})` : ''}
+            className="h-10 pl-2 pr-2.5 sm:pr-3 bg-gray-900 rounded-full border border-gray-700/80 flex items-center gap-2.5 shadow-sm"
           >
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-xs shrink-0 ${
@@ -157,7 +153,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   ? 'bg-red-600 ring-2 ring-red-500/30'
                   : currentUser?.rol === 'entrenador'
                   ? 'bg-blue-600 ring-2 ring-blue-500/30'
-                  : currentUser?.rol === 'direccion' || currentUser?.rol === 'directiva'
+                  : currentUser?.rol === 'directiva'
                   ? 'bg-purple-600 ring-2 ring-purple-500/30'
                   : 'bg-orange-500 ring-2 ring-orange-500/30'
               }`}
@@ -172,6 +168,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {currentUser?.rol || 'Invitado'}
               </span>
             </div>
+          </div>
+
+          {/* Cerrar Sesión */}
+          <button
+            onClick={logout}
+            title="Cerrar sesión"
+            aria-label="Cerrar sesión"
+            className="h-10 px-2.5 sm:px-3 flex items-center gap-1.5 text-gray-300 hover:text-white hover:bg-red-950/60 rounded-xl transition-colors shrink-0 border border-gray-800 hover:border-red-800/70 active:scale-95"
+          >
+            <LogOut className="w-4 h-4 text-red-400 shrink-0" />
+            <span className="hidden xl:inline text-xs font-semibold">Salir</span>
           </button>
 
           {/* Botón de Menú Panel Lateral Ocultable (disponible tanto en móvil como en PC) */}

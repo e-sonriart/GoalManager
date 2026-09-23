@@ -1,6 +1,8 @@
 // Colección de escudos vectoriales deportivos de alta calidad (Data URIs SVG)
 // Garantizan carga instantánea, 100% offline y sin problemas de CORS.
 
+import { Partido } from '../types';
+
 export interface ShieldPreset {
   id: string;
   name: string;
@@ -214,8 +216,26 @@ export const SHIELD_PRESETS: ShieldPreset[] = [
   }
 ];
 
+// Escudo genérico y neutro para el rival/visitante (gris, balón blanco, sin colores ni nombre de club)
+const svgVisitorGeneric = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="100" height="120">
+  <path d="M50 4 L88 16 C88 66 50 108 50 108 C50 108 12 66 12 16 Z" fill="#9ca3af" stroke="#4b5563" stroke-width="2"/>
+  <path d="M50 9 L83 20 C83 63 50 102 50 102 C50 102 17 63 17 20 Z" fill="#6b7280"/>
+  <circle cx="50" cy="61" r="16" fill="#e5e7eb" stroke="#374151" stroke-width="1.8"/>
+  <polygon points="50,51 56,56 54,64 46,64 44,56" fill="#374151"/>
+  <line x1="50" y1="51" x2="50" y2="45" stroke="#374151" stroke-width="1.5"/>
+  <line x1="56" y1="56" x2="62" y2="53" stroke="#374151" stroke-width="1.5"/>
+  <line x1="54" y1="64" x2="59" y2="71" stroke="#374151" stroke-width="1.5"/>
+  <line x1="46" y1="64" x2="41" y2="71" stroke="#374151" stroke-width="1.5"/>
+  <line x1="44" y1="56" x2="38" y2="53" stroke="#374151" stroke-width="1.5"/>
+</svg>`;
+
 export const DEFAULT_CLUB_SHIELD = toDataUri(svgOrangeClassic);
 export const DEFAULT_TEAM_SHIELD_1 = toDataUri(svgOrangeClassic);
 export const DEFAULT_TEAM_SHIELD_2 = toDataUri(svgRoyalBlue);
 export const DEFAULT_TEAM_SHIELD_3 = toDataUri(svgPurpleGold);
 export const DEFAULT_TEAM_SHIELD_4 = toDataUri(svgRedStripes);
+export const DEFAULT_VISITOR_SHIELD = toDataUri(svgVisitorGeneric);
+
+// Escudo a mostrar para el rival/visitante: su URL propia si existe; si no, un escudo genérico neutro.
+export const resolveVisitorShield = (partido: Partido): string =>
+  partido.escudoVisitante?.trim() ? partido.escudoVisitante.trim() : DEFAULT_VISITOR_SHIELD;

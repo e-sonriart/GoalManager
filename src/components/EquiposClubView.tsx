@@ -1,9 +1,52 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useClub } from '../context/ClubContext';
 import { Equipo, Categoria, Entrenador, TipoFutbol, AnoEquipo, Jugador, PosicionJugador, Estadistica, HistorialEstadisticaTemporada } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import { SHIELD_PRESETS } from '../utils/shieldPresets';
+import { computeStandings, TeamStanding } from '../utils/standings';
+
+type PosJugador = PosicionJugador;
+
+const POS_ABBR: Record<PosJugador, string> = {
+  Portero: 'POR',
+  Defensa: 'DEF',
+  Centrocampista: 'MED',
+  Delantero: 'ATA'
+};
+
+const POS_ORDER: Record<PosJugador, number> = {
+  Portero: 0,
+  Defensa: 1,
+  Centrocampista: 2,
+  Delantero: 3
+};
+
+/** Mismos discos de color que la alineación (por posición). */
+const POS_DISK: Record<PosJugador, string> = {
+  Portero: 'bg-amber-400 text-amber-950 border-amber-200',
+  Defensa: 'bg-emerald-500 text-white border-emerald-300',
+  Centrocampista: 'bg-sky-500 text-white border-sky-300',
+  Delantero: 'bg-rose-500 text-white border-rose-300'
+};
+
+function dorsalNum(d: number | string): number {
+  const n = Number(d);
+  return Number.isFinite(n) && n > 0 ? n : 999;
+}
+
+function sortSquadByPos(list: Jugador[]): Jugador[] {
+  return [...list].sort((a, b) => {
+    const pa = POS_ORDER[a.posicion] ?? 9;
+    const pb = POS_ORDER[b.posicion] ?? 9;
+    if (pa !== pb) return pa - pb;
+    const da = dorsalNum(a.dorsal);
+    const db = dorsalNum(b.dorsal);
+    if (da !== db) return da - db;
+    return a.nombre.localeCompare(b.nombre, 'es');
+  });
+}
+
 import {
   Shield,
   Layers,
@@ -19,7 +62,8 @@ import {
   Link2,
   Clock,
   Timer,
-  Trophy
+  Trophy,
+  BarChart3
 } from 'lucide-react';
 
 export const EquiposClubView: React.FC = () => {
@@ -29,6 +73,7 @@ export const EquiposClubView: React.FC = () => {
     entrenadores,
     jugadores,
     estadisticas,
+    partidos,
     clubConfig,
     saveEquipo,
     deleteEquipo,
@@ -78,6 +123,24 @@ export const EquiposClubView: React.FC = () => {
   const [histAmarillas, setHistAmarillas] = useState(0);
   const [histRojas, setHistRojas] = useState(0);
 
+  /** Resumen de partidos de la temporada del equipo abierto (J/G/E/P) */
+  const teamSeasonRow = useMemo<TeamStanding | null>(() => {
+    if (!selectedEquipoForSquad) return null;
+    const nombre = selectedEquipoForSquad.nombre.trim().toLowerCase();
+    for (const { rows } of computeStandings(partidos)) {
+      const hit = rows.find(r => r.equipo.trim().toLowerCase() === nombre);
+      if (hit) return hit;
+    }
+    return null;
+  }, [partidos, selectedEquipoForSquad]);
+
+  const squadPlayers = useMemo(
+    () => selectedEquipoForSquad
+      ? sortSquadByPos(jugadores.filter(j => j.equipo === selectedEquipoForSquad.nombre))
+      : [],
+    [jugadores, selectedEquipoForSquad]
+  );
+
   const openPlayerModal = (player?: Jugador) => {
     if (player) {
       setEditingPlayer(player);
@@ -111,6 +174,8 @@ export const EquiposClubView: React.FC = () => {
 
   const openPlayerStatsModal = (player: Jugador) => {
     setSelectedPlayerForStats(player);
+    // Cerrar plantilla para evitar modales apilados (bloqueaban el scroll)
+    setSelectedEquipoForSquad(null);
     const est = estadisticas.find(s => s.jugadorId === player.id);
     setStatPartidos(est?.partidosJugados || 0);
     setStatTitular(est?.titular || 0);
@@ -1021,9 +1086,53 @@ export const EquiposClubView: React.FC = () => {
           maxWidth="max-w-4xl"
         >
           <div className="space-y-4">
+            {/* 1º: datos de partidos de esta temporada */}
+            <div className="bg-gradient-to-r from-gray-950 via-gray-900 to-black text-white rounded-2xl p-4 sm:p-5 border border-gray-800 shadow-lg min-w-0">
+              <div className="flex items-center gap-2 mb-3">
+                <BarChart3 className="w-4 h-4 text-orange-400 shrink-0" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-orange-300">
+                  Partidos de esta temporada
+                </h4>
+                <span className="text-[10px] text-gray-400 ml-auto shrink-0">
+                  {clubConfig.temporada || selectedEquipoForSquad.temporada || '2025/2026'}
+                </span>
+              </div>
+              <div className="grid grid-cols-4 gap-2 sm:gap-3">
+                {[
+                  { label: 'Jugados', value: teamSeasonRow?.jugados ?? 0, accent: 'text-white' },
+                  { label: 'Ganados', value: teamSeasonRow?.ganados ?? 0, accent: 'text-emerald-400' },
+                  { label: 'Empatados', value: teamSeasonRow?.empatados ?? 0, accent: 'text-amber-400' },
+                  { label: 'Perdidos', value: teamSeasonRow?.perdidos ?? 0, accent: 'text-red-400' }
+                ].map(cell => (
+                  <div
+                    key={cell.label}
+                    className="bg-white/5 border border-white/10 rounded-xl px-2 py-3 text-center min-w-0"
+                  >
+                    <div className={`text-xl sm:text-2xl font-black font-athletic tabular-nums ${cell.accent}`}>
+                      {cell.value}
+                    </div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mt-0.5">
+                      {cell.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-white/10 text-[11px] text-gray-300">
+                <span>GF <strong className="text-white">{teamSeasonRow?.gf ?? 0}</strong></span>
+                <span>GC <strong className="text-white">{teamSeasonRow?.gc ?? 0}</strong></span>
+                <span>DG <strong className="text-white">
+                  {(teamSeasonRow?.dif ?? 0) > 0 ? '+' : ''}{teamSeasonRow?.dif ?? 0}
+                </strong></span>
+                <span>Pts <strong className="text-orange-400">{teamSeasonRow?.puntos ?? 0}</strong></span>
+                {!teamSeasonRow && (
+                  <span className="text-gray-500 italic">Sin partidos finalizados aún</span>
+                )}
+              </div>
+            </div>
+
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                Jugadores en plantilla ({jugadores.filter(j => j.equipo === selectedEquipoForSquad.nombre).length})
+                Jugadores en plantilla ({squadPlayers.length})
               </span>
               <button
                 onClick={() => openPlayerModal()}
@@ -1035,70 +1144,70 @@ export const EquiposClubView: React.FC = () => {
             </div>
 
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-xs">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 uppercase font-bold tracking-wider">
-                  <tr>
-                    <th className="px-4 py-3">Dorsal</th>
-                    <th className="px-4 py-3">Nombre</th>
-                    <th className="px-4 py-3">Posición</th>
-                    <th className="px-4 py-3">Temporada</th>
-                    <th className="px-4 py-3 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {jugadores
-                    .filter(j => j.equipo === selectedEquipoForSquad.nombre)
-                    .map(player => (
+              <div className="overflow-x-auto scroll-x">
+                <table className="w-full min-w-[420px] text-left text-xs">
+                  <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 uppercase font-bold tracking-wider">
+                    <tr>
+                      <th className="px-4 py-3">Dorsal</th>
+                      <th className="px-4 py-3">Nombre</th>
+                      <th className="px-4 py-3">Pos.</th>
+                      <th className="px-4 py-3 text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {squadPlayers.map(player => (
                       <tr key={player.id} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="px-4 py-3 font-bold text-gray-900">
-                          <span className="w-7 h-7 bg-orange-100 text-orange-800 rounded-lg inline-flex items-center justify-center font-athletic text-sm">
-                            {player.dorsal || '-'}
+                        <td className="px-4 py-3">
+                          <span
+                            className={`w-8 h-8 rounded-full inline-flex items-center justify-center font-black font-athletic text-sm border-2 ${POS_DISK[player.posicion]}`}
+                            title={player.posicion}
+                          >
+                            {player.dorsal || '–'}
                           </span>
                         </td>
                         <td className="px-4 py-3 font-semibold text-gray-900">{player.nombre}</td>
                         <td className="px-4 py-3">
-                          <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md font-medium">
-                            {player.posicion}
+                          <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md font-bold text-[11px] tracking-wide">
+                            {POS_ABBR[player.posicion] || player.posicion.slice(0, 3).toUpperCase()}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-gray-500">{player.temporada || clubConfig.temporada || '2025/2026'}</td>
                         <td className="px-4 py-3 text-right space-x-1">
                           <button
                             onClick={() => openPlayerStatsModal(player)}
-                            className="px-2.5 py-1 bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-lg font-bold text-[11px] transition-colors inline-flex items-center gap-1"
-                            title="Ver estadísticas y zona histórica"
+                            className="p-1.5 text-orange-500 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors"
+                            title="Estadísticas e histórico"
                           >
-                            <Trophy className="w-3 h-3" />
-                            Estadísticas & Histórico
+                            <Trophy className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => openPlayerModal(player)}
-                            className="p-1 text-gray-400 hover:text-gray-900 rounded hover:bg-gray-100 transition-colors"
+                            className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors"
                             title="Editar jugador"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <Edit2 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => {
                               if (confirm(`¿Eliminar al jugador ${player.nombre}?`)) deleteJugador(player.id);
                             }}
-                            className="p-1 text-gray-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors"
+                            className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
                             title="Eliminar jugador"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </td>
                       </tr>
                     ))}
-                  {jugadores.filter(j => j.equipo === selectedEquipoForSquad.nombre).length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
-                        No hay jugadores registrados en este equipo todavía.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    {squadPlayers.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+                          No hay jugadores registrados en este equipo todavía.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </Modal>
@@ -1187,124 +1296,124 @@ export const EquiposClubView: React.FC = () => {
           subtitle={`Dorsal: #${selectedPlayerForStats.dorsal || '-'} • Posición: ${selectedPlayerForStats.posicion} • Equipo: ${selectedPlayerForStats.equipo}`}
           maxWidth="max-w-2xl"
         >
-          <form onSubmit={handleSavePlayerStats} className="space-y-6">
-            <div className="bg-orange-50/50 p-4 rounded-2xl border border-orange-100 space-y-4">
+          <form onSubmit={handleSavePlayerStats} className="space-y-6 min-w-0">
+            <div className="bg-orange-50/50 p-3 sm:p-4 rounded-2xl border border-orange-100 space-y-4 min-w-0">
               <h4 className="text-xs font-bold text-orange-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Trophy className="w-4 h-4 text-orange-600" />
+                <Trophy className="w-4 h-4 text-orange-600 shrink-0" />
                 Estadísticas de la Temporada Actual
               </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 min-w-0">
+                <div className="min-w-0">
                   <label className="block text-[11px] font-bold text-gray-700 mb-1">Partidos Jugados</label>
                   <input
                     type="number"
                     min="0"
                     value={statPartidos}
                     onChange={e => setStatPartidos(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    className="w-full min-w-0 px-2 sm:px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-orange-500 focus:outline-none"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-[11px] font-bold text-gray-700 mb-1">Titular</label>
                   <input
                     type="number"
                     min="0"
                     value={statTitular}
                     onChange={e => setStatTitular(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    className="w-full min-w-0 px-2 sm:px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-orange-500 focus:outline-none"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-[11px] font-bold text-gray-700 mb-1">Goles</label>
                   <input
                     type="number"
                     min="0"
                     value={statGoles}
                     onChange={e => setStatGoles(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    className="w-full min-w-0 px-2 sm:px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-orange-500 focus:outline-none"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-[11px] font-bold text-gray-700 mb-1">Asistencias</label>
                   <input
                     type="number"
                     min="0"
                     value={statAsistencias}
                     onChange={e => setStatAsistencias(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    className="w-full min-w-0 px-2 sm:px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-orange-500 focus:outline-none"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2 border-t border-orange-200/60">
-                <div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 pt-2 border-t border-orange-200/60 min-w-0">
+                <div className="min-w-0">
                   <label className="block text-[11px] font-bold text-yellow-700 mb-1">Tarjetas Amarillas</label>
                   <input
                     type="number"
                     min="0"
                     value={statAmarillas}
                     onChange={e => setStatAmarillas(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-white border border-yellow-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-yellow-500 focus:outline-none"
+                    className="w-full min-w-0 px-2 sm:px-3 py-2 bg-white border border-yellow-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-yellow-500 focus:outline-none"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-[11px] font-bold text-red-700 mb-1">Tarjetas Rojas</label>
                   <input
                     type="number"
                     min="0"
                     value={statRojas}
                     onChange={e => setStatRojas(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-white border border-red-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-red-500 focus:outline-none"
+                    className="w-full min-w-0 px-2 sm:px-3 py-2 bg-white border border-red-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-red-500 focus:outline-none"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-[11px] font-bold text-gray-700 mb-1">Temporada</label>
                   <input
                     type="text"
                     value={statTemporada}
                     onChange={e => setStatTemporada(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    className="w-full min-w-0 px-2 sm:px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold text-center focus:ring-2 focus:ring-orange-500 focus:outline-none"
                   />
                 </div>
               </div>
             </div>
 
             {/* Zona Histórica */}
-            <div className="space-y-3">
+            <div className="space-y-3 min-w-0">
               <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-gray-600" />
+                <Clock className="w-4 h-4 text-gray-600 shrink-0" />
                 Zona Histórica (Otras Temporadas)
               </h4>
 
-              <div className="bg-gray-50 p-3.5 rounded-2xl border border-gray-200 space-y-3">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="bg-gray-50 p-3 sm:p-3.5 rounded-2xl border border-gray-200 space-y-3 min-w-0">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 min-w-0">
                   <input
                     type="text"
                     placeholder="Temporada (ej: 23/24)"
                     value={histTemp}
                     onChange={e => setHistTemp(e.target.value)}
-                    className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-xs"
+                    className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-xs min-w-0 w-full"
                   />
                   <input
                     type="text"
                     placeholder="Equipo"
                     value={histEquipo}
                     onChange={e => setHistEquipo(e.target.value)}
-                    className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-xs"
+                    className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-xs min-w-0 w-full"
                   />
                   <input
                     type="number"
                     placeholder="Partidos"
                     value={histPartidos || ''}
                     onChange={e => setHistPartidos(Number(e.target.value))}
-                    className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-xs"
+                    className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-xs min-w-0 w-full"
                   />
                   <input
                     type="number"
                     placeholder="Goles"
                     value={histGoles || ''}
                     onChange={e => setHistGoles(Number(e.target.value))}
-                    className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-xs"
+                    className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-xs min-w-0 w-full"
                   />
                 </div>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -1317,7 +1426,7 @@ export const EquiposClubView: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleAddHistorial}
-                    className="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-xs font-bold transition-colors"
+                    className="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg text-xs font-bold transition-colors shrink-0"
                   >
                     + Añadir Temporada
                   </button>
@@ -1325,8 +1434,8 @@ export const EquiposClubView: React.FC = () => {
               </div>
 
               {statHistorico.length > 0 ? (
-                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                  <table className="w-full text-left text-xs">
+                <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+                  <table className="w-full min-w-[520px] text-left text-xs">
                     <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase">
                       <tr>
                         <th className="px-3 py-2">Temporada</th>
@@ -1369,7 +1478,7 @@ export const EquiposClubView: React.FC = () => {
               )}
             </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t border-gray-150">
+            <div className="flex justify-end gap-2 pt-4 border-t border-gray-150 flex-wrap">
               <button
                 type="button"
                 onClick={() => setSelectedPlayerForStats(null)}

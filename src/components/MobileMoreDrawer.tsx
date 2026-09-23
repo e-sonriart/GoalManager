@@ -14,7 +14,9 @@ import {
   ChevronRight,
   ExternalLink,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Dumbbell,
+  LogOut
 } from 'lucide-react';
 
 interface MobileMoreDrawerProps {
@@ -22,7 +24,6 @@ interface MobileMoreDrawerProps {
   onClose: () => void;
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
-  onOpenAuth: () => void;
   onOpenGoogleConfig: () => void;
 }
 
@@ -31,10 +32,9 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
   onClose,
   activeTab,
   setActiveTab,
-  onOpenAuth,
   onOpenGoogleConfig
 }) => {
-  const { currentUser, isOnlineConfigured, refreshAll, loading, clubConfig } = useClub();
+  const { currentUser, isOnlineConfigured, refreshAll, loading, clubConfig, logout } = useClub();
 
   if (!isOpen) return null;
 
@@ -60,6 +60,13 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
       title: 'Rendimiento & Competición',
       items: [
         {
+          id: 'entrenamientos' as ActiveTab,
+          label: 'Entrenamientos',
+          desc: 'Sesiones planificadas por equipo',
+          icon: Dumbbell,
+          badge: null
+        },
+        {
           id: 'estadisticas' as ActiveTab,
           label: 'Estadísticas & Ranking',
           desc: 'Pichichi, asistencias, tarjetas y valoración',
@@ -76,7 +83,7 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
           label: 'Panel de Administración',
           desc: 'Gestión de usuarios, roles y base de datos',
           icon: Settings,
-          badge: currentUser?.rol === 'admin' || currentUser?.rol === 'direccion' ? 'Gestor' : null
+          badge: currentUser?.rol === 'admin' ? 'Gestor' : null
         }
       ]
     }
@@ -128,7 +135,7 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
                   ? 'bg-red-600 text-white'
                   : currentUser?.rol === 'entrenador'
                   ? 'bg-blue-600 text-white'
-                  : currentUser?.rol === 'direccion' || currentUser?.rol === 'directiva'
+                  : currentUser?.rol === 'directiva'
                   ? 'bg-purple-600 text-white'
                   : 'bg-orange-500 text-white'
               }`}
@@ -144,12 +151,12 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
                       ? 'bg-red-500/20 text-red-400 border border-red-500/30'
                       : currentUser?.rol === 'entrenador'
                       ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                      : currentUser?.rol === 'direccion' || currentUser?.rol === 'directiva'
+                      : currentUser?.rol === 'directiva'
                       ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
                       : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
                   }`}
                 >
-                  {currentUser?.rol === 'direccion' || currentUser?.rol === 'directiva'
+                  {currentUser?.rol === 'directiva'
                     ? 'Dirección'
                     : currentUser?.rol || 'Jugador'}
                 </span>
@@ -167,11 +174,12 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
           <button
             onClick={() => {
               onClose();
-              onOpenAuth();
+              logout();
             }}
-            className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-xs font-semibold text-gray-200 border border-gray-700 rounded-xl transition-colors shrink-0"
+            className="px-3 py-1.5 bg-red-950/50 hover:bg-red-900/60 text-xs font-semibold text-red-300 border border-red-900/60 rounded-xl transition-colors shrink-0 flex items-center gap-1.5"
           >
-            Cambiar
+            <LogOut className="w-3.5 h-3.5" />
+            Salir
           </button>
         </div>
 
@@ -263,7 +271,7 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
           >
             <Database className="w-4 h-4 text-emerald-400" />
             <div>
-              <p className="text-xs font-bold text-gray-200">Google Sheets</p>
+              <p className="text-xs font-bold text-gray-200">Supabase</p>
               <p className="text-[10px] text-emerald-400 font-medium">
                 {isOnlineConfigured ? 'Conectado' : 'Configurar'}
               </p>

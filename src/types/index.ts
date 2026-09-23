@@ -24,6 +24,9 @@ export interface Equipo {
   entrenadores?: string[]; // Lista de entrenadores asignados
   temporada?: string; // Columna temporada
   escudo?: string; // Enlace o URL de la imagen del escudo (o hereda del club)
+  division?: string; // Ej: "2ª División"
+  grupo?: string; // Ej: "Grupo 3"
+  linkClasificacion?: string; // URL a la clasificación oficial de la liga
 }
 
 export interface ClubConfig {
@@ -58,6 +61,7 @@ export interface Partido {
   equipo: string; // Nuestro equipo del club (protagonista, ej: "Alevín A")
   condicion?: CondicionPartido; // 'casa' (local) | 'fuera' (visitante)
   rival?: string; // Equipo contra quien juega
+  escudoVisitante?: string; // URL del escudo del rival/visitante. Si no hay, se muestra un escudo genérico.
   local: string; // Si condicion==='casa' -> equipo club; si 'fuera' -> rival
   visitante: string; // Si condicion==='casa' -> rival; si 'fuera' -> equipo club
   fecha: string;
@@ -72,6 +76,8 @@ export interface Partido {
   eventos?: string;
   finalizado?: boolean | string;
   convocados?: string[]; // IDs de jugadores convocados directamente en el partido
+  titulares?: string[]; // IDs de la alineación inicial (11 o 8 según modalidad)
+  formacion?: string; // Táctica elegida, p. ej. '1-4-3-3' o '1-2-3-2'
   temporada?: string;
 }
 
@@ -84,6 +90,32 @@ export interface Asistencia {
   fecha: string;
   estado: EstadoAsistencia;
   temporada?: string;
+}
+
+export type TipoEntrenamiento =
+  | 'tecnico'
+  | 'tactico'
+  | 'fisico'
+  | 'recuperacion'
+  | 'porteros'
+  | 'partido-11'
+  | 'otro';
+
+export interface SesionEntrenamiento {
+  id: string;
+  equipo: string; // Equipo asignado (p. ej. 'Senior A')
+  categoria: string; // Categoría (p. ej. 'Senior')
+  tipo?: TipoFutbol; // 'F8' | 'F11' (derivado de la categoría)
+  fecha: string; // 'YYYY-MM-DD'
+  hora: string; // 'HH:MM'
+  horaFin?: string; // Opcional 'HH:MM'
+  lugar?: string; // Opcional
+  titulo?: string; // Opcional. p. ej. 'Físico + técnica'
+  objetivo: string; // Objetivo y descripción de la sesión
+  descripcion?: string;
+  temporada?: string;
+  creadoPor?: string;
+  creadoEn?: string;
 }
 
 export interface HistorialEstadisticaTemporada {
@@ -111,7 +143,23 @@ export interface Estadistica {
   historico?: HistorialEstadisticaTemporada[];
 }
 
-export type RolUsuario = 'admin' | 'entrenador' | 'coordinador' | 'coordinador_f7' | 'coordinador_f11' | 'jugador' | 'autorizado' | 'direccion' | 'directiva' | 'aficionado';
+export type RolUsuario = 'admin' | 'entrenador' | 'coordinador_f8' | 'coordinador_f11' | 'jugador' | 'directiva' | 'aficionado';
+
+/**
+ * Pestañas de navegación de la aplicación.
+ * Se mantiene compatible con el tipo ActiveTab que consume la navegación.
+ */
+export type AppTab =
+  | 'dashboard'
+  | 'equipos'
+  | 'partidos'
+  | 'convocatorias'
+  | 'asistencias'
+  | 'alineacion'
+  | 'eventos'
+  | 'estadisticas'
+  | 'entrenamientos'
+  | 'admin';
 
 export interface Usuario {
   id: string;

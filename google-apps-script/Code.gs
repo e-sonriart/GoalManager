@@ -404,7 +404,7 @@ function inicializarBaseDeDatos() {
   var usuSheet = ss.getSheetByName('usuarios');
   usuSheet.appendRow(['usr_1', 'Administrador Club', 'admin@clubfutbol.com', 'admin', '']);
   usuSheet.appendRow(['usr_2', 'Carlos Martínez (Mister)', 'mister@clubfutbol.com', 'entrenador', 'Senior A']);
-  usuSheet.appendRow(['usr_3', 'Dirección Deportiva', 'direccion@clubfutbol.com', 'direccion', '']);
+  usuSheet.appendRow(['usr_3', 'Dirección Deportiva', 'direccion@clubfutbol.com', 'directiva', '']);
   usuSheet.appendRow(['usr_4', 'Mateo Silva', 'mateo@clubfutbol.com', 'jugador', 'Senior A']);
   usuSheet.appendRow(['usr_5', 'Hugo Navarro', 'hugo@clubfutbol.com', 'jugador', 'Senior A']);
 

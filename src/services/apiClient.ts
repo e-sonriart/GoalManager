@@ -6,8 +6,10 @@ import {
   initialEstadisticas,
   initialPartidos,
   initialAsistencias,
+  initialSesiones,
   initialUsuarios
 } from '../data/initialData';
+import { getSupabase, getSupabaseUrl, getSupabaseAnonKey } from './supabaseClient';
 
 const LOCAL_STORAGE_PREFIX = 'cf_data_';
 const GAS_URL_KEY = 'cf_gas_script_url';
@@ -30,6 +32,7 @@ export const initializeLocalStoreIfEmpty = (): void => {
     estadisticas: initialEstadisticas,
     partidos: initialPartidos,
     asistencias: initialAsistencias,
+    sesiones: initialSesiones,
     usuarios: initialUsuarios
   };
 
@@ -239,56 +242,133 @@ const saveLocalData = <T>(sheet: string, items: T[]): void => {
   localStorage.setItem(LOCAL_STORAGE_PREFIX + sheet, JSON.stringify(items));
 };
 
+// Normaliza arrays JSON (Supabase devuelve jsonb como string a veces)
+const parseJsonField = <T>(value: unknown): T => {
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return value as unknown as T;
+    }
+  }
+  return value as T;
+};
+
+const normalizeRow = <T>(sheet: string, row: Record<string, unknown>): T => {
+  const item = { ...row } as Record<string, unknown>;
+  if (sheet === 'partidos') {
+    if ('convocados' in item) item.convocados = parseJsonField<string[]>(item.convocados) || [];
+    if ('titulares' in item) item.titulares = parseJsonField<string[]>(item.titulares) || [];
+    if ('golesLocal' in item && item.golesLocal != null) item.golesLocal = String(item.golesLocal);
+    if ('golesVisitante' in item && item.golesVisitante != null) item.golesVisitante = String(item.golesVisitante);
+  }
+  if (sheet === 'equipos' && 'entrenadores' in item) {
+    item.entrenadores = parseJsonField<string[]>(item.entrenadores) || [];
+  }
+  if (sheet === 'estadisticas') {
+    item.goles = Number(item.goles) || 0;
+    item.asistencias = Number(item.asistencias) || 0;
+    item.tarjetas = Number(item.tarjetas) || 0;
+    item.tarjetasAmarillas = Number(item.tarjetasAmarillas) || 0;
+    item.tarjetasRojas = Number(item.tarjetasRojas) || 0;
+    item.partidosJugados = Number(item.partidosJugados) || 0;
+    item.titular = Number(item.titular) || 0;
+    if ('historico' in item) item.historico = parseJsonField(item.historico) || [];
+  }
+  if (sheet === 'categorias') {
+    item.tiempojuego = Number(item.tiempojuego ?? item.tiempoJuego) || (String(item.tipo || '').toUpperCase() === 'F8' ? 30 : 45);
+    item.tiempoJuego = item.tiempojuego;
+  }
+  if (sheet === 'jugadores' && 'dorsal' in item && item.dorsal != null) {
+    const n = Number(item.dorsal);
+    item.dorsal = Number.isNaN(n) ? String(item.dorsal) : n;
+  }
+  return item as T;
+};
+
+const prepareRow = <T>(sheet: string, item: Partial<T>): Record<string, unknown> => {
+  const row: Record<string, unknown> = { ...(item as Record<string, unknown>) };
+  delete row.created_at;
+  delete row.updated_at;
+  if (sheet === 'partidos') {
+    if ('convocados' in row) row.convocados = JSON.stringify(row.convocados ?? []);
+    if ('titulares' in row) row.titulares = JSON.stringify(row.titulares ?? []);
+  }
+  if (sheet === 'equipos' && 'entrenadores' in row) {
+    row.entrenadores = JSON.stringify(row.entrenadores ?? []);
+  }
+  if (sheet === 'estadisticas' && 'historico' in row) {
+    row.historico = JSON.stringify(row.historico ?? []);
+  }
+  return row;
+};
+
+const SHEETS = [
+  'categorias', 'entrenadores', 'equipos', 'jugadores',
+  'estadisticas', 'partidos', 'asistencias', 'sesiones', 'usuarios'
+] as const;
+
+const SEEDS: Record<string, unknown[]> = {
+  categorias: initialCategorias,
+  entrenadores: initialEntrenadores,
+  equipos: initialEquipos,
+  jugadores: initialJugadores,
+  estadisticas: initialEstadisticas,
+  partidos: initialPartidos,
+  asistencias: initialAsistencias,
+  sesiones: initialSesiones,
+  usuarios: initialUsuarios
+};
+
+// Si la tabla remota está vacía, sube los datos seed a Supabase
+const seedRemoteIfEmpty = async <T extends { id?: string }>(
+  sheet: string,
+  supabase: NonNullable<ReturnType<typeof getSupabase>>
+): Promise<T[]> => {
+  const seeds = (SEEDS[sheet] || []) as T[];
+  if (!seeds.length) return [];
+  try {
+    const rows = seeds.map(item => prepareRow<T>(sheet, item as Partial<T>));
+    const { error } = await supabase.from(sheet).insert(rows);
+    if (error) throw error;
+    const finalData = seeds.map(item => normalizeRow<T>(sheet, item as unknown as Record<string, unknown>));
+    saveLocalData(sheet, finalData);
+    return finalData;
+  } catch (err) {
+    console.warn(`[apiClient] Error al sembrar "${sheet}" en Supabase. Usando datos locales.`, err);
+    return seeds.map(item => normalizeRow<T>(sheet, item as unknown as Record<string, unknown>));
+  }
+};
+
 /**
- * Cliente API para Google Apps Script
- * Utiliza Content-Type text/plain para evitar bloqueos por preflight CORS en Apps Script
+ * Cliente de datos: Supabase (principal) + localStorage (caché offline).
+ * Si no hay Supabase configurado, funciona solo con localStorage.
  */
 export const apiClient = {
-  /**
-   * Obtiene todos los registros de una hoja
-   */
   async getAll<T extends { id?: string }>(sheet: string): Promise<T[]> {
-    const url = getGasUrl();
-    if (!url) {
+    const supabase = getSupabase();
+    if (!supabase) {
       return getLocalData<T>(sheet);
     }
 
     try {
-      const endpoint = `${url}?action=getAll&sheet=${encodeURIComponent(sheet)}&t=${Date.now()}`;
-      const response = await fetch(endpoint, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-        redirect: 'follow'
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error ${response.status}`);
-      }
-
-      const result = await response.json();
-      if (result && result.success && Array.isArray(result.data)) {
-        let finalData = result.data;
-        if (sheet === 'categorias') {
-          finalData = result.data.map((c: Record<string, unknown>) => ({
-            ...c,
-            tipo: c.tipo || (String(c.nombre || '').toLowerCase().includes('f8') || String(c.nombre || '').toLowerCase().includes('alev') || String(c.nombre || '').toLowerCase().includes('benj') ? 'F8' : 'F11'),
-            tiempojuego: Number(c.tiempojuego || c.tiempoJuego || 45)
-          }));
+      const { data, error } = await supabase.from(sheet).select('*');
+      if (error) throw error;
+      if (Array.isArray(data)) {
+        if (data.length === 0) {
+          return seedRemoteIfEmpty<T>(sheet, supabase);
         }
-        // Actualizar caché local
+        const finalData = data.map(row => normalizeRow<T>(sheet, row as Record<string, unknown>));
         saveLocalData(sheet, finalData);
-        return finalData as T[];
+        return finalData;
       }
       return getLocalData<T>(sheet);
     } catch (err) {
-      console.warn(`[apiClient] Error al consultar Google Apps Script para "${sheet}". Usando almacenamiento local.`, err);
+      console.warn(`[apiClient] Error al consultar Supabase para "${sheet}". Usando almacenamiento local.`, err);
       return getLocalData<T>(sheet);
     }
   },
 
-  /**
-   * Crea un nuevo registro en la hoja indicada
-   */
   async create<T extends { id?: string }>(sheet: string, item: Partial<T>): Promise<T> {
     const newItem = {
       ...item,
@@ -299,30 +379,20 @@ export const apiClient = {
     const currentList = getLocalData<T>(sheet);
     saveLocalData(sheet, [...currentList, newItem]);
 
-    const url = getGasUrl();
-    if (url) {
+    const supabase = getSupabase();
+    if (supabase) {
       try {
-        await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            action: 'create',
-            sheet,
-            data: newItem
-          }),
-          redirect: 'follow'
-        });
+        const row = prepareRow<T>(sheet, newItem as Partial<T>);
+        const { error } = await supabase.from(sheet).upsert(row, { onConflict: 'id' });
+        if (error) throw error;
       } catch (err) {
-        console.warn(`[apiClient] Error al sincronizar creación en Google Apps Script (${sheet})`, err);
+        console.warn(`[apiClient] Error al sincronizar creación en Supabase (${sheet})`, err);
       }
     }
 
     return newItem;
   },
 
-  /**
-   * Actualiza un registro existente
-   */
   async update<T extends { id: string }>(sheet: string, item: Partial<T> & { id: string }): Promise<T> {
     const currentList = getLocalData<T>(sheet);
     const index = currentList.findIndex((it) => String(it.id) === String(item.id));
@@ -337,51 +407,32 @@ export const apiClient = {
       saveLocalData(sheet, [...currentList, updatedItem]);
     }
 
-    const url = getGasUrl();
-    if (url) {
+    const supabase = getSupabase();
+    if (supabase) {
       try {
-        await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            action: 'update',
-            sheet,
-            id: item.id,
-            data: updatedItem
-          }),
-          redirect: 'follow'
-        });
+        const row = prepareRow<T>(sheet, updatedItem as Partial<T>);
+        const { error } = await supabase.from(sheet).upsert(row, { onConflict: 'id' });
+        if (error) throw error;
       } catch (err) {
-        console.warn(`[apiClient] Error al sincronizar actualización en Google Apps Script (${sheet})`, err);
+        console.warn(`[apiClient] Error al sincronizar actualización en Supabase (${sheet})`, err);
       }
     }
 
     return updatedItem;
   },
 
-  /**
-   * Elimina un registro por ID
-   */
   async delete<T extends { id: string }>(sheet: string, id: string): Promise<boolean> {
     const currentList = getLocalData<T>(sheet);
     const filtered = currentList.filter((it) => String(it.id) !== String(id));
     saveLocalData(sheet, filtered);
 
-    const url = getGasUrl();
-    if (url) {
+    const supabase = getSupabase();
+    if (supabase) {
       try {
-        await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            action: 'delete',
-            sheet,
-            id
-          }),
-          redirect: 'follow'
-        });
+        const { error } = await supabase.from(sheet).delete().eq('id', id);
+        if (error) throw error;
       } catch (err) {
-        console.warn(`[apiClient] Error al eliminar registro en Google Apps Script (${sheet})`, err);
+        console.warn(`[apiClient] Error al eliminar registro en Supabase (${sheet})`, err);
       }
     }
 
@@ -389,58 +440,62 @@ export const apiClient = {
   },
 
   /**
-   * Verifica la conectividad con el script de Google Apps Script
+   * Verifica la conectividad con Supabase
    */
   async testConnection(targetUrl?: string): Promise<{ success: boolean; message: string }> {
-    const url = targetUrl || getGasUrl();
-    if (!url) {
-      return { success: false, message: 'No se ha configurado ninguna URL de Google Apps Script.' };
+    const url = targetUrl?.trim() || getSupabaseUrl();
+    const key = getSupabaseAnonKey();
+    if (!url || !key) {
+      return { success: false, message: 'No se ha configurado Supabase (URL o anon key).' };
     }
 
     try {
-      const pingUrl = `${url}?action=ping&t=${Date.now()}`;
-      const res = await fetch(pingUrl, {
+      const endpoint = `${url.replace(/\/$/, '')}/rest/v1/categorias?select=id&limit=1`;
+      const res = await fetch(endpoint, {
         method: 'GET',
-        redirect: 'follow'
+        headers: {
+          'apikey': key,
+          'Authorization': `Bearer ${key}`
+        }
       });
 
       if (!res.ok) {
         return { success: false, message: `Error de servidor HTTP: ${res.status} ${res.statusText}` };
       }
 
-      const data = await res.json();
-      if (data && data.success) {
-        return { success: true, message: '¡Conexión establecida con éxito con Google Apps Script!' };
-      }
-      return { success: false, message: data.error || 'Respuesta inválida recibida del script.' };
-    } catch (err) {
+      return { success: true, message: '¡Conexión establecida con Supabase!' };
+    } catch {
       return {
         success: false,
-        message: 'No se pudo conectar con el script. Verifica que la implementación web tenga acceso para "Cualquier usuario" (Anyone).'
+        message: 'No se pudo conectar con Supabase. Verifica la URL y la anon key.'
       };
     }
   },
 
   /**
-   * Pide al script que genere las 10 hojas con datos de prueba
+   * Verifica que existan las tablas (lsquema básico)
    */
   async initRemoteDatabase(): Promise<{ success: boolean; message: string }> {
-    const url = getGasUrl();
-    if (!url) {
-      return { success: false, message: 'Primero introduce la URL de Google Apps Script.' };
+    const supabase = getSupabase();
+    if (!supabase) {
+      return { success: false, message: 'Primero configura Supabase (URL y anon key).' };
     }
 
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'initDatabase' }),
-        redirect: 'follow'
-      });
-      const data = await res.json();
-      return { success: true, message: data.message || 'Hojas creadas correctamente en Google Sheets.' };
+      const missing: string[] = [];
+      for (const sheet of SHEETS) {
+        const { error } = await supabase.from(sheet).select('id').limit(1);
+        if (error) missing.push(sheet);
+      }
+      if (missing.length) {
+        return {
+          success: false,
+          message: `Faltan tablas en Supabase: ${missing.join(', ')}. Ejecuta el SQL de creación en el SQL Editor.`
+        };
+      }
+      return { success: true, message: 'Supabase conectado. Todas las tablas existen.' };
     } catch (err) {
-      return { success: false, message: 'Error al inicializar hojas remotas: ' + (err as Error).message };
+      return { success: false, message: 'Error al verificar Supabase: ' + (err as Error).message };
     }
   },
 
@@ -451,7 +506,7 @@ export const apiClient = {
     const keys = [
       'categorias', 'entrenadores', 'equipos', 'jugadores',
       'estadisticas', 'partidos', 'convocatorias', 'asistencias',
-      'apuestas', 'usuarios'
+      'sesiones', 'apuestas', 'usuarios'
     ];
     keys.forEach(k => localStorage.removeItem(LOCAL_STORAGE_PREFIX + k));
     initializeLocalStoreIfEmpty();

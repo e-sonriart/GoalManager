@@ -1,13 +1,23 @@
 import React from 'react';
 import { ActiveTab } from './Navbar';
+import { useClub } from '../context/ClubContext';
+import { AppTab } from '../types';
 import {
   BarChart3,
   Calendar,
   ClipboardList,
-  CheckSquare,
   Shield,
-  Menu
+  Menu,
+  Dumbbell
 } from 'lucide-react';
+
+const ALL_PRIMARY: { id: AppTab; label: string; icon: React.FC<{ className?: string }> }[] = [
+  { id: 'dashboard', label: 'Inicio', icon: BarChart3 },
+  { id: 'partidos', label: 'Partidos', icon: Calendar },
+  { id: 'entrenamientos', label: 'Entren.', icon: Dumbbell },
+  { id: 'equipos', label: 'Equipos', icon: Shield },
+  { id: 'convocatorias', label: 'Convoc.', icon: ClipboardList }
+];
 
 interface MobileTabBarProps {
   activeTab: ActiveTab;
@@ -22,12 +32,10 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({
   onOpenMore,
   isFramed = false
 }) => {
-  const primaryTabs: { id: ActiveTab; label: string; icon: React.FC<{ className?: string }> }[] = [
-    { id: 'dashboard', label: 'Inicio', icon: BarChart3 },
-    { id: 'partidos', label: 'Partidos', icon: Calendar },
-    { id: 'equipos', label: 'Equipos', icon: Shield },
-    { id: 'convocatorias', label: 'Convocatoria', icon: ClipboardList }
-  ];
+  const { allowedTabs } = useClub();
+
+  const primaryTabs = ALL_PRIMARY.filter(t => allowedTabs.includes(t.id));
+  const moreVisible = allowedTabs.some(t => !ALL_PRIMARY.some(p => p.id === t));
 
   const isMoreActive = !primaryTabs.some(t => t.id === activeTab);
 
@@ -50,9 +58,9 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl min-w-[64px] min-h-[50px] transition-all relative ${
+              className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-1 rounded-xl min-h-[52px] transition-all relative ${
                 isActive
-                  ? 'text-orange-500 font-bold scale-105'
+                  ? 'text-orange-500 font-bold'
                   : 'text-gray-400 hover:text-gray-200 active:scale-95'
               }`}
             >
@@ -62,30 +70,31 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({
               <div className="w-6 h-6 flex items-center justify-center mb-0.5">
                 <Icon className={`w-5 h-5 ${isActive ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
               </div>
-              <span className="text-[11px] leading-tight tracking-tight font-medium">{tab.label}</span>
+              <span className="w-full text-center text-[10px] sm:text-[11px] leading-tight tracking-tight font-medium truncate">{tab.label}</span>
             </button>
           );
         })}
 
-        {/* More Tab */}
-        <button
-          onClick={onOpenMore}
-          className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl min-w-[64px] min-h-[50px] transition-all relative ${
-            isMoreActive
-              ? 'text-orange-500 font-bold scale-105'
-              : 'text-gray-400 hover:text-gray-200 active:scale-95'
-          }`}
-        >
-          {isMoreActive && (
-            <span className="absolute -top-1.5 w-6 h-1 bg-orange-500 rounded-full shadow-sm shadow-orange-500/50" />
-          )}
-          <div className="w-6 h-6 flex items-center justify-center mb-0.5">
-            <Menu className={`w-5 h-5 ${isMoreActive ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
-          </div>
-          <span className="text-[11px] leading-tight tracking-tight font-medium">Más</span>
-        </button>
+        {/* More Tab (solo si hay pestañas adicionales permitidas) */}
+        {moreVisible && (
+          <button
+            onClick={onOpenMore}
+            className={`flex-1 min-w-0 flex flex-col items-center justify-center py-1 px-1 rounded-xl min-h-[52px] transition-all relative ${
+              isMoreActive
+                ? 'text-orange-500 font-bold'
+                : 'text-gray-400 hover:text-gray-200 active:scale-95'
+            }`}
+          >
+            {isMoreActive && (
+              <span className="absolute -top-1.5 w-6 h-1 bg-orange-500 rounded-full shadow-sm shadow-orange-500/50" />
+            )}
+            <div className="w-6 h-6 flex items-center justify-center mb-0.5">
+              <Menu className={`w-5 h-5 ${isMoreActive ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
+            </div>
+            <span className="text-[11px] leading-tight tracking-tight font-medium">Más</span>
+          </button>
+        )}
       </div>
     </nav>
   );
 };
-

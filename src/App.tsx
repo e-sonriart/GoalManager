@@ -1,104 +1,199 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { ClubProvider, useClub } from './context/ClubContext';
 import { Navbar, ActiveTab } from './components/Navbar';
-import { DashboardView } from './components/DashboardView';
-import { EquiposClubView } from './components/EquiposClubView';
-import { PartidosView } from './components/PartidosView';
-import { ConvocatoriasView } from './components/ConvocatoriasView';
-import { AsistenciasView } from './components/AsistenciasView';
-import { EstadisticasRankingView } from './components/EstadisticasRankingView';
-import { AdminPanel } from './components/AdminPanel';
-import { AuthModal } from './components/AuthModal';
+import { LoginScreen } from './components/LoginScreen';
 import { GoogleScriptModal } from './components/GoogleScriptModal';
 import { ToastContainer } from './components/ToastContainer';
 import { PWABanner } from './components/PWABanner';
 import { SidePanel } from './components/SidePanel';
 import { MobileTabBar } from './components/MobileTabBar';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { TeamShield } from './components/TeamShield';
-import {
-  Radio,
-  RefreshCw
-} from 'lucide-react';
+import { Loader2, Radio, RefreshCw, TriangleAlert } from 'lucide-react';
+
+// Carga diferida de vistas (code splitting): reduce el JS inicial y acelera la primera carga
+const DashboardView = lazy(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
+const EquiposClubView = lazy(() => import('./components/EquiposClubView').then(m => ({ default: m.EquiposClubView })));
+const PartidosView = lazy(() => import('./components/PartidosView').then(m => ({ default: m.PartidosView })));
+const EntrenamientosView = lazy(() => import('./components/EntrenamientosView').then(m => ({ default: m.EntrenamientosView })));
+const ConvocatoriasView = lazy(() => import('./components/ConvocatoriasView').then(m => ({ default: m.ConvocatoriasView })));
+const AlineacionView = lazy(() => import('./components/AlineacionView').then(m => ({ default: m.AlineacionView })));
+const EventosPartidoView = lazy(() => import('./components/EventosPartidoView').then(m => ({ default: m.EventosPartidoView })));
+const AsistenciasView = lazy(() => import('./components/AsistenciasView').then(m => ({ default: m.AsistenciasView })));
+const EstadisticasRankingView = lazy(() => import('./components/EstadisticasRankingView').then(m => ({ default: m.EstadisticasRankingView })));
+const AdminPanel = lazy(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
+
+const VIEW_FALLBACK: React.FC<{ label?: string }> = ({ label }) => (
+  <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+    <Loader2 className="w-8 h-8 animate-spin text-orange-500 mb-3" />
+    <p className="text-sm font-semibold">{label || 'Cargando mÃ³dulo...'}</p>
+  </div>
+);
 
 const MainContent: React.FC = () => {
-  const { isConfigModalOpen, setIsConfigModalOpen, googleScriptUrl, currentUser, clubConfig, isOnlineConfigured, refreshAll, loading } = useClub();
+  const { isConfigModalOpen, setIsConfigModalOpen, googleScriptUrl, currentUser, clubConfig, isOnlineConfigured, refreshAll, loading, allowedTabs, isTeamScoped, assignedTeams } = useClub();
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('equipos');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [selectedPartidoForConvocatoria, setSelectedPartidoForConvocatoria] = useState<string | undefined>(undefined);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [selectedPartidoForAlineacion, setSelectedPartidoForAlineacion] = useState<string | undefined>(undefined);
+  const [selectedPartidoForEventos, setSelectedPartidoForEventos] = useState<string | undefined>(undefined);
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
+  const [vistaPC, setVistaPC] = useState<boolean>(() => localStorage.getItem('cf_vista_pc') === 'true' || window.innerWidth >= 1024);
+  const toggleVistaPC = () => setVistaPC(prev => !prev);
 
   const mainScrollRef = useRef<HTMLElement>(null);
 
-  // Sincronizar título de pestaña con la personalización del club
+  // Sincronizar tÃ­tulo de pestaÃ±a con la personalizaciÃ³n del club
   useEffect(() => {
     if (clubConfig?.nombre) {
-      document.title = `${clubConfig.nombre} | Gestión Oficial`;
+      document.title = `${clubConfig.nombre} | GestiÃ³n Oficial`;
     }
   }, [clubConfig?.nombre]);
 
-  // Al cambiar de pestaña, resetear scroll suavemente
+  // Guardia de acceso: si el rol no puede ver la pestaÃ±a actual, ir al Dashboard (o a la primera permitida)
+  useEffect(() => {
+    if (allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
+      setActiveTab(allowedTabs.includes('dashboard') ? 'dashboard' : allowedTabs[0]);
+    }
+  }, [activeTab, allowedTabs]);
+
+  // Al cambiar de pestaÃ±a, resetear scroll suavemente
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
     mainScrollRef.current?.scrollTo({ top: 0, behavior: 'instant' });
   }, [activeTab]);
+
+  // Persistir la preferencia de Vista PC
+  useEffect(() => {
+    localStorage.setItem('cf_vista_pc', String(vistaPC));
+  }, [vistaPC]);
 
   const handleNavigateToConvocatoria = (partidoId: string) => {
     setSelectedPartidoForConvocatoria(partidoId);
     setActiveTab('convocatorias');
   };
 
+  const handleNavigateToAlineacion = (partidoId: string) => {
+    setSelectedPartidoForAlineacion(partidoId);
+    setActiveTab('alineacion');
+  };
+
+  const handleStartMatch = (partidoId: string) => {
+    setSelectedPartidoForEventos(partidoId);
+    setActiveTab('eventos');
+  };
+
+  // Pantalla de carga inicial (solo antes de la primera sesión; no interrumpe sincronizaciones)
+  if (loading && !currentUser) {
+    return (
+      <div className="min-h-screen w-full bg-gray-950 flex items-center justify-center">
+        <VIEW_FALLBACK label="Cargando aplicación..." />
+      </div>
+    );
+  }
+
+  // Guardia de sesión: sin usuario activo se muestra la pantalla de login
+  if (!currentUser) {
+    return <LoginScreen />;
+  }
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-gray-900 antialiased selection:bg-orange-500 selection:text-white overflow-x-hidden w-full">
-      {/* Barra de Navegación Principal */}
+    <div className="min-h-screen bg-gray-950 flex justify-center font-sans text-gray-900 antialiased selection:bg-orange-500 selection:text-white overflow-x-hidden w-full">
+      <div className={`${vistaPC ? 'w-full max-w-[1400px] mx-auto' : 'w-full max-w-[430px] min-h-screen bg-[#F8FAFC] flex flex-col shadow-2xl relative mx-auto'}`}>
+      {/* Barra de NavegaciÃ³n Principal */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenAuth={() => setIsAuthModalOpen(true)}
         onOpenGoogleConfig={() => setIsConfigModalOpen(true)}
         onOpenSidePanel={() => setIsSidePanelOpen(true)}
       />
 
-      {/* Contenedor Principal Expandido al Máximo y Contenido sin Scroll Horizontal */}
+      {/* Contenedor Principal Expandido al MÃ¡ximo y Contenido sin Scroll Horizontal */}
       <main
         ref={mainScrollRef}
         id="main-app-content"
-        className="flex-1 w-full max-w-7xl 2xl:max-w-[1680px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 py-5 sm:py-6 pb-12 overflow-x-hidden space-y-6"
+        className={`flex-1 w-full max-w-7xl 2xl:max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-12 overflow-x-hidden space-y-6 ${
+          vistaPC ? 'lg:ml-80' : ''
+        }`}
       >
-        {/* Banner PWA para instalación */}
+        {/* Banner PWA para instalaciÃ³n */}
         <PWABanner />
 
-        {/* Vistas Dinámicas */}
-        {activeTab === 'dashboard' && (
-          <DashboardView onNavigate={setActiveTab} />
+        {/* Aviso: rol con acceso limitado por equipo pero sin equipo asignado */}
+        {isTeamScoped && assignedTeams.length === 0 && (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+            <TriangleAlert className="w-5 h-5 shrink-0 mt-0.5 text-amber-500" />
+            <div className="text-sm">
+              <p className="font-semibold">No tienes ningÃºn equipo asignado</p>
+              <p className="text-amber-700">
+                Tu rol solo puede ver la informaciÃ³n de los equipos que tenga asignados. Contacta con
+                administraciÃ³n para que te asigne uno, mientras tanto las secciones aparecerÃ¡n vacÃ­as.
+              </p>
+            </div>
+          </div>
         )}
 
-        {activeTab === 'equipos' && (
-          <EquiposClubView />
-        )}
+        {/* Vistas DinÃ¡micas (con carga diferida y transiciÃ³n suave) */}
+        <div key={activeTab} className="animate-in fade-in duration-300">
+          <ErrorBoundary label={activeTab}>
+          <Suspense fallback={<VIEW_FALLBACK />}>
+            {activeTab === 'dashboard' && (
+              <DashboardView onNavigate={setActiveTab} />
+            )}
 
-        {activeTab === 'partidos' && (
-          <PartidosView
-            onNavigateToConvocatoria={handleNavigateToConvocatoria}
-          />
-        )}
+            {activeTab === 'equipos' && (
+              <EquiposClubView />
+            )}
 
-        {activeTab === 'convocatorias' && (
-          <ConvocatoriasView initialPartidoId={selectedPartidoForConvocatoria} />
-        )}
+            {activeTab === 'partidos' && (
+              <PartidosView
+                onNavigateToConvocatoria={handleNavigateToConvocatoria}
+                onNavigateToAlineacion={handleNavigateToAlineacion}
+                onNavigateToAsistencias={() => setActiveTab('asistencias')}
+              />
+            )}
 
-        {activeTab === 'asistencias' && (
-          <AsistenciasView />
-        )}
+            {activeTab === 'entrenamientos' && (
+              <EntrenamientosView />
+            )}
 
-        {activeTab === 'estadisticas' && (
-          <EstadisticasRankingView />
-        )}
+            {activeTab === 'convocatorias' && (
+              <ConvocatoriasView
+                initialPartidoId={selectedPartidoForConvocatoria}
+                onBack={() => setActiveTab('partidos')}
+              />
+            )}
 
-        {activeTab === 'admin' && (
-          <AdminPanel />
-        )}
+            {activeTab === 'alineacion' && (
+              <AlineacionView
+                initialPartidoId={selectedPartidoForAlineacion}
+                onBack={() => setActiveTab('partidos')}
+                onStartMatch={handleStartMatch}
+              />
+            )}
+
+            {activeTab === 'eventos' && (
+              <EventosPartidoView
+                initialPartidoId={selectedPartidoForEventos}
+                onBack={() => setActiveTab('alineacion')}
+              />
+            )}
+
+            {activeTab === 'asistencias' && (
+              <AsistenciasView />
+            )}
+
+            {activeTab === 'estadisticas' && (
+              <EstadisticasRankingView />
+            )}
+
+            {activeTab === 'admin' && (
+              <AdminPanel />
+            )}
+          </Suspense>
+          </ErrorBoundary>
+        </div>
       </main>
 
       {/* Footer Expandido en PC */}
@@ -115,10 +210,10 @@ const MainContent: React.FC = () => {
             </div>
             <div>
               <p className="font-athletic font-bold uppercase tracking-wider text-white text-sm">
-                {clubConfig?.nombre || 'CLUB FÚTBOL PRO'} • {clubConfig?.temporada || '2025/2026'}
+                {clubConfig?.nombre || 'CLUB FÃšTBOL PRO'} â€¢ {clubConfig?.temporada || '2025/2026'}
               </p>
               <p className="text-xs text-gray-400">
-                {clubConfig?.lema || 'Software integral para la gestión y seguimiento deportivo de clubes.'}
+                {clubConfig?.lema || 'Software integral para la gestiÃ³n y seguimiento deportivo de clubes.'}
               </p>
             </div>
           </div>
@@ -129,7 +224,7 @@ const MainContent: React.FC = () => {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-300 transition-colors border border-gray-800"
             >
               <Radio className={`w-3.5 h-3.5 ${isOnlineConfigured ? 'text-emerald-400' : 'text-orange-400'}`} />
-              <span>{isOnlineConfigured ? 'Google Sheets Conectado' : 'Configurar Google Sheets'}</span>
+              <span>{isOnlineConfigured ? 'Supabase Conectado' : 'Configurar Supabase'}</span>
             </button>
 
             <button
@@ -146,30 +241,31 @@ const MainContent: React.FC = () => {
 
       {/* Panel Lateral Ocultable */}
       <SidePanel
-        isOpen={isSidePanelOpen}
-        onClose={() => setIsSidePanelOpen(false)}
+        isOpen={isSidePanelOpen || vistaPC}
+        onClose={() => {
+          setIsSidePanelOpen(false);
+          if (vistaPC) setVistaPC(false);
+        }}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenAuth={() => setIsAuthModalOpen(true)}
         onOpenGoogleConfig={() => setIsConfigModalOpen(true)}
+        vistaPC={vistaPC}
+        onToggleVistaPC={toggleVistaPC}
       />
 
-      {/* Barra de Navegación Inferior para Móvil */}
-      <MobileTabBar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onOpenMore={() => setIsSidePanelOpen(true)}
-      />
+      {/* Barra de NavegaciÃ³n Inferior para MÃ³vil (oculta en Vista PC) */}
+      {!vistaPC && (
+        <MobileTabBar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onOpenMore={() => setIsSidePanelOpen(true)}
+        />
+      )}
 
-      {/* Indicador de Conexión Offline PWA */}
+      {/* Indicador de ConexiÃ³n Offline PWA */}
       <OfflineIndicator />
 
       {/* Modales Globales */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-      />
-
       <GoogleScriptModal
         isOpen={isConfigModalOpen}
         onClose={() => setIsConfigModalOpen(false)}
@@ -177,9 +273,10 @@ const MainContent: React.FC = () => {
 
       {/* Notificaciones Toast */}
       <ToastContainer />
-    </div>
-  );
-};
+      </div>
+      </div>
+    );
+  };
 
 export default function App() {
   return (

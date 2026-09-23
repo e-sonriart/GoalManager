@@ -16,8 +16,10 @@ import {
   Radio,
   RefreshCw,
   User,
-  ChevronRight,
-  Database
+  Database,
+  Dumbbell,
+  Monitor,
+  LogOut
 } from 'lucide-react';
 
 interface SidePanelProps {
@@ -25,8 +27,9 @@ interface SidePanelProps {
   onClose: () => void;
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
-  onOpenAuth: () => void;
   onOpenGoogleConfig: () => void;
+  vistaPC: boolean;
+  onToggleVistaPC: () => void;
 }
 
 export const SidePanel: React.FC<SidePanelProps> = ({
@@ -34,10 +37,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   onClose,
   activeTab,
   setActiveTab,
-  onOpenAuth,
-  onOpenGoogleConfig
+  onOpenGoogleConfig,
+  vistaPC,
+  onToggleVistaPC
 }) => {
-  const { currentUser, isOnlineConfigured, refreshAll, loading, clubConfig } = useClub();
+  const { currentUser, isOnlineConfigured, refreshAll, loading, clubConfig, allowedTabs, logout } = useClub();
 
   if (!isOpen) return null;
 
@@ -46,7 +50,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     onClose();
   };
 
-  const navItems: {
+  const allNavItems: {
     id: ActiveTab;
     label: string;
     desc: string;
@@ -65,6 +69,12 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       desc: 'Calendario y marcadores oficiales',
       icon: Calendar,
       badge: 'Protagonista'
+    },
+    {
+      id: 'entrenamientos',
+      label: 'Entrenamientos',
+      desc: 'Sesiones de entrenamiento por equipo',
+      icon: Dumbbell
     },
     {
       id: 'equipos',
@@ -95,22 +105,27 @@ export const SidePanel: React.FC<SidePanelProps> = ({
       label: 'Administración',
       desc: 'Usuarios, roles y sincronización',
       icon: Settings,
-      badge: currentUser?.rol === 'admin' ? 'Admin' : null
+      badge: currentUser?.rol === 'admin' || currentUser?.rol === 'directiva' ? 'Gestión' : null
     }
   ];
+  const navItems = allNavItems.filter(item => allowedTabs.includes(item.id));
 
   return (
-    <div className="fixed inset-0 z-50 flex overflow-hidden">
+    <div className={`fixed z-50 flex overflow-hidden ${vistaPC ? 'inset-y-0 left-0' : 'inset-0'}`}>
       {/* Backdrop con desenfoque suave */}
-      <div
-        className="fixed inset-0 bg-black/65 backdrop-blur-xs transition-opacity duration-200"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+      {vistaPC ? null : (
+        <div
+          className="fixed inset-0 bg-black/65 backdrop-blur-xs transition-opacity duration-200"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
 
       {/* Panel Lateral Desplegable */}
       <aside
-        className="relative z-10 w-80 max-w-[85vw] h-full bg-gray-950 text-white flex flex-col shadow-2xl border-r border-gray-800 transition-transform duration-300 ease-out animate-in slide-in-from-left"
+        className={`relative z-10 w-80 max-w-[85vw] h-full bg-gray-950 text-white flex flex-col shadow-2xl border-r border-gray-800 transition-transform duration-300 ease-out animate-in slide-in-from-left ${
+          vistaPC ? 'lg:translate-x-0 lg:static lg:shadow-none' : ''
+        }`}
         aria-label="Panel de navegación lateral"
       >
         {/* Cabecera del Panel */}
@@ -144,14 +159,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         </div>
 
         {/* Perfil del Usuario Activo */}
-        <div className="p-3 border-b border-gray-800/80 bg-gray-900/50 shrink-0">
-          <button
-            onClick={() => {
-              onOpenAuth();
-              onClose();
-            }}
-            className="w-full p-2.5 rounded-xl bg-gray-900 hover:bg-gray-850 border border-gray-800 flex items-center justify-between gap-3 transition-colors text-left"
-          >
+        <div className="p-3 border-b border-gray-800/80 bg-gray-900/50 shrink-0 space-y-2">
+          <div className="p-2.5 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <div
                 className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-xs shrink-0 ${
@@ -159,7 +168,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                     ? 'bg-red-600 ring-2 ring-red-500/30'
                     : currentUser?.rol === 'entrenador'
                     ? 'bg-blue-600 ring-2 ring-blue-500/30'
-                    : currentUser?.rol === 'direccion' || currentUser?.rol === 'directiva'
+                    : currentUser?.rol === 'directiva'
                     ? 'bg-purple-600 ring-2 ring-purple-500/30'
                     : 'bg-orange-500 ring-2 ring-orange-500/30'
                 }`}
@@ -168,14 +177,24 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-gray-100 truncate">
-                  {currentUser?.nombre || 'Acceso Club'}
+                  {currentUser?.nombre || 'Sin sesión'}
                 </p>
                 <p className="text-[10px] text-gray-400 truncate capitalize">
-                  {currentUser?.rol ? `Rol: ${currentUser.rol}` : 'Toca para iniciar sesión'}
+                  {currentUser?.rol ? `Rol: ${currentUser.rol}` : ''}
                 </p>
               </div>
             </div>
-            <ChevronRight className="w-4 h-4 text-gray-500 shrink-0" />
+          </div>
+
+          <button
+            onClick={() => {
+              onClose();
+              logout();
+            }}
+            className="w-full p-2.5 rounded-xl bg-red-950/40 hover:bg-red-900/50 border border-red-900/60 text-red-300 hover:text-red-200 flex items-center justify-center gap-2 transition-colors text-xs font-bold"
+          >
+            <LogOut className="w-4 h-4" />
+            Cerrar Sesión
           </button>
         </div>
 
@@ -232,6 +251,32 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               </button>
             );
           })}
+
+          {/* Toggle Vista PC al final de la lista de navegación */}
+          <button
+            onClick={onToggleVistaPC}
+            className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-left transition-all group ${
+              vistaPC
+                ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25 font-bold'
+                : 'text-gray-300 hover:text-white hover:bg-gray-900 font-semibold'
+            }`}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                  vistaPC ? 'bg-white/20 text-white' : 'bg-gray-900 text-gray-400 group-hover:text-orange-400'
+                }`}
+              >
+                <Monitor className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs truncate leading-snug">{vistaPC ? 'Vista PC' : 'Vista Móvil'}</p>
+                <p className={`text-[10px] truncate leading-tight ${vistaPC ? 'text-white/80' : 'text-gray-400'}`}>
+                  {vistaPC ? 'Panel lateral fijo y barra inferior oculta' : 'Forzar layout de escritorio'}
+                </p>
+              </div>
+            </div>
+          </button>
         </div>
 
         {/* Acciones de Sincronización y Sheets en la Base del Panel */}
@@ -258,7 +303,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               }`}
             >
               <Radio className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">{isOnlineConfigured ? 'Sheets Online' : 'Modo Local'}</span>
+              <span className="truncate">{isOnlineConfigured ? 'Supabase Online' : 'Modo Local'}</span>
             </button>
           </div>
 

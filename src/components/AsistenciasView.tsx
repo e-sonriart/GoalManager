@@ -23,8 +23,11 @@ export const AsistenciasView: React.FC = () => {
     batchMarkAsistencia,
     exportSheet,
     currentUser,
-    getTeamEscudo
+    getTeamEscudo,
+    can
   } = useClub();
+
+  const canManage = can('manage:asistencias');
 
   const [selectedFecha, setSelectedFecha] = useState<string>(
     new Date().toISOString().split('T')[0]
@@ -55,6 +58,22 @@ export const AsistenciasView: React.FC = () => {
       });
     return map;
   }, [asistencias, selectedFecha]);
+
+  // Historial agregado por jugador (calculado una sola vez, no por cada render de fila)
+  const historialMap = useMemo(() => {
+    const agregados = new Map<string, { total: number; presentes: number }>();
+    asistencias.forEach(a => {
+      const acc = agregados.get(a.jugadorId) || { total: 0, presentes: 0 };
+      acc.total += 1;
+      if (a.estado === 'asiste') acc.presentes += 1;
+      agregados.set(a.jugadorId, acc);
+    });
+    const ratios = new Map<string, number>();
+    agregados.forEach((acc, id) => {
+      ratios.set(id, acc.total > 0 ? Math.round((acc.presentes / acc.total) * 100) : 100);
+    });
+    return ratios;
+  }, [asistencias]);
 
   // Contadores del día
   const totalAsisten = filteredJugadores.filter(
@@ -172,7 +191,7 @@ export const AsistenciasView: React.FC = () => {
 
         {/* Quick Batch Actions & Metrics Banner */}
         <div className="pt-3 border-t border-gray-150 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-4 text-xs">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             <span className="flex items-center gap-1.5 font-bold text-emerald-700">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" /> {totalAsisten} Asisten
             </span>
@@ -185,20 +204,24 @@ export const AsistenciasView: React.FC = () => {
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleMarcarTodos('asiste')}
-              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold transition-colors"
-            >
-              Marcar Todos Asisten
-            </button>
-            <button
-              onClick={() => handleMarcarTodos('no asiste')}
-              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold transition-colors"
-            >
-              Marcar Todos No Asisten
-            </button>
-          </div>
+          {canManage ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => handleMarcarTodos('asiste')}
+                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold transition-colors"
+              >
+                Marcar Todos Asisten
+              </button>
+              <button
+                onClick={() => handleMarcarTodos('no asiste')}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold transition-colors"
+              >
+                Marcar Todos No Asisten
+              </button>
+            </div>
+          ) : (
+            <span className="text-xs font-semibold text-gray-400">Modo solo lectura</span>
+          )}
         </div>
       </div>
 
@@ -220,33 +243,27 @@ export const AsistenciasView: React.FC = () => {
           ) : (
             filteredJugadores.map(jugador => {
               const estado = asistenciasMap.get(jugador.id);
-
-              // Calcular historial del jugador
-              const jugAsistencias = asistencias.filter(a => a.jugadorId === jugador.id);
-              const jugPresente = jugAsistencias.filter(a => a.estado === 'asiste').length;
-              const ratioHistorial = jugAsistencias.length > 0
-                ? Math.round((jugPresente / jugAsistencias.length) * 100)
-                : 100;
+              const ratioHistorial = historialMap.get(jugador.id) ?? 100;
 
               return (
                 <div
                   key={jugador.id}
                   className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-orange-50/20 transition-colors"
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="w-8 h-8 rounded-full bg-gray-900 text-white font-bold font-athletic text-xs flex items-center justify-center">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="w-8 h-8 shrink-0 rounded-full bg-gray-900 text-white font-bold font-athletic text-xs flex items-center justify-center">
                       #{jugador.dorsal || '-'}
                     </span>
-                    <div>
-                      <h4 className="font-bold text-gray-900 text-sm">{jugador.nombre}</h4>
-                      <div className="text-xs text-gray-400 flex items-center gap-1.5">
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-gray-900 text-sm truncate">{jugador.nombre}</h4>
+                      <div className="text-xs text-gray-400 flex items-center gap-1.5 min-w-0">
                         <TeamShield
                           escudoUrl={getTeamEscudo(jugador.equipo)}
                           teamName={jugador.equipo}
                           size="xs"
-                          className="w-3.5 h-3.5"
+                          className="w-3.5 h-3.5 shrink-0"
                         />
-                        <span>{jugador.posicion} • {jugador.equipo}</span>
+                        <span className="truncate">{jugador.posicion} • {jugador.equipo}</span>
                       </div>
                     </div>
                   </div>
@@ -260,7 +277,8 @@ export const AsistenciasView: React.FC = () => {
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => toggleAsistencia(jugador.id, selectedFecha, 'asiste')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                        disabled={!canManage}
+                        className={`px-3 py-2.5 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed ${
                           estado === 'asiste'
                             ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
                             : 'bg-gray-100 text-gray-600 hover:bg-emerald-50 hover:text-emerald-700'
@@ -272,7 +290,8 @@ export const AsistenciasView: React.FC = () => {
 
                       <button
                         onClick={() => toggleAsistencia(jugador.id, selectedFecha, 'no asiste')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                        disabled={!canManage}
+                        className={`px-3 py-2.5 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed ${
                           estado === 'no asiste'
                             ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
                             : 'bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-700'

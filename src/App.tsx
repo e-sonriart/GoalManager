@@ -10,6 +10,7 @@ import { MobileTabBar } from './components/MobileTabBar';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { TeamShield } from './components/TeamShield';
+import { useIsDesktop } from './hooks/useMediaQuery';
 import { Loader2, Radio, RefreshCw, TriangleAlert } from 'lucide-react';
 
 // Carga diferida de vistas (code splitting): reduce el JS inicial y acelera la primera carga
@@ -39,7 +40,14 @@ const MainContent: React.FC = () => {
   const [selectedPartidoForAlineacion, setSelectedPartidoForAlineacion] = useState<string | undefined>(undefined);
   const [selectedPartidoForEventos, setSelectedPartidoForEventos] = useState<string | undefined>(undefined);
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
-  const [vistaPC, setVistaPC] = useState<boolean>(() => localStorage.getItem('cf_vista_pc') === 'true' || window.innerWidth >= 1024);
+  // Detección auto móvil/PC: >=1024px = Vista PC; se reajusta al redimensionar
+  const isDesktop = useIsDesktop();
+  const [vistaPC, setVistaPC] = useState<boolean>(isDesktop);
+
+  useEffect(() => {
+    setVistaPC(isDesktop);
+  }, [isDesktop]);
+
   const toggleVistaPC = () => setVistaPC(prev => !prev);
 
   const mainScrollRef = useRef<HTMLElement>(null);
@@ -63,11 +71,6 @@ const MainContent: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'instant' });
     mainScrollRef.current?.scrollTo({ top: 0, behavior: 'instant' });
   }, [activeTab]);
-
-  // Persistir la preferencia de Vista PC
-  useEffect(() => {
-    localStorage.setItem('cf_vista_pc', String(vistaPC));
-  }, [vistaPC]);
 
   const handleNavigateToConvocatoria = (partidoId: string) => {
     setSelectedPartidoForConvocatoria(partidoId);

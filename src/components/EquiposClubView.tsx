@@ -47,6 +47,45 @@ function sortSquadByPos(list: Jugador[]): Jugador[] {
   });
 }
 
+/** Orden canónico de categorías (de menor a mayor edad) */
+const CAT_ORDER: string[] = [
+  'Prebenjamín', 'Prebenjamin',
+  'Benjamín', 'Benjamin',
+  'Alevín', 'Alevin',
+  'Infantil',
+  'Cadete',
+  'Juvenil',
+  'Senior',
+  'Veteranos'
+];
+
+function catSortKey(nombre: string): number {
+  const n = (nombre || '').trim().toLowerCase();
+  const idx = CAT_ORDER.findIndex(c => c.toLowerCase() === n);
+  if (idx >= 0) return idx;
+  const idxPartial = CAT_ORDER.findIndex(c => n.includes(c.toLowerCase()));
+  if (idxPartial >= 0) return idxPartial;
+  return 999;
+}
+
+function sortCategorias(list: Categoria[]): Categoria[] {
+  return [...list].sort((a, b) => {
+    const ka = catSortKey(a.nombre);
+    const kb = catSortKey(b.nombre);
+    if (ka !== kb) return ka - kb;
+    return a.nombre.localeCompare(b.nombre, 'es');
+  });
+}
+
+function getCatTipo(c: Categoria): 'F8' | 'F11' {
+  if (c.tipo === 'F8' || c.tipo === 'F11') return c.tipo;
+  const n = (c.nombre || '').toLowerCase();
+  if (n.includes('f8') || n.includes('alev') || n.includes('benj') || n.includes('preb') || n.includes('chupet')) {
+    return 'F8';
+  }
+  return 'F11';
+}
+
 import {
   Shield,
   Layers,
@@ -63,7 +102,11 @@ import {
   Clock,
   Timer,
   Trophy,
-  BarChart3
+  BarChart3,
+  ChevronRight,
+  ChevronLeft,
+  Grid3x3,
+  ListTree
 } from 'lucide-react';
 
 export const EquiposClubView: React.FC = () => {
@@ -89,6 +132,10 @@ export const EquiposClubView: React.FC = () => {
   } = useClub();
 
   const [activeSubTab, setActiveSubTab] = useState<'equipos' | 'categorias' | 'entrenadores'>('equipos');
+
+  // Navegación Equipos: modalidad (F8/F11) → categoría → equipos
+  const [tipoFutbol, setTipoFutbol] = useState<'F8' | 'F11' | null>(null);
+  const [categoriaSel, setCategoriaSel] = useState<string | null>(null);
 
   // Modales generales
   const [modalType, setModalType] = useState<'equipo' | 'categoria' | 'entrenador' | null>(null);
@@ -140,6 +187,25 @@ export const EquiposClubView: React.FC = () => {
       : [],
     [jugadores, selectedEquipoForSquad]
   );
+
+  const categoriasFiltradas = useMemo(
+    () => sortCategorias(categorias.filter(c => getCatTipo(c) === tipoFutbol)),
+    [categorias, tipoFutbol]
+  );
+
+  const equiposFiltrados = useMemo(() => {
+    let list = equipos;
+    if (categoriaSel) {
+      list = list.filter(e => e.categoria === categoriaSel);
+    }
+    return [...list].sort((a, b) => {
+      if (currentUser?.equipo) {
+        if (a.nombre === currentUser.equipo) return -1;
+        if (b.nombre === currentUser.equipo) return 1;
+      }
+      return a.nombre.localeCompare(b.nombre, 'es');
+    });
+  }, [equipos, categoriaSel, currentUser?.equipo]);
 
   const openPlayerModal = (player?: Jugador) => {
     if (player) {
@@ -450,86 +516,294 @@ export const EquiposClubView: React.FC = () => {
         </button>
       </div>
 
-      {/* 1. TAB EQUIPOS */}
+      {/* 1. TAB EQUIPOS: F8/F11 → Categorías → Equipos */}
       {activeSubTab === 'equipos' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...equipos].sort((a, b) => {
-            if (currentUser?.equipo) {
-              if (a.nombre === currentUser.equipo) return -1;
-              if (b.nombre === currentUser.equipo) return 1;
-            }
-            return 0;
-          }).map(eq => {
-            const numJugadores = jugadores.filter(j => j.equipo === eq.nombre).length;
-            const shieldUrl = eq.escudo || clubConfig.escudo;
-            const isUserTeam = currentUser?.equipo === eq.nombre;
-            return (
-              <div
-                key={eq.id}
-                className={`bg-white p-4 sm:p-5 rounded-2xl border ${isUserTeam ? 'border-orange-500 shadow-md ring-1 ring-orange-500/20' : 'border-gray-150 shadow-sm hover:border-orange-200'} transition-all flex flex-col justify-between space-y-4 min-w-0 overflow-hidden`}
+        <div className="space-y-5">
+          {/* Breadcrumb / back */}
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => {
+                setTipoFutbol(null);
+                setCategoriaSel(null);
+              }}
+              className={`px-3 py-1.5 rounded-lg border transition-colors ${
+                !tipoFutbol
+                  ? 'bg-orange-500 text-white border-orange-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              Modalidad
+            </button>
+            {tipoFutbol && (
+              <>
+                <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                <button
+                  type="button"
+                  onClick={() => setCategoriaSel(null)}
+                  className={`px-3 py-1.5 rounded-lg border transition-colors ${
+                    tipoFutbol && !categoriaSel
+                      ? 'bg-orange-500 text-white border-orange-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  Categorías {tipoFutbol}
+                </button>
+              </>
+            )}
+            {categoriaSel && (
+              <>
+                <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+                <span className="px-3 py-1.5 rounded-lg bg-gray-900 text-white border border-gray-800">
+                  {categoriaSel}
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* Paso 1: elegir F8 o F11 */}
+          {!tipoFutbol && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setTipoFutbol('F8');
+                  setCategoriaSel(null);
+                }}
+                className="group bg-white p-6 rounded-3xl border-2 border-amber-200 hover:border-amber-500 hover:shadow-lg transition-all text-left space-y-3"
               >
-                <div className="space-y-3 min-w-0">
-                  <div className="flex items-start justify-between gap-2 min-w-0">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="w-12 h-12 rounded-2xl bg-white border border-gray-200 shadow-xs p-1 flex items-center justify-center shrink-0 overflow-hidden">
-                        <TeamShield
-                          escudoUrl={shieldUrl}
-                          teamName={eq.nombre}
-                          size="lg"
-                          className="w-full h-full object-contain"
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-base font-bold text-gray-900 font-athletic truncate" title={eq.nombre}>
-                            {eq.nombre}
-                          </h3>
-                          {isUserTeam && (
-                            <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded-full shrink-0">
-                              Tu Acceso
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => openEquipoModal(eq)}
-                        title="Editar equipo y escudo"
-                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors"
-                      >
-                        <Edit2 className="w-4 h-4 shrink-0" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`¿Eliminar equipo ${eq.nombre}?`)) deleteEquipo(eq.id);
-                        }}
-                        title="Eliminar equipo"
-                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4 shrink-0" />
-                      </button>
-                    </div>
-                  </div>
+                <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-colors">
+                  <Grid3x3 className="w-7 h-7" />
                 </div>
+                <div>
+                  <div className="text-2xl font-black font-athletic text-amber-700">F8</div>
+                  <p className="text-sm font-bold text-gray-900">Fútbol 8</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {categorias.filter(c => getCatTipo(c) === 'F8').length} categorías · benjamines, alevines…
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 text-xs font-bold text-amber-600">
+                  Ver categorías <ChevronRight className="w-4 h-4" />
+                </div>
+              </button>
 
-                <div className="pt-3 border-t border-gray-100 space-y-2 text-xs text-gray-600 min-w-0">
-                  <div className="flex items-center justify-between gap-2 min-w-0">
-                    <span className="text-gray-400 shrink-0">Entrenador(es):</span>
-                    <span className="font-semibold text-gray-800 truncate text-right">{eq.entrenadores ? eq.entrenadores.join(', ') : eq.entrenador}</span>
-                  </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setTipoFutbol('F11');
+                  setCategoriaSel(null);
+                }}
+                className="group bg-white p-6 rounded-3xl border-2 border-blue-200 hover:border-blue-500 hover:shadow-lg transition-all text-left space-y-3"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
+                  <ListTree className="w-7 h-7" />
+                </div>
+                <div>
+                  <div className="text-2xl font-black font-athletic text-blue-700">F11</div>
+                  <p className="text-sm font-bold text-gray-900">Fútbol 11</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {categorias.filter(c => getCatTipo(c) === 'F11').length} categorías · infantil, cadete, juvenil…
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 text-xs font-bold text-blue-600">
+                  Ver categorías <ChevronRight className="w-4 h-4" />
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* Paso 2: categorías ordenadas de la modalidad */}
+          {tipoFutbol && !categoriaSel && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-black font-athletic text-gray-900 flex items-center gap-2">
+                    <span className={tipoFutbol === 'F8' ? 'text-amber-600' : 'text-blue-600'}>
+                      {tipoFutbol}
+                    </span>
+                    · Categorías
+                  </h2>
+                  <p className="text-xs text-gray-500">De menor a mayor edad. Pulsa una categoría para ver sus equipos.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTipoFutbol(null)}
+                  className="px-3 py-1.5 text-xs font-bold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Volver
+                </button>
+              </div>
+
+              {categoriasFiltradas.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-150 p-8 text-center text-sm text-gray-400">
+                  No hay categorías {tipoFutbol}.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {categoriasFiltradas.map(cat => {
+                    const count = equipos.filter(e => e.categoria === cat.nombre).length;
+                    const mins = Number(cat.tiempojuego || cat.tiempoJuego) || (cat.tipo === 'F8' ? 25 : 45);
+                    const esF8 = getCatTipo(cat) === 'F8';
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setCategoriaSel(cat.nombre)}
+                        className={`group text-left bg-white p-4 rounded-2xl border-2 transition-all hover:shadow-md ${
+                          esF8
+                            ? 'border-amber-100 hover:border-amber-400'
+                            : 'border-blue-100 hover:border-blue-400'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h3 className="font-bold text-gray-900 font-athletic truncate" title={cat.nombre}>
+                              {cat.nombre}
+                            </h3>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                                  esF8
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                    : 'bg-blue-50 text-blue-700 border-blue-200'
+                                }`}
+                              >
+                                {tipoFutbol}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md bg-gray-50 text-gray-600 border border-gray-200 text-[10px] font-bold flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {mins}′
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-100 text-[10px] font-bold">
+                                {count} {count === 1 ? 'equipo' : 'equipos'}
+                              </span>
+                            </div>
+                          </div>
+                          <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-orange-500 transition-colors shrink-0" />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Paso 3: equipos de la categoría */}
+          {tipoFutbol && categoriaSel && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-black font-athletic text-gray-900">
+                    {categoriaSel}
+                    <span className={`ml-2 text-sm font-bold ${tipoFutbol === 'F8' ? 'text-amber-600' : 'text-blue-600'}`}>
+                      {tipoFutbol}
+                    </span>
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    {equiposFiltrados.length} {equiposFiltrados.length === 1 ? 'equipo' : 'equipos'} en esta categoría
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setSelectedEquipoForSquad(eq)}
-                    className="w-full mt-2 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold rounded-xl border border-orange-200 transition-colors flex items-center justify-center gap-1.5 text-xs"
+                    type="button"
+                    onClick={() => setCategoriaSel(null)}
+                    className="px-3 py-1.5 text-xs font-bold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1"
                   >
-                    <Users className="w-4 h-4 text-orange-600" />
-                    Ver Plantilla ({numJugadores})
+                    <ChevronLeft className="w-3.5 h-3.5" /> Categorías
+                  </button>
+                  <button
+                    onClick={() => openEquipoModal()}
+                    className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-bold flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Equipo
                   </button>
                 </div>
               </div>
-            );
-          })}
+
+              {equiposFiltrados.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-150 p-8 text-center text-sm text-gray-400">
+                  No hay equipos en {categoriaSel}.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {equiposFiltrados.map(eq => {
+                    const numJugadores = jugadores.filter(j => j.equipo === eq.nombre).length;
+                    const shieldUrl = eq.escudo || clubConfig.escudo;
+                    const isUserTeam = currentUser?.equipo === eq.nombre;
+                    return (
+                      <div
+                        key={eq.id}
+                        className={`bg-white p-4 sm:p-5 rounded-2xl border ${isUserTeam ? 'border-orange-500 shadow-md ring-1 ring-orange-500/20' : 'border-gray-150 shadow-sm hover:border-orange-200'} transition-all flex flex-col justify-between space-y-4 min-w-0 overflow-hidden`}
+                      >
+                        <div className="space-y-3 min-w-0">
+                          <div className="flex items-start justify-between gap-2 min-w-0">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className="w-12 h-12 rounded-2xl bg-white border border-gray-200 shadow-xs p-1 flex items-center justify-center shrink-0 overflow-hidden">
+                                <TeamShield
+                                  escudoUrl={shieldUrl}
+                                  teamName={eq.nombre}
+                                  size="lg"
+                                  className="w-full h-full object-contain"
+                                />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <h3 className="text-base font-bold text-gray-900 font-athletic truncate" title={eq.nombre}>
+                                    {eq.nombre}
+                                  </h3>
+                                  {isUserTeam && (
+                                    <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded-full shrink-0">
+                                      Tu Acceso
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => openEquipoModal(eq)}
+                                title="Editar equipo y escudo"
+                                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors"
+                              >
+                                <Edit2 className="w-4 h-4 shrink-0" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`¿Eliminar equipo ${eq.nombre}?`)) deleteEquipo(eq.id);
+                                }}
+                                title="Eliminar equipo"
+                                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4 shrink-0" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-3 border-t border-gray-100 space-y-2 text-xs text-gray-600 min-w-0">
+                          <div className="flex items-center justify-between gap-2 min-w-0">
+                            <span className="text-gray-400 shrink-0">Entrenador(es):</span>
+                            <span className="font-semibold text-gray-800 truncate text-right">
+                              {eq.entrenadores ? eq.entrenadores.join(', ') : eq.entrenador}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => setSelectedEquipoForSquad(eq)}
+                            className="w-full mt-2 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold rounded-xl border border-orange-200 transition-colors flex items-center justify-center gap-1.5 text-xs"
+                          >
+                            <Users className="w-4 h-4 text-orange-600" />
+                            Ver Plantilla ({numJugadores})
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

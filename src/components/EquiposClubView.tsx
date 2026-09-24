@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useClub } from '../context/ClubContext';
-import { Equipo, Categoria, Entrenador, TipoFutbol, AnoEquipo, Jugador, PosicionJugador, Estadistica, HistorialEstadisticaTemporada } from '../types';
+import { Equipo, Categoria, Entrenador, AnoEquipo, Jugador, PosicionJugador, Estadistica, HistorialEstadisticaTemporada } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import { SHIELD_PRESETS } from '../utils/shieldPresets';
@@ -88,7 +88,6 @@ function getCatTipo(c: Categoria): 'F8' | 'F11' {
 
 import {
   Shield,
-  Layers,
   UserCheck,
   Plus,
   Edit2,
@@ -105,8 +104,7 @@ import {
   BarChart3,
   ChevronRight,
   ChevronLeft,
-  Grid3x3,
-  ListTree
+  Play
 } from 'lucide-react';
 
 export const EquiposClubView: React.FC = () => {
@@ -120,8 +118,6 @@ export const EquiposClubView: React.FC = () => {
     clubConfig,
     saveEquipo,
     deleteEquipo,
-    saveCategoria,
-    deleteCategoria,
     saveEntrenador,
     deleteEntrenador,
     saveJugador,
@@ -131,14 +127,14 @@ export const EquiposClubView: React.FC = () => {
     currentUser
   } = useClub();
 
-  const [activeSubTab, setActiveSubTab] = useState<'equipos' | 'categorias' | 'entrenadores'>('equipos');
+  const [activeSubTab, setActiveSubTab] = useState<'equipos' | 'entrenadores'>('equipos');
 
   // Navegación Equipos: modalidad (F8/F11) → categoría → equipos
   const [tipoFutbol, setTipoFutbol] = useState<'F8' | 'F11' | null>(null);
   const [categoriaSel, setCategoriaSel] = useState<string | null>(null);
 
   // Modales generales
-  const [modalType, setModalType] = useState<'equipo' | 'categoria' | 'entrenador' | null>(null);
+  const [modalType, setModalType] = useState<'equipo' | 'entrenador' | null>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
 
   // Estados para plantillas de equipo
@@ -305,11 +301,6 @@ export const EquiposClubView: React.FC = () => {
   const [eqEntrenadores, setEqEntrenadores] = useState<string[]>([]);
   const [eqEscudo, setEqEscudo] = useState('');
 
-  // Estados formulario Categoría
-  const [catNombre, setCatNombre] = useState('');
-  const [catTipo, setCatTipo] = useState<TipoFutbol>('F11');
-  const [catTiempojuego, setCatTiempojuego] = useState<number>(45);
-
   // Estados formulario Entrenador
   const [entNombre, setEntNombre] = useState('');
   const [entTelefono, setEntTelefono] = useState('');
@@ -351,31 +342,6 @@ export const EquiposClubView: React.FC = () => {
     setModalType('equipo');
   };
 
-  // Abrir modal Categoría
-  const openCategoriaModal = (cat?: Categoria) => {
-    if (cat) {
-      setEditingItem(cat);
-      setCatNombre(cat.nombre);
-      const defaultTipo: TipoFutbol = cat.tipo || (
-        cat.nombre.toLowerCase().includes('f8') ||
-        cat.nombre.toLowerCase().includes('alev') ||
-        cat.nombre.toLowerCase().includes('benj') ||
-        cat.nombre.toLowerCase().includes('preb')
-          ? 'F8'
-          : 'F11'
-      );
-      setCatTipo(defaultTipo);
-      const defaultMins = defaultTipo === 'F8' ? 25 : 45;
-      setCatTiempojuego(Number(cat.tiempojuego || cat.tiempoJuego) || defaultMins);
-    } else {
-      setEditingItem(null);
-      setCatNombre('');
-      setCatTipo('F11');
-      setCatTiempojuego(45);
-    }
-    setModalType('categoria');
-  };
-
   // Abrir modal Entrenador
   const openEntrenadorModal = (ent?: Entrenador) => {
     if (ent) {
@@ -404,18 +370,6 @@ export const EquiposClubView: React.FC = () => {
       entrenadores: cleanEntrenadores,
       entrenador: cleanEntrenadores.join(', '),
       escudo: eqEscudo.trim() || undefined
-    });
-    setModalType(null);
-  };
-
-  const handleSaveCategoria = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!catNombre.trim()) return;
-    await saveCategoria({
-      id: editingItem?.id,
-      nombre: catNombre.trim(),
-      tipo: catTipo,
-      tiempojuego: Number(catTiempojuego) || (catTipo === 'F8' ? 25 : 45)
     });
     setModalType(null);
   };
@@ -460,14 +414,6 @@ export const EquiposClubView: React.FC = () => {
               <Plus className="w-4 h-4" /> Nuevo Equipo
             </button>
           )}
-          {activeSubTab === 'categorias' && (
-            <button
-              onClick={() => openCategoriaModal()}
-              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-orange-500/20 flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" /> Nueva Categoría
-            </button>
-          )}
           {activeSubTab === 'entrenadores' && (
             <button
               onClick={() => openEntrenadorModal()}
@@ -491,17 +437,6 @@ export const EquiposClubView: React.FC = () => {
         >
           <Shield className="w-4 h-4" />
           Equipos ({equipos.length})
-        </button>
-        <button
-          onClick={() => setActiveSubTab('categorias')}
-          className={`px-4 py-2.5 font-bold text-xs uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 ${
-            activeSubTab === 'categorias'
-              ? 'border-orange-500 text-orange-600'
-              : 'border-transparent text-gray-500 hover:text-gray-900'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          Categorías ({categorias.length})
         </button>
         <button
           onClick={() => setActiveSubTab('entrenadores')}
@@ -563,28 +498,17 @@ export const EquiposClubView: React.FC = () => {
 
           {/* Paso 1: elegir F8 o F11 */}
           {!tipoFutbol && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={() => {
                   setTipoFutbol('F8');
                   setCategoriaSel(null);
                 }}
-                className="group bg-white p-6 rounded-3xl border-2 border-amber-200 hover:border-amber-500 hover:shadow-lg transition-all text-left space-y-3"
+                className="group flex items-center gap-3 bg-white px-5 py-3.5 rounded-2xl border-2 border-amber-200 hover:border-amber-500 hover:shadow-md transition-all"
               >
-                <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-colors">
-                  <Grid3x3 className="w-7 h-7" />
-                </div>
-                <div>
-                  <div className="text-2xl font-black font-athletic text-amber-700">F8</div>
-                  <p className="text-sm font-bold text-gray-900">Fútbol 8</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {categorias.filter(c => getCatTipo(c) === 'F8').length} categorías · benjamines, alevines…
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 text-xs font-bold text-amber-600">
-                  Ver categorías <ChevronRight className="w-4 h-4" />
-                </div>
+                <span className="text-4xl font-black font-athletic text-amber-700 leading-none">F8</span>
+                <Play className="w-6 h-6 text-amber-500 group-hover:text-amber-600 fill-current shrink-0" />
               </button>
 
               <button
@@ -593,21 +517,10 @@ export const EquiposClubView: React.FC = () => {
                   setTipoFutbol('F11');
                   setCategoriaSel(null);
                 }}
-                className="group bg-white p-6 rounded-3xl border-2 border-blue-200 hover:border-blue-500 hover:shadow-lg transition-all text-left space-y-3"
+                className="group flex items-center gap-3 bg-white px-5 py-3.5 rounded-2xl border-2 border-blue-200 hover:border-blue-500 hover:shadow-md transition-all"
               >
-                <div className="w-14 h-14 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors">
-                  <ListTree className="w-7 h-7" />
-                </div>
-                <div>
-                  <div className="text-2xl font-black font-athletic text-blue-700">F11</div>
-                  <p className="text-sm font-bold text-gray-900">Fútbol 11</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {categorias.filter(c => getCatTipo(c) === 'F11').length} categorías · infantil, cadete, juvenil…
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 text-xs font-bold text-blue-600">
-                  Ver categorías <ChevronRight className="w-4 h-4" />
-                </div>
+                <span className="text-4xl font-black font-athletic text-blue-700 leading-none">F11</span>
+                <Play className="w-6 h-6 text-blue-500 group-hover:text-blue-600 fill-current shrink-0" />
               </button>
             </div>
           )}
@@ -616,15 +529,12 @@ export const EquiposClubView: React.FC = () => {
           {tipoFutbol && !categoriaSel && (
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-lg font-black font-athletic text-gray-900 flex items-center gap-2">
-                    <span className={tipoFutbol === 'F8' ? 'text-amber-600' : 'text-blue-600'}>
-                      {tipoFutbol}
-                    </span>
-                    · Categorías
-                  </h2>
-                  <p className="text-xs text-gray-500">De menor a mayor edad. Pulsa una categoría para ver sus equipos.</p>
-                </div>
+                <h2 className="text-lg font-black font-athletic text-gray-900 flex items-center gap-2">
+                  <span className={tipoFutbol === 'F8' ? 'text-amber-600' : 'text-blue-600'}>
+                    {tipoFutbol}
+                  </span>
+                  · Categorías
+                </h2>
                 <button
                   type="button"
                   onClick={() => setTipoFutbol(null)}
@@ -807,81 +717,7 @@ export const EquiposClubView: React.FC = () => {
         </div>
       )}
 
-      {/* 2. TAB CATEGORÍAS */}
-      {activeSubTab === 'categorias' && (
-        <div className="bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
-              <tr>
-                <th className="py-3 px-4">Categoría</th>
-                <th className="py-3 px-4">Modalidad</th>
-                <th className="py-3 px-4">Tiempo de Juego</th>
-                <th className="py-3 px-4">Equipos Vinculados</th>
-                <th className="py-3 px-4 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {categorias.map(cat => {
-                const countEquipos = equipos.filter(e => e.categoria === cat.nombre).length;
-                const minutosParte = Number(cat.tiempojuego || cat.tiempoJuego) || (cat.tipo === 'F8' ? 25 : 45);
-                const esF8 = cat.tipo === 'F8';
-
-                return (
-                  <tr key={cat.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="py-3.5 px-4 font-bold text-gray-900 text-sm">{cat.nombre}</td>
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold border ${
-                          esF8
-                            ? 'bg-amber-50 text-amber-700 border-amber-200'
-                            : 'bg-blue-50 text-blue-700 border-blue-200'
-                        }`}
-                      >
-                        ⚽ {cat.tipo || 'F11'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-md font-bold text-[11px]">
-                          <Clock className="w-3 h-3 text-amber-600" />
-                          {minutosParte}&apos;
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4 text-gray-600">
-                      <span className="px-2.5 py-0.5 bg-orange-50 text-orange-700 font-bold rounded-md border border-orange-100 text-[11px]">
-                        {countEquipos} {countEquipos === 1 ? 'equipo' : 'equipos'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => openCategoriaModal(cat)}
-                          title="Editar categoría"
-                          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4 shrink-0" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`¿Eliminar categoría ${cat.nombre}?`)) deleteCategoria(cat.id);
-                          }}
-                          title="Eliminar categoría"
-                          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4 shrink-0" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* 3. TAB ENTRENADORES */}
+      {/* 2. TAB ENTRENADORES */}
       {activeSubTab === 'entrenadores' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {entrenadores.map(ent => {
@@ -1158,139 +994,6 @@ export const EquiposClubView: React.FC = () => {
               className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-colors shadow-md shadow-orange-500/20"
             >
               Guardar Equipo
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Modal Categoría */}
-      <Modal
-        isOpen={modalType === 'categoria'}
-        onClose={() => setModalType(null)}
-        title={editingItem ? 'Editar Categoría' : 'Nueva Categoría'}
-        subtitle="Configuración reglamentaria: modalidad federativa y tiempo de juego"
-        maxWidth="max-w-md"
-      >
-        <form onSubmit={handleSaveCategoria} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-              Nombre de la Categoría *
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="Ej: Cadete Regional, Alevín A..."
-              value={catNombre}
-              onChange={e => setCatNombre(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
-            />
-          </div>
-
-          {/* Modalidad F8 o F11 */}
-          <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-              Modalidad de Fútbol (Tipo) *
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setCatTipo('F8');
-                  if (catTiempojuego === 45 || !catTiempojuego) setCatTiempojuego(25);
-                }}
-                className={`p-3 rounded-xl border text-center transition-all ${
-                  catTipo === 'F8'
-                    ? 'bg-amber-50 border-amber-500 ring-2 ring-amber-400 text-amber-900 shadow-xs'
-                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <div className="font-athletic font-bold text-base text-amber-700">F8</div>
-                <span className="text-[11px] uppercase font-bold text-amber-800">Fútbol 8</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setCatTipo('F11');
-                  if (catTiempojuego === 25 || !catTiempojuego) setCatTiempojuego(45);
-                }}
-                className={`p-3 rounded-xl border text-center transition-all ${
-                  catTipo === 'F11'
-                    ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-400 text-blue-900 shadow-xs'
-                    : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <div className="font-athletic font-bold text-base text-blue-700">F11</div>
-                <span className="text-[11px] uppercase font-bold text-blue-800">Fútbol 11</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Tiempo de Juego (Minutos de cada parte) */}
-          <div className="bg-orange-50/50 p-3.5 rounded-2xl border border-orange-100 space-y-2">
-            <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-orange-600" />
-                Minutos de cada parte *
-              </span>
-            </label>
-
-            <div className="flex items-center gap-3">
-              <div className="w-28">
-                <input
-                  type="number"
-                  min="10"
-                  max="60"
-                  required
-                  value={catTiempojuego || ''}
-                  onChange={e => setCatTiempojuego(Math.max(1, parseInt(e.target.value) || 0))}
-                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-bold text-center text-gray-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                />
-              </div>
-              <span className="text-xs text-gray-600 font-medium">minutos</span>
-            </div>
-
-            {/* Presets rápidos según reglamentos federativos */}
-            <div className="pt-1.5 border-t border-orange-200/50">
-              <div className="text-[10px] font-semibold text-gray-500 mb-1">Duraciones habituales:</div>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { label: '25 min (Benjamín)', val: 25 },
-                  { label: '30 min (Alevín)', val: 30 },
-                  { label: '35 min (Infantil)', val: 35 },
-                  { label: '40 min (Cadete)', val: 40 },
-                  { label: '45 min (Juvenil/Senior)', val: 45 }
-                ].map(preset => (
-                  <button
-                    key={preset.val}
-                    type="button"
-                    onClick={() => setCatTiempojuego(preset.val)}
-                    className={`px-2 py-0.5 rounded-lg border text-[10px] font-semibold transition-all ${
-                      catTiempojuego === preset.val
-                        ? 'bg-orange-500 text-white border-orange-600 shadow-xs'
-                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4 border-t border-gray-150">
-            <button
-              type="button"
-              onClick={() => setModalType(null)}
-              className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-xs font-semibold hover:bg-gray-50"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-colors shadow-md shadow-orange-500/20"
-            >
-              Guardar Categoría
             </button>
           </div>
         </form>

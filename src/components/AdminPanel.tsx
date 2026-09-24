@@ -7,6 +7,7 @@ import { TeamShield } from './TeamShield';
 import { RolePermissionsMatrix } from './RolePermissionsMatrix';
 import { ROLE_ORDER, getRoleInfo, roleRequiresTeam, SCOPE_LABELS } from '../utils/roles';
 import { validateUserForm } from '../utils/validation';
+import { compareTeams } from '../utils/teamOrder';
 import {
   Settings,
   Users,
@@ -32,7 +33,8 @@ import {
   Search,
   Clock,
   Layers,
-  Filter
+  Filter,
+  ChevronDown
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -111,6 +113,8 @@ export const AdminPanel: React.FC = () => {
   const [selectedSheet, setSelectedSheet] = useState<string>('categorias');
   const [sheetSearch, setSheetSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');
+  // Equipos colapsados en la hoja jugadores (cabeceras plegables)
+  const [jugadoresEquiposAbiertos, setJugadoresEquiposAbiertos] = useState<Set<string>>(new Set());
 
   // Modal Categoría desde Administrador de Hojas
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
@@ -1062,6 +1066,7 @@ export const AdminPanel: React.FC = () => {
                   <tbody className="divide-y divide-gray-100">
                     {equipos
                       .filter(e => e.nombre.toLowerCase().includes(sheetSearch.toLowerCase()) || e.categoria.toLowerCase().includes(sheetSearch.toLowerCase()))
+                      .sort((a, b) => compareTeams(a.nombre, b.nombre, equipos))
                       .map(eq => {
                         const numJug = jugadores.filter(j => j.equipo === eq.nombre).length;
                         return (
@@ -1124,7 +1129,7 @@ export const AdminPanel: React.FC = () => {
               </div>
             )}
 
-            {/* TABLA: JUGADORES (SIN ID, AGRUPADOS POR EQUIPO) */}
+            {/* TABLA: JUGADORES (SIN ID, AGRUPADOS POR EQUIPO, ORDEN DEL CLUB, PLEGABLE) */}
             {selectedSheet === 'jugadores' && (() => {
               const search = sheetSearch.toLowerCase();
               const filtered = jugadores.filter(j =>
@@ -1136,7 +1141,15 @@ export const AdminPanel: React.FC = () => {
                 if (!byTeam.has(key)) byTeam.set(key, []);
                 byTeam.get(key)!.push(j);
               });
-              const teamNames = Array.from(byTeam.keys()).sort((a, b) => a.localeCompare(b, 'es'));
+              const teamNames = Array.from(byTeam.keys()).sort((a, b) => compareTeams(a, b, equipos));
+              const toggleTeam = (name: string) => {
+                setJugadoresEquiposAbiertos(prev => {
+                  const next = new Set(prev);
+                  if (next.has(name)) next.delete(name);
+                  else next.add(name);
+                  return next;
+                });
+              };
               return (
                 <div className="space-y-4">
                   {teamNames.length === 0 && (
@@ -1147,9 +1160,15 @@ export const AdminPanel: React.FC = () => {
                   {teamNames.map(teamName => {
                     const team = equipos.find(e => e.nombre === teamName);
                     const lista = byTeam.get(teamName)!;
+                    const abierto = jugadoresEquiposAbiertos.has(teamName);
                     return (
-                      <div key={teamName} className="overflow-x-auto scroll-x rounded-xl border border-gray-150 bg-white">
-                        <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 text-white border-b border-gray-800">
+                      <div key={teamName} className="rounded-xl border border-gray-150 bg-white overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => toggleTeam(teamName)}
+                          className="w-full flex items-center gap-3 px-4 py-3 bg-gray-900 text-white hover:bg-gray-800 transition-colors text-left"
+                          aria-expanded={abierto}
+                        >
                           <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/20 p-0.5 flex items-center justify-center overflow-hidden shrink-0">
                             <TeamShield escudoUrl={team?.escudo} teamName={teamName} size="xs" className="w-full h-full" />
                           </div>
@@ -1172,55 +1191,60 @@ export const AdminPanel: React.FC = () => {
                             </div>
                             <p className="text-[11px] text-gray-400 mt-0.5">{team?.categoria || ''}</p>
                           </div>
-                        </div>
-                        <table className="w-full text-left text-xs">
-                          <thead className="bg-gray-50 text-gray-600 font-athletic uppercase tracking-wider text-[11px]">
-                            <tr>
-                              <th className="py-2.5 px-4 text-center w-14">Dorsal</th>
-                              <th className="py-2.5 px-4">Nombre</th>
-                              <th className="py-2.5 px-4">Posición</th>
-                              <th className="py-2.5 px-4">Categoría</th>
-                              <th className="py-2.5 px-4">Fecha de Alta</th>
-                              <th className="py-2.5 px-4 text-right">Acciones</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {lista.map(jugador => (
-                              <tr key={jugador.id} className="hover:bg-orange-50/30 transition-colors">
-                                <td className="py-2.5 px-4 text-center font-athletic font-bold text-gray-900">
-                                  #{jugador.dorsal || '-'}
-                                </td>
-                                <td className="py-2.5 px-4 font-bold text-gray-900 text-sm">{jugador.nombre}</td>
-                                <td className="py-2.5 px-4">
-                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-[11px] font-medium">
-                                    {jugador.posicion}
-                                  </span>
-                                </td>
-                                <td className="py-2.5 px-4 text-gray-600">{jugador.categoria}</td>
-                                <td className="py-2.5 px-4 text-gray-400 font-mono text-[11px]">{jugador.fechaAlta}</td>
-                                <td className="py-2.5 px-4 text-right">
-                                  <div className="flex items-center justify-end gap-1">
-                                    <button
-                                      onClick={() => openSheetModal('jugador', jugador)}
-                                      className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
-                                      title="Editar jugador"
-                                    >
-                                      <Edit2 className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        if (confirm(`¿Eliminar jugador ${jugador.nombre}?`)) deleteJugador(jugador.id);
-                                      }}
-                                      className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                          <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${abierto ? 'rotate-180' : ''}`} />
+                        </button>
+                        {abierto && (
+                          <div className="overflow-x-auto scroll-x">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-gray-50 text-gray-600 font-athletic uppercase tracking-wider text-[11px]">
+                                <tr>
+                                  <th className="py-2.5 px-4 text-center w-14">Dorsal</th>
+                                  <th className="py-2.5 px-4">Nombre</th>
+                                  <th className="py-2.5 px-4">Posición</th>
+                                  <th className="py-2.5 px-4">Categoría</th>
+                                  <th className="py-2.5 px-4">Fecha de Alta</th>
+                                  <th className="py-2.5 px-4 text-right">Acciones</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {lista.map(jugador => (
+                                  <tr key={jugador.id} className="hover:bg-orange-50/30 transition-colors">
+                                    <td className="py-2.5 px-4 text-center font-athletic font-bold text-gray-900">
+                                      #{jugador.dorsal || '-'}
+                                    </td>
+                                    <td className="py-2.5 px-4 font-bold text-gray-900 text-sm">{jugador.nombre}</td>
+                                    <td className="py-2.5 px-4">
+                                      <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-[11px] font-medium">
+                                        {jugador.posicion}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-4 text-gray-600">{jugador.categoria}</td>
+                                    <td className="py-2.5 px-4 text-gray-400 font-mono text-[11px]">{jugador.fechaAlta}</td>
+                                    <td className="py-2.5 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1">
+                                        <button
+                                          onClick={() => openSheetModal('jugador', jugador)}
+                                          className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                                          title="Editar jugador"
+                                        >
+                                          <Edit2 className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            if (confirm(`¿Eliminar jugador ${jugador.nombre}?`)) deleteJugador(jugador.id);
+                                          }}
+                                          className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

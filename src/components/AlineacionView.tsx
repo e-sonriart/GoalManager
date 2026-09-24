@@ -117,6 +117,7 @@ export const AlineacionView: React.FC<AlineacionViewProps> = ({
   const {
     partidos,
     jugadores,
+    allJugadores,
     equipos,
     categorias,
     savePartido,
@@ -161,21 +162,34 @@ export const AlineacionView: React.FC<AlineacionViewProps> = ({
   }, [selectedPartido, equipos]);
 
   const pool = useMemo(() => {
-    if (!selectedPartido) return jugadores;
+    const poolAll = allJugadores.length > 0 ? allJugadores : jugadores;
+    if (!selectedPartido) return poolAll;
     const conv = selectedPartido.convocados || [];
     if (conv.length > 0) {
-      const fromConv = jugadores.filter(j => conv.includes(j.id));
+      const fromConv = poolAll.filter(j => conv.includes(j.id));
       if (fromConv.length > 0) return fromConv;
     }
-    const matchByTeam = jugadores.filter(
-      j =>
-        j.equipo.toLowerCase() === selectedPartido.equipo.toLowerCase() ||
-        j.categoria.toLowerCase() === selectedPartido.categoria.toLowerCase()
-    );
-    return matchByTeam.length > 0 ? matchByTeam : jugadores;
-  }, [jugadores, selectedPartido]);
+    const teamLc = (clubTeamName || selectedPartido.equipo || '').toLowerCase();
+    const catLc = (selectedPartido.categoria || '').toLowerCase();
+    const rank = (j: (typeof poolAll)[number]) => {
+      const eq = (j.equipo || '').toLowerCase();
+      if (teamLc && eq === teamLc) return 0;
+      if (catLc && (j.categoria || '').toLowerCase() === catLc) return 1;
+      if (eq) return 2;
+      return 3;
+    };
+    return [...poolAll].sort((a, b) => {
+      const ra = rank(a);
+      const rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      return a.nombre.localeCompare(b.nombre, 'es');
+    });
+  }, [allJugadores, jugadores, selectedPartido, clubTeamName]);
 
-  const jugadorById = useMemo(() => new Map(jugadores.map(j => [j.id, j])), [jugadores]);
+  const jugadorById = useMemo(
+    () => new Map((allJugadores.length > 0 ? allJugadores : jugadores).map(j => [j.id, j])),
+    [allJugadores, jugadores]
+  );
   const usedJugadorIds = useMemo(() => new Set(Object.values(placement)), [placement]);
   const filledCount = slots.filter(s => placement[s.id]).length;
   const isComplete = filledCount === required;
@@ -627,7 +641,31 @@ export const AlineacionView: React.FC<AlineacionViewProps> = ({
                   #{j.dorsal || '-'}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block font-bold text-sm text-gray-900 truncate">{j.nombre}</span>
+                  <span className="block font-bold text-sm text-gray-900 truncate">
+                    {j.nombre}
+                    {(() => {
+                      const eq = (j.equipo || '').toLowerCase();
+                      const teamLc = (clubTeamName || selectedPartido?.equipo || '').toLowerCase();
+                      if (!eq) {
+                        return (
+                          <span className="ml-1.5 inline-block align-middle text-[9px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded">
+                            Sin equipo
+                          </span>
+                        );
+                      }
+                      if (teamLc && eq !== teamLc) {
+                        return (
+                          <span
+                            className="ml-1.5 inline-block align-middle text-[9px] font-bold uppercase tracking-wider text-sky-800 bg-sky-100 border border-sky-300 px-1.5 py-0.5 rounded max-w-[90px] truncate"
+                            title={`Refuerzo de ${j.equipo}`}
+                          >
+                            {j.equipo}
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </span>
                   <span className="block text-[11px] text-gray-400 truncate">{j.posicion}</span>
                 </span>
                 <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${

@@ -151,7 +151,7 @@ export const AdminPanel: React.FC = () => {
         dorsal: j?.dorsal !== undefined && j?.dorsal !== null ? String(j.dorsal) : '',
         posicion: j?.posicion || 'Delantero',
         categoria: j?.categoria || categorias[0]?.nombre || '',
-        equipo: j?.equipo || equipos[0]?.nombre || '',
+        equipo: j ? (j.equipo || '') : (equipos[0]?.nombre || ''),
         fechaAlta: j?.fechaAlta || new Date().toISOString().split('T')[0]
       });
     } else if (kind === 'entrenador') {
@@ -213,7 +213,7 @@ export const AdminPanel: React.FC = () => {
         escudo: sf.escudo.trim() || undefined
       });
     } else if (sheetModalKind === 'jugador') {
-      if (!sf.nombre.trim() || !sf.equipo.trim()) return;
+      if (!sf.nombre.trim()) return;
       await saveJugador({
         id: (editingSheetItem as Jugador | null)?.id,
         nombre: sf.nombre.trim(),
@@ -2243,13 +2243,13 @@ export const AdminPanel: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Equipo *</label>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Equipo</label>
                   <select
-                    required
                     value={sf.equipo || ''}
                     onChange={e => setSf({ ...sf, equipo: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
                   >
+                    <option value="">Sin equipo (libre / cedido)</option>
                     {equipos.map(eq => (
                       <option key={eq.id} value={eq.nombre}>{eq.nombre}</option>
                     ))}

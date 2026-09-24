@@ -49,6 +49,8 @@ interface ClubContextType {
 
   // Entidades principales
   jugadores: Jugador[];
+  /** Todos los jugadores del club, sin scoping por equipo (para convocar de otros equipos / sin equipo). */
+  allJugadores: Jugador[];
   equipos: Equipo[];
   categorias: Categoria[];
   entrenadores: Entrenador[];
@@ -1004,6 +1006,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     assignedTeams,
 
     jugadores: visibleJugadores,
+    allJugadores: jugadores,
     equipos: visibleEquipos,
     categorias: visibleCategorias,
     entrenadores: visibleEntrenadores,
@@ -1077,7 +1080,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     exportSheet
   }), [
     currentUser, users, login, logout, can, allowedTabs, isTeamScoped, assignedTeams,
-    visibleJugadores, visibleEquipos, visibleCategorias, visibleEntrenadores,
+    jugadores, visibleJugadores, visibleEquipos, visibleCategorias, visibleEntrenadores,
     visiblePartidos, visibleAsistencias, visibleEstadisticas, visibleSesiones,
     clubConfig, saveClubConfig, getTeamEscudo,
     loading, refreshAll, gasUrl, updateGasUrl, testGoogleConnection, initRemoteSheets, resetDatabase,

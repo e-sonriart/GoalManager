@@ -145,6 +145,7 @@ export const EquiposClubView: React.FC = () => {
   const [playerNombre, setPlayerNombre] = useState('');
   const [playerDorsal, setPlayerDorsal] = useState<number | string>('');
   const [playerPosicion, setPlayerPosicion] = useState<PosicionJugador>('Delantero');
+  const [playerEquipo, setPlayerEquipo] = useState('');
 
   // Estados para estadísticas e histórico de jugador
   const [selectedPlayerForStats, setSelectedPlayerForStats] = useState<Jugador | null>(null);
@@ -210,25 +211,28 @@ export const EquiposClubView: React.FC = () => {
       setPlayerNombre(player.nombre);
       setPlayerDorsal(player.dorsal);
       setPlayerPosicion(player.posicion);
+      setPlayerEquipo(player.equipo || '');
     } else {
       setEditingPlayer(null);
       setPlayerNombre('');
       setPlayerDorsal('');
       setPlayerPosicion('Delantero');
+      setPlayerEquipo(selectedEquipoForSquad?.nombre || '');
     }
     setIsPlayerModalOpen(true);
   };
 
   const handleSavePlayer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!playerNombre.trim() || !selectedEquipoForSquad) return;
+    if (!playerNombre.trim()) return;
+    const targetEq = equipos.find(eq => eq.nombre === playerEquipo.trim());
     await saveJugador({
       id: editingPlayer?.id,
       nombre: playerNombre.trim(),
       dorsal: playerDorsal !== '' ? Number(playerDorsal) : '',
       posicion: playerPosicion,
-      categoria: selectedEquipoForSquad.categoria,
-      equipo: selectedEquipoForSquad.nombre,
+      categoria: targetEq?.categoria || editingPlayer?.categoria || selectedEquipoForSquad?.categoria || '',
+      equipo: playerEquipo.trim(),
       temporada: clubConfig.temporada || '2025/2026',
       fechaAlta: editingPlayer?.fechaAlta || new Date().toISOString().split('T')[0]
     });
@@ -1339,6 +1343,34 @@ export const EquiposClubView: React.FC = () => {
                   <option value="Delantero">Delantero</option>
                 </select>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                Equipo
+              </label>
+              <select
+                value={playerEquipo}
+                onChange={e => setPlayerEquipo(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none bg-white"
+              >
+                <option value="">Sin equipo (libre / cedido)</option>
+                {[...equipos]
+                  .sort((a, b) => {
+                    const catA = a.categoria || '';
+                    const catB = b.categoria || '';
+                    const c = catSortKey(catA) - catSortKey(catB);
+                    return c !== 0 ? c : a.nombre.localeCompare(b.nombre, 'es');
+                  })
+                  .map(eq => (
+                    <option key={eq.id} value={eq.nombre}>
+                      {eq.nombre}{eq.categoria ? ` (${eq.categoria})` : ''}
+                    </option>
+                  ))}
+              </select>
+              <p className="text-[10px] text-gray-400 mt-1">
+                Puedes asignarlo a otro equipo del club o dejarlo sin equipo para convocarlo como refuerzo.
+              </p>
             </div>
 
 

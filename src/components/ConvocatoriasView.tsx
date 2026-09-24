@@ -24,6 +24,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
   const {
     partidos,
     jugadores,
+    allJugadores,
     equipos,
     savePartido,
     applyEventStats,
@@ -65,15 +66,26 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     );
   }, [selectedPartido, equipos]);
 
-  // Jugadores elegibles (del mismo equipo o categoría, o todos si no hay coincidencia)
+  // Jugadores elegibles: todo el club (propio, otros equipos del club o sin equipo), ordenados por relevancia
   const eligibleJugadores = useMemo(() => {
-    if (!selectedPartido) return jugadores;
-    const matchByTeam = jugadores.filter(
-      j => j.equipo.toLowerCase() === selectedPartido.equipo.toLowerCase() ||
-           j.categoria.toLowerCase() === selectedPartido.categoria.toLowerCase()
-    );
-    return matchByTeam.length > 0 ? matchByTeam : jugadores;
-  }, [jugadores, selectedPartido]);
+    const pool = allJugadores.length > 0 ? allJugadores : jugadores;
+    if (!selectedPartido) return pool;
+    const teamLc = (clubTeamName || selectedPartido.equipo || '').toLowerCase();
+    const catLc = (selectedPartido.categoria || '').toLowerCase();
+    const rank = (j: (typeof pool)[number]) => {
+      const eq = (j.equipo || '').toLowerCase();
+      if (teamLc && eq === teamLc) return 0;
+      if (catLc && (j.categoria || '').toLowerCase() === catLc) return 1;
+      if (eq) return 2;
+      return 3;
+    };
+    return [...pool].sort((a, b) => {
+      const ra = rank(a);
+      const rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      return a.nombre.localeCompare(b.nombre, 'es');
+    });
+  }, [allJugadores, jugadores, selectedPartido, clubTeamName]);
 
   const totalConvocados = useMemo(() => {
     let count = 0;
@@ -324,9 +336,31 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
                       <span className="shrink-0 text-[11px] font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
                         {jugador.posicion}
                       </span>
+                      {(() => {
+                        const eq = (jugador.equipo || '').toLowerCase();
+                        const teamLc = (clubTeamName || selectedPartido?.equipo || '').toLowerCase();
+                        if (!eq) {
+                          return (
+                            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md">
+                              Sin equipo
+                            </span>
+                          );
+                        }
+                        if (teamLc && eq !== teamLc) {
+                          return (
+                            <span
+                              className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-sky-800 bg-sky-100 border border-sky-300 px-2 py-0.5 rounded-md max-w-[140px] truncate"
+                              title={`Refuerzo de ${jugador.equipo}`}
+                            >
+                              {jugador.equipo}
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                     </h4>
                     <p className="text-xs text-gray-400 mt-0.5 truncate">
-                      {jugador.equipo} • {jugador.categoria}
+                      {jugador.equipo || 'Sin equipo'} • {jugador.categoria}
                     </p>
                   </div>
                 </div>

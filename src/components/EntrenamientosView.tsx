@@ -498,6 +498,11 @@ export const EntrenamientosView: React.FC = () => {
                           </div>
                           <p className="text-[11px] text-gray-400 mt-0.5">
                             {sesionesEquipo.length} sesión{sesionesEquipo.length !== 1 ? 'es' : ''}
+                            {(() => {
+                              const eq = equipos.find(e => e.nombre === equipo);
+                              const meta = eq ? [eq.division, eq.grupo].filter(Boolean).join(' · ') : '';
+                              return meta ? <span className="ml-2 text-gray-500">{meta}</span> : null;
+                            })()}
                           </p>
                         </div>
                         <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${expandido ? 'rotate-180' : ''}`} />

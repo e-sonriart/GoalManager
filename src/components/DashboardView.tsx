@@ -170,6 +170,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               <h3 className="text-lg font-black text-gray-900 font-athletic tracking-tight mt-0.5">
                 {currentUser.equipo}
               </h3>
+              {(() => {
+                const eq = equipos.find(e => e.nombre === currentUser.equipo);
+                const meta = eq ? [eq.division, eq.grupo].filter(Boolean) : [];
+                if (!meta.length) return null;
+                return (
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {eq?.division && (
+                      <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[11px] font-semibold">
+                        {eq.division}
+                      </span>
+                    )}
+                    {eq?.grupo && (
+                      <span className="px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 rounded text-[11px] font-semibold">
+                        {eq.grupo}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
               <p className="text-xs text-gray-600">
                 {currentUser.rol === 'entrenador'
                   ? `Hola ${currentUser.nombre}, tienes acceso directo para convocar y pasar lista a los jugadores de ${currentUser.equipo}.`

@@ -534,6 +534,11 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
                               {partidos.length === 0
                                 ? 'Sin partidos aún'
                                 : `${partidos.length} partido${partidos.length !== 1 ? 's' : ''}`}
+                              {(equipo.division || equipo.grupo) && (
+                                <span className="ml-2 text-gray-500">
+                                  {[equipo.division, equipo.grupo].filter(Boolean).join(' · ')}
+                                </span>
+                              )}
                             </p>
                           </div>
                           <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${equipoExpandido === equipo.nombre ? 'rotate-180' : ''}`} />

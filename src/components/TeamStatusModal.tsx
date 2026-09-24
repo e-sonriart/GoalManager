@@ -98,6 +98,13 @@ export const TeamStatusModal: React.FC<TeamStatusModalProps> = ({ isOpen, onClos
                               >
                                 {row.equipo}
                               </span>
+                              {isClub && (() => {
+                                const eq = equipos.find(e => e.nombre.toLowerCase().trim() === row.equipo.toLowerCase().trim());
+                                const meta = eq ? [eq.division, eq.grupo].filter(Boolean).join(' · ') : '';
+                                return meta ? (
+                                  <span className="text-[10px] text-gray-500 font-medium shrink-0">{meta}</span>
+                                ) : null;
+                              })()}
                             </div>
                           </td>
                           <td className="px-2 py-2 text-center text-gray-600">{row.jugados}</td>

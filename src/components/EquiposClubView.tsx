@@ -104,7 +104,8 @@ import {
   BarChart3,
   ChevronRight,
   ChevronLeft,
-  Play
+  Play,
+  ExternalLink
 } from 'lucide-react';
 
 export const EquiposClubView: React.FC = () => {
@@ -680,6 +681,20 @@ export const EquiposClubView: React.FC = () => {
                                     </span>
                                   )}
                                 </div>
+                                {(eq.division || eq.grupo) && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {eq.division && (
+                                      <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded text-[10px] font-semibold">
+                                        {eq.division}
+                                      </span>
+                                    )}
+                                    {eq.grupo && (
+                                      <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-100 rounded text-[10px] font-semibold">
+                                        {eq.grupo}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
 
@@ -1115,11 +1130,37 @@ export const EquiposClubView: React.FC = () => {
         <Modal
           isOpen={true}
           onClose={() => setSelectedEquipoForSquad(null)}
-          title={`Plantilla: ${selectedEquipoForSquad.nombre}`}
-          subtitle={`Categoría: ${selectedEquipoForSquad.categoria} • Temporada: ${selectedEquipoForSquad.temporada || clubConfig.temporada || '2025/2026'}`}
+          title={`Plantilla: ${selectedEquipoForSquad.nombre}${selectedEquipoForSquad.division || selectedEquipoForSquad.grupo ? ` · ${[selectedEquipoForSquad.division, selectedEquipoForSquad.grupo].filter(Boolean).join(' · ')}` : ''}`}
+          subtitle={`Categoría: ${selectedEquipoForSquad.categoria}${selectedEquipoForSquad.division || selectedEquipoForSquad.grupo ? ` • ${[selectedEquipoForSquad.division, selectedEquipoForSquad.grupo].filter(Boolean).join(' · ')}` : ''} • Temporada: ${selectedEquipoForSquad.temporada || clubConfig.temporada || '2025/2026'}`}
           maxWidth="max-w-4xl"
         >
           <div className="space-y-4">
+            {/* Datos de liga junto al nombre del equipo */}
+            {(selectedEquipoForSquad.division || selectedEquipoForSquad.grupo || selectedEquipoForSquad.linkClasificacion) && (
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedEquipoForSquad.division && (
+                  <span className="px-2.5 py-1 bg-blue-50 text-blue-800 border border-blue-200 rounded-lg text-xs font-bold">
+                    {selectedEquipoForSquad.division}
+                  </span>
+                )}
+                {selectedEquipoForSquad.grupo && (
+                  <span className="px-2.5 py-1 bg-purple-50 text-purple-800 border border-purple-200 rounded-lg text-xs font-bold">
+                    {selectedEquipoForSquad.grupo}
+                  </span>
+                )}
+                {selectedEquipoForSquad.linkClasificacion && (
+                  <a
+                    href={selectedEquipoForSquad.linkClasificacion}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg text-xs font-bold hover:bg-orange-100 transition-colors inline-flex items-center gap-1"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Ver clasificación
+                  </a>
+                )}
+              </div>
+            )}
             {/* 1º: datos de partidos de esta temporada */}
             <div className="bg-gradient-to-r from-gray-950 via-gray-900 to-black text-white rounded-2xl p-4 sm:p-5 border border-gray-800 shadow-lg min-w-0">
               <div className="flex items-center gap-2 mb-3">

@@ -1124,63 +1124,109 @@ export const AdminPanel: React.FC = () => {
               </div>
             )}
 
-            {/* TABLA: JUGADORES (SIN ID) */}
-            {selectedSheet === 'jugadores' && (
-              <div className="overflow-x-auto scroll-x rounded-xl border border-gray-150">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-gray-900 text-white font-athletic uppercase tracking-wider text-[11px]">
-                    <tr>
-                      <th className="py-3 px-4 text-center w-14">Dorsal</th>
-                      <th className="py-3 px-4">Nombre</th>
-                      <th className="py-3 px-4">Posición</th>
-                      <th className="py-3 px-4">Equipo</th>
-                      <th className="py-3 px-4">Categoría</th>
-                      <th className="py-3 px-4">Fecha de Alta</th>
-                      <th className="py-3 px-4 text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {jugadores
-                      .filter(j => j.nombre.toLowerCase().includes(sheetSearch.toLowerCase()) || j.equipo.toLowerCase().includes(sheetSearch.toLowerCase()))
-                      .map(jugador => (
-                        <tr key={jugador.id} className="hover:bg-orange-50/30 transition-colors">
-                          <td className="py-2.5 px-4 text-center font-athletic font-bold text-gray-900">
-                            #{jugador.dorsal || '-'}
-                          </td>
-                          <td className="py-2.5 px-4 font-bold text-gray-900 text-sm">{jugador.nombre}</td>
-                          <td className="py-2.5 px-4">
-                            <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-[11px] font-medium">
-                              {jugador.posicion}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-4 text-gray-800 font-semibold">{jugador.equipo}</td>
-                          <td className="py-2.5 px-4 text-gray-600">{jugador.categoria}</td>
-                          <td className="py-2.5 px-4 text-gray-400 font-mono text-[11px]">{jugador.fechaAlta}</td>
-                          <td className="py-2.5 px-4 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={() => openSheetModal('jugador', jugador)}
-                                className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
-                                title="Editar jugador"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  if (confirm(`¿Eliminar jugador ${jugador.nombre}?`)) deleteJugador(jugador.id);
-                                }}
-                                className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+            {/* TABLA: JUGADORES (SIN ID, AGRUPADOS POR EQUIPO) */}
+            {selectedSheet === 'jugadores' && (() => {
+              const search = sheetSearch.toLowerCase();
+              const filtered = jugadores.filter(j =>
+                j.nombre.toLowerCase().includes(search) || j.equipo.toLowerCase().includes(search)
+              );
+              const byTeam = new Map<string, typeof jugadores>();
+              filtered.forEach(j => {
+                const key = j.equipo || 'Sin equipo';
+                if (!byTeam.has(key)) byTeam.set(key, []);
+                byTeam.get(key)!.push(j);
+              });
+              const teamNames = Array.from(byTeam.keys()).sort((a, b) => a.localeCompare(b, 'es'));
+              return (
+                <div className="space-y-4">
+                  {teamNames.length === 0 && (
+                    <div className="bg-white rounded-xl border border-gray-150 p-6 text-center text-sm text-gray-400">
+                      No hay jugadores que coincidan con la búsqueda.
+                    </div>
+                  )}
+                  {teamNames.map(teamName => {
+                    const team = equipos.find(e => e.nombre === teamName);
+                    const lista = byTeam.get(teamName)!;
+                    return (
+                      <div key={teamName} className="overflow-x-auto scroll-x rounded-xl border border-gray-150 bg-white">
+                        <div className="flex items-center gap-3 px-4 py-3 bg-gray-900 text-white border-b border-gray-800">
+                          <div className="w-8 h-8 rounded-lg bg-white/10 border border-white/20 p-0.5 flex items-center justify-center overflow-hidden shrink-0">
+                            <TeamShield escudoUrl={team?.escudo} teamName={teamName} size="xs" className="w-full h-full" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="text-sm font-bold font-athletic truncate">{teamName}</h3>
+                              <span className="px-2 py-0.5 bg-orange-500/20 text-orange-300 border border-orange-400/40 rounded text-[10px] font-bold">
+                                {lista.length} jugador{lista.length !== 1 ? 'es' : ''}
+                              </span>
+                              {team?.division && (
+                                <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 border border-blue-400/40 rounded text-[10px] font-semibold">
+                                  {team.division}
+                                </span>
+                              )}
+                              {team?.grupo && (
+                                <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 border border-purple-400/40 rounded text-[10px] font-semibold">
+                                  {team.grupo}
+                                </span>
+                              )}
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                            <p className="text-[11px] text-gray-400 mt-0.5">{team?.categoria || ''}</p>
+                          </div>
+                        </div>
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-gray-50 text-gray-600 font-athletic uppercase tracking-wider text-[11px]">
+                            <tr>
+                              <th className="py-2.5 px-4 text-center w-14">Dorsal</th>
+                              <th className="py-2.5 px-4">Nombre</th>
+                              <th className="py-2.5 px-4">Posición</th>
+                              <th className="py-2.5 px-4">Categoría</th>
+                              <th className="py-2.5 px-4">Fecha de Alta</th>
+                              <th className="py-2.5 px-4 text-right">Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {lista.map(jugador => (
+                              <tr key={jugador.id} className="hover:bg-orange-50/30 transition-colors">
+                                <td className="py-2.5 px-4 text-center font-athletic font-bold text-gray-900">
+                                  #{jugador.dorsal || '-'}
+                                </td>
+                                <td className="py-2.5 px-4 font-bold text-gray-900 text-sm">{jugador.nombre}</td>
+                                <td className="py-2.5 px-4">
+                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-[11px] font-medium">
+                                    {jugador.posicion}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-4 text-gray-600">{jugador.categoria}</td>
+                                <td className="py-2.5 px-4 text-gray-400 font-mono text-[11px]">{jugador.fechaAlta}</td>
+                                <td className="py-2.5 px-4 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button
+                                      onClick={() => openSheetModal('jugador', jugador)}
+                                      className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                                      title="Editar jugador"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if (confirm(`¿Eliminar jugador ${jugador.nombre}?`)) deleteJugador(jugador.id);
+                                      }}
+                                      className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* TABLA: ENTRENADORES (SIN ID) */}
             {selectedSheet === 'entrenadores' && (

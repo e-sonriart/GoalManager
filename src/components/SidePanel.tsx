@@ -46,7 +46,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
   const handleSelect = (tab: ActiveTab) => {
     setActiveTab(tab);
-    onClose();
+    // En Vista PC el panel es fijo: navegar no debe cerrarlo ni salir del modo PC
+    if (!vistaPC) onClose();
   };
 
   const allNavItems: {
@@ -148,7 +149,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
 
           <button
             onClick={() => {
-              onClose();
+              if (!vistaPC) onClose();
               logout();
             }}
             className="w-full p-2.5 rounded-xl bg-red-950/40 hover:bg-red-900/50 border border-red-900/60 text-red-300 hover:text-red-200 flex items-center justify-center gap-2 transition-colors text-sm font-bold"
@@ -238,7 +239,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             <button
               onClick={() => {
                 onOpenGoogleConfig();
-                onClose();
+                if (!vistaPC) onClose();
               }}
               title={isOnlineConfigured ? 'Supabase Online' : 'Modo Local'}
               className={`px-2.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-colors ${

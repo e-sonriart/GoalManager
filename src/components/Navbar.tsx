@@ -8,7 +8,6 @@ import {
   Users,
   Shield,
   ClipboardList,
-  CheckSquare,
   Trophy,
   Settings,
   RefreshCw,
@@ -47,7 +46,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'entrenamientos', label: 'Entrenamientos', icon: Dumbbell },
     { id: 'equipos', label: 'Equipos', icon: Shield },
     { id: 'convocatorias', label: 'Convocatorias', icon: ClipboardList },
-    { id: 'asistencias', label: 'Asistencias', icon: CheckSquare },
     { id: 'estadisticas', label: 'Estadísticas', icon: Trophy },
     { id: 'admin', label: 'Admin', icon: Settings }
   ];

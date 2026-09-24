@@ -9,7 +9,6 @@ import {
   Shield,
   Users,
   ClipboardList,
-  CheckSquare,
   Trophy,
   Settings,
   X,
@@ -61,7 +60,6 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     { id: 'entrenamientos', label: 'Entrenamientos', icon: Dumbbell },
     { id: 'equipos', label: 'Equipos', icon: Shield },
     { id: 'convocatorias', label: 'Convocatorias', icon: ClipboardList },
-    { id: 'asistencias', label: 'Asistencias', icon: CheckSquare },
     { id: 'estadisticas', label: 'Estadísticas', icon: Trophy },
     {
       id: 'admin',

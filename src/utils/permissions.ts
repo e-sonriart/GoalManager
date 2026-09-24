@@ -105,7 +105,6 @@ const TABS_VISIBLES: Record<AppTab, Permission> = {
   equipos: 'view:equipos',
   partidos: 'view:partidos',
   convocatorias: 'view:convocatorias',
-  asistencias: 'view:asistencias',
   alineacion: 'view:partidos',
   eventos: 'view:partidos',
   estadisticas: 'view:estadisticas',

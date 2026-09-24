@@ -154,7 +154,6 @@ export type AppTab =
   | 'equipos'
   | 'partidos'
   | 'convocatorias'
-  | 'asistencias'
   | 'alineacion'
   | 'eventos'
   | 'estadisticas'

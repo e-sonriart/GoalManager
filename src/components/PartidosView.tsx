@@ -27,13 +27,11 @@ import { ActiveTab } from './Navbar';
 interface PartidosViewProps {
   onNavigateToConvocatoria?: (partidoId: string) => void;
   onNavigateToAlineacion?: (partidoId: string) => void;
-  onNavigateToAsistencias?: () => void;
 }
 
 export const PartidosView: React.FC<PartidosViewProps> = ({
   onNavigateToConvocatoria,
-  onNavigateToAlineacion,
-  onNavigateToAsistencias
+  onNavigateToAlineacion
 }) => {
   const {
     partidos,
@@ -366,8 +364,6 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
                   onClick={() => {
                     if (onNavigateToAlineacion) {
                       onNavigateToAlineacion(partido.id);
-                    } else if (allowedTabs.includes('asistencias') && onNavigateToAsistencias) {
-                      onNavigateToAsistencias();
                     } else {
                       onNavigateToConvocatoria && onNavigateToConvocatoria(partido.id);
                     }

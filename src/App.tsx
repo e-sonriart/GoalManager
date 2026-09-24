@@ -21,7 +21,6 @@ const EntrenamientosView = lazy(() => import('./components/EntrenamientosView').
 const ConvocatoriasView = lazy(() => import('./components/ConvocatoriasView').then(m => ({ default: m.ConvocatoriasView })));
 const AlineacionView = lazy(() => import('./components/AlineacionView').then(m => ({ default: m.AlineacionView })));
 const EventosPartidoView = lazy(() => import('./components/EventosPartidoView').then(m => ({ default: m.EventosPartidoView })));
-const AsistenciasView = lazy(() => import('./components/AsistenciasView').then(m => ({ default: m.AsistenciasView })));
 const EstadisticasRankingView = lazy(() => import('./components/EstadisticasRankingView').then(m => ({ default: m.EstadisticasRankingView })));
 const AdminPanel = lazy(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
 
@@ -153,7 +152,6 @@ const MainContent: React.FC = () => {
               <PartidosView
                 onNavigateToConvocatoria={handleNavigateToConvocatoria}
                 onNavigateToAlineacion={handleNavigateToAlineacion}
-                onNavigateToAsistencias={() => setActiveTab('asistencias')}
               />
             )}
 
@@ -181,10 +179,6 @@ const MainContent: React.FC = () => {
                 initialPartidoId={selectedPartidoForEventos}
                 onBack={() => setActiveTab('alineacion')}
               />
-            )}
-
-            {activeTab === 'asistencias' && (
-              <AsistenciasView />
             )}
 
             {activeTab === 'estadisticas' && (

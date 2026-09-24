@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useClub } from '../context/ClubContext';
-import { SesionEntrenamiento, TipoFutbol } from '../types';
+import { EstadoAsistencia, SesionEntrenamiento, TipoFutbol } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import {
@@ -14,7 +14,10 @@ import {
   MapPin,
   Dumbbell,
   Target,
-  Users
+  Users,
+  CheckSquare,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 
 const formatFecha = (fechaStr: string): string => {
@@ -32,8 +35,12 @@ export const EntrenamientosView: React.FC = () => {
     sesiones,
     equipos,
     categorias,
+    jugadores,
+    asistencias,
     saveSesion,
     deleteSesion,
+    toggleAsistencia,
+    batchMarkAsistencia,
     exportSheet,
     getTeamEscudo,
     currentUser,
@@ -42,6 +49,7 @@ export const EntrenamientosView: React.FC = () => {
   } = useClub();
 
   const canManage = can('manage:entrenamientos');
+  const canAsist = can('manage:asistencias');
 
   const [filterCategoria, setFilterCategoria] = useState('');
   const [sesionEquipoExpandido, setSesionEquipoExpandido] = useState<string | null>(null);
@@ -60,6 +68,10 @@ export const EntrenamientosView: React.FC = () => {
   const [formTitulo, setFormTitulo] = useState('');
   const [formObjetivo, setFormObjetivo] = useState('');
   const [formDescripcion, setFormDescripcion] = useState('');
+
+  // Modal de asistencia ligado a una sesión
+  const [isAsistenciaOpen, setIsAsistenciaOpen] = useState(false);
+  const [asistenciaSesion, setAsistenciaSesion] = useState<SesionEntrenamiento | null>(null);
 
   const openAddModal = () => {
     setEditingSesion(null);
@@ -108,16 +120,23 @@ export const EntrenamientosView: React.FC = () => {
     }
   };
 
+  const openAsistencia = (s: SesionEntrenamiento) => {
+    setAsistenciaSesion(s);
+    setIsAsistenciaOpen(true);
+  };
+
   const handleSaveSesion = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formEquipo.trim() || !formObjetivo.trim() || !formFecha || !formHora) return;
 
-    await saveSesion({
+    const categoria = formCategoria.trim() || categorias[0]?.nombre || formEquipo.trim();
+    const wasCreating = !editingSesion;
+    const ok = await saveSesion({
       ...(editingSesion
         ? { id: editingSesion.id, temporada: editingSesion.temporada, creadoPor: editingSesion.creadoPor, creadoEn: editingSesion.creadoEn }
         : { temporada: clubConfig?.temporada, creadoPor: currentUser?.nombre, creadoEn: new Date().toISOString() }),
       equipo: formEquipo.trim(),
-      categoria: formCategoria.trim() || categorias[0]?.nombre || formEquipo.trim(),
+      categoria,
       tipo: formTipo,
       fecha: formFecha,
       hora: formHora,
@@ -129,12 +148,69 @@ export const EntrenamientosView: React.FC = () => {
     });
 
     setIsModalOpen(false);
+
+    // Al crear una sesión nueva: opción inmediata de pasar la asistencia
+    if (ok && wasCreating && canAsist) {
+      const draft: SesionEntrenamiento = {
+        id: editingSesion?.id || '',
+        equipo: formEquipo.trim(),
+        categoria,
+        tipo: formTipo,
+        fecha: formFecha,
+        hora: formHora,
+        objetivo: formObjetivo.trim()
+      };
+      if (confirm('Sesión creada. ¿Quieres pasar la asistencia de este entrenamiento ahora?')) {
+        openAsistencia(draft);
+      }
+    }
   };
 
   const handleDelete = async (s: SesionEntrenamiento) => {
     if (confirm(`¿Eliminar la sesión del ${formatFecha(s.fecha)} (${s.equipo})?`)) {
       await deleteSesion(s.id);
     }
+  };
+
+  // Plantilla de la sesión en el modal de asistencia
+  const jugadoresSesion = useMemo(() => {
+    if (!asistenciaSesion) return [];
+    return jugadores.filter(j => j.equipo === asistenciaSesion.equipo);
+  }, [jugadores, asistenciaSesion]);
+
+  const asistenciasMapSesion = useMemo(() => {
+    const map = new Map<string, EstadoAsistencia>();
+    if (!asistenciaSesion) return map;
+    asistencias
+      .filter(a => a.fecha === asistenciaSesion.fecha)
+      .forEach(a => map.set(a.jugadorId, a.estado));
+    return map;
+  }, [asistencias, asistenciaSesion]);
+
+  const totalAsistenSesion = jugadoresSesion.filter(j => asistenciasMapSesion.get(j.id) === 'asiste').length;
+  const totalNoAsistenSesion = jugadoresSesion.filter(j => asistenciasMapSesion.get(j.id) === 'no asiste').length;
+
+  const handleMarcarTodosSesion = async (estado: EstadoAsistencia) => {
+    if (!asistenciaSesion || jugadoresSesion.length === 0) return;
+    await batchMarkAsistencia(
+      asistenciaSesion.fecha,
+      jugadoresSesion.map(j => j.id),
+      estado
+    );
+  };
+
+  // Resumen de asistencia por sesión (en la tarjeta)
+  const resumenAsistencia = (s: SesionEntrenamiento): { presentes: number; total: number } | null => {
+    const plantilla = jugadores.filter(j => j.equipo === s.equipo);
+    if (plantilla.length === 0) return null;
+    const presentes = plantilla.filter(
+      j => asistencias.find(a => a.jugadorId === j.id && a.fecha === s.fecha)?.estado === 'asiste'
+    ).length;
+    const marcados = plantilla.filter(j =>
+      asistencias.some(a => a.jugadorId === j.id && a.fecha === s.fecha)
+    ).length;
+    if (marcados === 0) return null;
+    return { presentes, total: plantilla.length };
   };
 
   const gruposPorFecha = useMemo(() => {
@@ -270,6 +346,28 @@ export const EntrenamientosView: React.FC = () => {
         </p>
       )}
 
+      {/* Acción + resumen de asistencia de esta sesión */}
+      <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
+        {(() => {
+          const resumen = resumenAsistencia(sesion);
+          return resumen ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              {resumen.presentes}/{resumen.total} presentes
+            </span>
+          ) : (
+            <span className="text-[11px] font-semibold text-gray-400">Sin asistencia</span>
+          );
+        })()}
+        <button
+          onClick={() => openAsistencia(sesion)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-900 hover:bg-orange-500 text-white transition-colors shrink-0"
+        >
+          <CheckSquare className="w-3.5 h-3.5" />
+          Asistencia
+        </button>
+      </div>
+
       {sesion.temporada && (
         <div className="pt-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider border-t border-gray-100">
           Temp. {sesion.temporada}
@@ -288,7 +386,7 @@ export const EntrenamientosView: React.FC = () => {
             SESIONES DE <span className="text-orange-600">ENTRENAMIENTO</span>
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            Planifica las sesiones de cada equipo: fecha, horario, lugar y objetivo.
+            Planifica las sesiones de cada equipo y registra la asistencia de la plantilla.
           </p>
         </div>
 
@@ -299,6 +397,13 @@ export const EntrenamientosView: React.FC = () => {
           >
             <Download className="w-3.5 h-3.5 text-gray-500" />
             Exportar Sesiones
+          </button>
+          <button
+            onClick={() => exportSheet('asistencias')}
+            className="px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+          >
+            <Download className="w-3.5 h-3.5 text-gray-500" />
+            Exportar Asistencias
           </button>
           {canManage && (
             <button
@@ -602,6 +707,121 @@ export const EntrenamientosView: React.FC = () => {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal de Asistencia de la sesión */}
+      <Modal
+        isOpen={isAsistenciaOpen && !!asistenciaSesion}
+        onClose={() => {
+          setIsAsistenciaOpen(false);
+          setAsistenciaSesion(null);
+        }}
+        title="Asistencia del entrenamiento"
+        subtitle={
+          asistenciaSesion
+            ? `${asistenciaSesion.equipo} · ${formatFecha(asistenciaSesion.fecha)} · ${asistenciaSesion.hora}`
+            : undefined
+        }
+        maxWidth="max-w-2xl"
+      >
+        {asistenciaSesion && (
+          <div className="space-y-4">
+            {/* Métricas + acciones masivas */}
+            <div className="bg-gray-50 border border-gray-150 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <span className="flex items-center gap-1.5 font-bold text-emerald-700">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> {totalAsistenSesion} Asisten
+                </span>
+                <span className="flex items-center gap-1.5 font-bold text-red-600">
+                  <XCircle className="w-4 h-4 text-red-500" /> {totalNoAsistenSesion} No asisten
+                </span>
+                <span className="text-gray-400">•</span>
+                <span className="font-bold text-gray-700 font-athletic text-sm">
+                  {jugadoresSesion.length > 0
+                    ? Math.round((totalAsistenSesion / jugadoresSesion.length) * 100)
+                    : 0}
+                  % de presencia
+                </span>
+              </div>
+
+              {canAsist ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => handleMarcarTodosSesion('asiste')}
+                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold transition-colors"
+                  >
+                    Todos Asisten
+                  </button>
+                  <button
+                    onClick={() => handleMarcarTodosSesion('no asiste')}
+                    className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold transition-colors"
+                  >
+                    Todos No Asisten
+                  </button>
+                </div>
+              ) : (
+                <span className="text-xs font-semibold text-gray-400">Modo solo lectura</span>
+              )}
+            </div>
+
+            {/* Lista de jugadores */}
+            <div className="divide-y divide-gray-100 border border-gray-150 rounded-2xl overflow-hidden">
+              {jugadoresSesion.length === 0 ? (
+                <div className="py-10 text-center text-gray-400">
+                  <Users className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                  <p className="text-sm font-semibold">No hay jugadores en {asistenciaSesion.equipo}.</p>
+                </div>
+              ) : (
+                jugadoresSesion.map(jugador => {
+                  const estado = asistenciasMapSesion.get(jugador.id);
+                  return (
+                    <div
+                      key={jugador.id}
+                      className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-orange-50/20 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="w-8 h-8 shrink-0 rounded-full bg-gray-900 text-white font-bold font-athletic text-xs flex items-center justify-center">
+                          #{jugador.dorsal || '-'}
+                        </span>
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-gray-900 text-sm truncate">{jugador.nombre}</h4>
+                          <p className="text-xs text-gray-400 truncate">{jugador.posicion}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => toggleAsistencia(jugador.id, asistenciaSesion.fecha, 'asiste')}
+                          disabled={!canAsist}
+                          className={`px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed ${
+                            estado === 'asiste'
+                              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+                              : 'bg-gray-100 text-gray-600 hover:bg-emerald-50 hover:text-emerald-700'
+                          }`}
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Asiste
+                        </button>
+                        <button
+                          onClick={() => toggleAsistencia(jugador.id, asistenciaSesion.fecha, 'no asiste')}
+                          disabled={!canAsist}
+                          className={`px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed ${
+                            estado === 'no asiste'
+                              ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
+                              : 'bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-600'
+                          }`}
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          No Asiste
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

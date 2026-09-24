@@ -187,10 +187,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </button>
             )}
             <button
-              onClick={() => onNavigate(currentUser.rol === 'entrenador' && canGo('asistencias') ? 'asistencias' : 'partidos')}
+              onClick={() => onNavigate(currentUser.rol === 'entrenador' && canGo('entrenamientos') ? 'entrenamientos' : 'partidos')}
               className="flex-1 sm:flex-initial px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs shadow-orange-500/20"
             >
-              {currentUser.rol === 'entrenador' && canGo('asistencias') ? 'Pasar Asistencia' : 'Ver Calendario'}
+              {currentUser.rol === 'entrenador' && canGo('entrenamientos') ? 'Pasar Asistencia' : 'Ver Calendario'}
             </button>
           </div>
         </div>

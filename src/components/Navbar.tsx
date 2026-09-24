@@ -28,6 +28,8 @@ interface NavbarProps {
   onOpenGoogleConfig: () => void;
   onOpenSidePanel?: () => void;
   onOpenMoreMobile?: () => void;
+  /** Vista PC: desplaza la barra a la derecha del panel lateral fijo (evita tapar el escudo) */
+  offsetForSidePanel?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -35,7 +37,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   onOpenGoogleConfig,
   onOpenSidePanel,
-  onOpenMoreMobile
+  onOpenMoreMobile,
+  offsetForSidePanel = false
 }) => {
   const { currentUser, isOnlineConfigured, refreshAll, loading, clubConfig, allowedTabs, logout } = useClub();
   const handleOpenPanel = onOpenSidePanel || onOpenMoreMobile;
@@ -52,7 +55,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   const navItems = allNavItems.filter(item => allowedTabs.includes(item.id));
 
   return (
-    <header className="sticky top-0 z-40 bg-gray-950/98 backdrop-blur-md border-b border-gray-800 text-white shadow-md w-full shrink-0 select-none">
+    <header
+      className={`sticky top-0 z-40 bg-gray-950/98 backdrop-blur-md border-b border-gray-800 text-white shadow-md w-full shrink-0 select-none ${
+        offsetForSidePanel ? 'lg:ml-80 lg:w-[calc(100%_-_20rem)]' : ''
+      }`}
+    >
       <div className="w-full max-w-7xl 2xl:max-w-[1680px] mx-auto px-3 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-2 sm:gap-3 h-16">
         {/* Logo & Brand Personalizado del Club */}
         <div

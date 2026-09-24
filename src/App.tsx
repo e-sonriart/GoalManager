@@ -109,6 +109,7 @@ const MainContent: React.FC = () => {
         setActiveTab={setActiveTab}
         onOpenGoogleConfig={() => setIsConfigModalOpen(true)}
         onOpenSidePanel={() => setIsSidePanelOpen(true)}
+        offsetForSidePanel={vistaPC}
       />
 
       {/* Contenedor Principal Expandido al MÃ¡ximo y Contenido sin Scroll Horizontal */}
@@ -194,7 +195,7 @@ const MainContent: React.FC = () => {
       </main>
 
       {/* Footer Expandido en PC */}
-      <footer className="hidden lg:block bg-gray-950 border-t border-gray-800 text-gray-400 py-8 px-6 mt-auto">
+      <footer className={`hidden lg:block bg-gray-950 border-t border-gray-800 text-gray-400 py-8 px-6 mt-auto ${vistaPC ? 'lg:ml-80' : ''}`}>
         <div className="max-w-7xl 2xl:max-w-[1680px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-white/10 p-0.5 flex items-center justify-center border border-white/20">

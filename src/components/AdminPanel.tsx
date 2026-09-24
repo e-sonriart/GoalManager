@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useClub } from '../context/ClubContext';
-import { User, RolUsuario, Categoria, Equipo, Entrenador, Jugador, Partido, TipoFutbol } from '../types';
+import { User, RolUsuario, Categoria, Equipo, Entrenador, Jugador, Partido, TipoFutbol, Asistencia, Estadistica, EstadoAsistencia, PosicionJugador } from '../types';
 import { Modal } from './Modal';
 import { SHIELD_PRESETS, DEFAULT_CLUB_SHIELD } from '../utils/shieldPresets';
 import { TeamShield } from './TeamShield';
@@ -63,6 +63,9 @@ export const AdminPanel: React.FC = () => {
     deleteJugador,
     savePartido,
     deletePartido,
+    saveAsistencia,
+    deleteAsistencia,
+    saveEstadistica,
     getTeamEscudo,
     currentUser,
     addToast,
@@ -115,6 +118,158 @@ export const AdminPanel: React.FC = () => {
   const [catFormNombre, setCatFormNombre] = useState('');
   const [catFormTipo, setCatFormTipo] = useState<TipoFutbol>('F11');
   const [catFormTiempo, setCatFormTiempo] = useState<number>(45);
+
+  // Modal genérico de edición/Alta para hojas del Admin
+  type SheetModalKind = 'equipo' | 'jugador' | 'entrenador' | 'partido' | 'asistencia' | 'estadistica';
+  const [sheetModalKind, setSheetModalKind] = useState<SheetModalKind | null>(null);
+  const [editingSheetItem, setEditingSheetItem] = useState<Equipo | Jugador | Entrenador | Partido | Asistencia | Estadistica | null>(null);
+  const [sf, setSf] = useState<Record<string, string>>({});
+
+  const openSheetModal = (kind: SheetModalKind, item?: Equipo | Jugador | Entrenador | Partido | Asistencia | Estadistica | null) => {
+    setSheetModalKind(kind);
+    setEditingSheetItem(item ?? null);
+    if (kind === 'equipo') {
+      const eq = item as Equipo | undefined;
+      setSf({
+        nombre: eq?.nombre || '',
+        categoria: eq?.categoria || categorias[0]?.nombre || '',
+        letra: eq?.letra || 'A',
+        division: eq?.division || '',
+        grupo: eq?.grupo || '',
+        linkClasificacion: eq?.linkClasificacion || '',
+        entrenador: eq?.entrenador || '',
+        escudo: eq?.escudo || ''
+      });
+    } else if (kind === 'jugador') {
+      const j = item as Jugador | undefined;
+      setSf({
+        nombre: j?.nombre || '',
+        dorsal: j?.dorsal !== undefined && j?.dorsal !== null ? String(j.dorsal) : '',
+        posicion: j?.posicion || 'Delantero',
+        categoria: j?.categoria || categorias[0]?.nombre || '',
+        equipo: j?.equipo || equipos[0]?.nombre || '',
+        fechaAlta: j?.fechaAlta || new Date().toISOString().split('T')[0]
+      });
+    } else if (kind === 'entrenador') {
+      const ent = item as Entrenador | undefined;
+      setSf({ nombre: ent?.nombre || '', telefono: ent?.telefono || '' });
+    } else if (kind === 'partido') {
+      const p = item as Partido | undefined;
+      const clubTeam = p?.equipo || (p && equipos.some(e => e.nombre === p.local) ? p.local : p?.visitante) || equipos[0]?.nombre || '';
+      const isClubLocal = p ? p.local === clubTeam : true;
+      const cond = p?.condicion || (p ? (isClubLocal ? 'casa' : 'fuera') : 'casa');
+      const rival = p?.rival || (p ? (cond === 'casa' ? p.visitante : p.local) : '');
+      setSf({
+        equipo: clubTeam,
+        condicion: cond,
+        rival,
+        fecha: p?.fecha || '',
+        categoria: p?.categoria || categorias[0]?.nombre || '',
+        campo: p?.campo || '',
+        tipo: p?.tipo || 'Liga',
+        jornada: p?.jornada !== undefined && p?.jornada !== null ? String(p.jornada) : '',
+        golesLocal: p?.golesLocal !== undefined && p?.golesLocal !== null ? String(p.golesLocal) : '',
+        golesVisitante: p?.golesVisitante !== undefined && p?.golesVisitante !== null ? String(p.golesVisitante) : '',
+        finalizado: p?.finalizado ? '1' : '0',
+        horaConvocatoria: p?.horaConvocatoria || ''
+      });
+    } else if (kind === 'asistencia') {
+      const a = item as Asistencia | undefined;
+      setSf({
+        jugadorId: a?.jugadorId || jugadores[0]?.id || '',
+        fecha: a?.fecha || '',
+        estado: a?.estado || 'asiste'
+      });
+    } else if (kind === 'estadistica') {
+      const st = item as Estadistica | undefined;
+      setSf({
+        jugadorId: st?.jugadorId || jugadores[0]?.id || '',
+        goles: String(st?.goles ?? 0),
+        asistencias: String(st?.asistencias ?? 0),
+        tarjetas: String(st?.tarjetas ?? 0),
+        partidosJugados: String(st?.partidosJugados ?? 0)
+      });
+    }
+  };
+
+  const handleSaveSheetForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sheetModalKind) return;
+    if (sheetModalKind === 'equipo') {
+      if (!sf.nombre.trim()) return;
+      await saveEquipo({
+        id: (editingSheetItem as Equipo | null)?.id,
+        nombre: sf.nombre.trim(),
+        categoria: sf.categoria || categorias[0]?.nombre || 'Senior',
+        letra: sf.letra.trim().toUpperCase() || 'A',
+        division: sf.division.trim() || undefined,
+        grupo: sf.grupo.trim() || undefined,
+        linkClasificacion: sf.linkClasificacion.trim() || undefined,
+        entrenador: sf.entrenador.trim() || undefined,
+        escudo: sf.escudo.trim() || undefined
+      });
+    } else if (sheetModalKind === 'jugador') {
+      if (!sf.nombre.trim() || !sf.equipo.trim()) return;
+      await saveJugador({
+        id: (editingSheetItem as Jugador | null)?.id,
+        nombre: sf.nombre.trim(),
+        dorsal: sf.dorsal.trim() !== '' ? (Number(sf.dorsal) || sf.dorsal.trim()) : '',
+        posicion: (sf.posicion || 'Delantero') as PosicionJugador,
+        categoria: sf.categoria || categorias[0]?.nombre || 'Senior',
+        equipo: sf.equipo.trim(),
+        fechaAlta: sf.fechaAlta || (editingSheetItem as Jugador | null)?.fechaAlta || new Date().toISOString().split('T')[0]
+      });
+    } else if (sheetModalKind === 'entrenador') {
+      if (!sf.nombre.trim()) return;
+      await saveEntrenador({
+        id: (editingSheetItem as Entrenador | null)?.id,
+        nombre: sf.nombre.trim(),
+        telefono: sf.telefono.trim()
+      });
+    } else if (sheetModalKind === 'partido') {
+      if (!sf.equipo.trim() || !sf.rival.trim() || !sf.fecha) return;
+      const isCasa = sf.condicion === 'casa';
+      const local = isCasa ? sf.equipo.trim() : sf.rival.trim();
+      const visitante = isCasa ? sf.rival.trim() : sf.equipo.trim();
+      await savePartido({
+        id: (editingSheetItem as Partido | null)?.id,
+        local,
+        visitante,
+        equipo: sf.equipo.trim(),
+        condicion: (sf.condicion === 'fuera' ? 'fuera' : 'casa'),
+        rival: sf.rival.trim(),
+        fecha: sf.fecha,
+        categoria: sf.categoria || categorias[0]?.nombre || 'Senior',
+        campo: sf.campo.trim() || undefined,
+        tipo: (sf.tipo || 'Liga') as Partido['tipo'],
+        jornada: sf.tipo === 'Liga' && sf.jornada.trim() !== '' ? sf.jornada.trim() : undefined,
+        golesLocal: sf.golesLocal.trim() !== '' ? sf.golesLocal.trim() : undefined,
+        golesVisitante: sf.golesVisitante.trim() !== '' ? sf.golesVisitante.trim() : undefined,
+        finalizado: sf.finalizado === '1',
+        horaConvocatoria: sf.horaConvocatoria.trim() || undefined
+      });
+    } else if (sheetModalKind === 'asistencia') {
+      if (!sf.jugadorId || !sf.fecha) return;
+      await saveAsistencia({
+        id: (editingSheetItem as Asistencia | null)?.id,
+        jugadorId: sf.jugadorId,
+        fecha: sf.fecha,
+        estado: (sf.estado === 'no asiste' ? 'no asiste' : 'asiste') as EstadoAsistencia
+      });
+    } else if (sheetModalKind === 'estadistica') {
+      if (!sf.jugadorId) return;
+      await saveEstadistica({
+        jugadorId: sf.jugadorId,
+        goles: Number(sf.goles) || 0,
+        asistencias: Number(sf.asistencias) || 0,
+        tarjetas: Number(sf.tarjetas) || 0,
+        partidosJugados: Number(sf.partidosJugados) || 0
+      });
+    }
+    setSheetModalKind(null);
+    setEditingSheetItem(null);
+  };
+
 
   const openAddCat = () => {
     setEditingCat(null);
@@ -714,7 +869,7 @@ export const AdminPanel: React.FC = () => {
                 </div>
                 <p className="text-[11px] text-gray-500 mt-0.5">
                   {selectedSheet === 'categorias' && 'Campos: nombre | tipo (F8 o F11) | tiempojuego (minutos por parte)'}
-                  {selectedSheet === 'equipos' && 'Campos: escudo | nombre | categoria | entrenador'}
+                  {selectedSheet === 'equipos' && 'Campos: escudo | nombre | categoria | entrenador | division | grupo | linkClasificacion'}
                   {selectedSheet === 'jugadores' && 'Campos: dorsal | nombre | posicion | equipo | categoria | fechaAlta'}
                   {selectedSheet === 'entrenadores' && 'Campos: nombre | telefono'}
                   {selectedSheet === 'partidos' && 'Campos: local | visitante | fecha | categoria | equipo | hora | campo | tipo | jornada | golesLocal | golesVisitante | eventos | finalizado | convocados | titulares | formacion'}
@@ -742,6 +897,51 @@ export const AdminPanel: React.FC = () => {
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Nuevo Usuario
+                  </button>
+                )}
+                {selectedSheet === 'equipos' && (
+                  <button
+                    onClick={() => openSheetModal('equipo')}
+                    className="px-3.5 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Nuevo Equipo
+                  </button>
+                )}
+                {selectedSheet === 'jugadores' && (
+                  <button
+                    onClick={() => openSheetModal('jugador')}
+                    className="px-3.5 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Nuevo Jugador
+                  </button>
+                )}
+                {selectedSheet === 'entrenadores' && (
+                  <button
+                    onClick={() => openSheetModal('entrenador')}
+                    className="px-3.5 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Nuevo Entrenador
+                  </button>
+                )}
+                {selectedSheet === 'partidos' && (
+                  <button
+                    onClick={() => openSheetModal('partido')}
+                    className="px-3.5 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Nuevo Partido
+                  </button>
+                )}
+                {selectedSheet === 'asistencias' && (
+                  <button
+                    onClick={() => openSheetModal('asistencia')}
+                    className="px-3.5 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Nueva Asistencia
                   </button>
                 )}
                 <button
@@ -853,6 +1053,7 @@ export const AdminPanel: React.FC = () => {
                       <th className="py-3 px-4">Escudo</th>
                       <th className="py-3 px-4">Nombre del Equipo</th>
                       <th className="py-3 px-4">Categoría</th>
+                      <th className="py-3 px-4">División / Grupo</th>
                       <th className="py-3 px-4">Entrenador</th>
                       <th className="py-3 px-4">Plantilla</th>
                       <th className="py-3 px-4 text-right">Acciones</th>
@@ -876,17 +1077,44 @@ export const AdminPanel: React.FC = () => {
                                 {eq.categoria}
                               </span>
                             </td>
+                            <td className="py-2.5 px-4 text-gray-600">
+                              {eq.division || eq.grupo ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {eq.division && (
+                                    <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[11px] border border-blue-100 font-medium">
+                                      {eq.division}
+                                    </span>
+                                  )}
+                                  {eq.grupo && (
+                                    <span className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-[11px] border border-purple-100 font-medium">
+                                      {eq.grupo}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
                             <td className="py-2.5 px-4 text-gray-700">{eq.entrenador}</td>
                             <td className="py-2.5 px-4 font-athletic font-bold text-gray-800">{numJug} Jugadores</td>
                             <td className="py-2.5 px-4 text-right">
-                              <button
-                                onClick={() => {
-                                  if (confirm(`¿Eliminar equipo ${eq.nombre}?`)) deleteEquipo(eq.id);
-                                }}
-                                className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => openSheetModal('equipo', eq)}
+                                  className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                                  title="Editar equipo"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`¿Eliminar equipo ${eq.nombre}?`)) deleteEquipo(eq.id);
+                                  }}
+                                  className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -929,14 +1157,23 @@ export const AdminPanel: React.FC = () => {
                           <td className="py-2.5 px-4 text-gray-600">{jugador.categoria}</td>
                           <td className="py-2.5 px-4 text-gray-400 font-mono text-[11px]">{jugador.fechaAlta}</td>
                           <td className="py-2.5 px-4 text-right">
-                            <button
-                              onClick={() => {
-                                if (confirm(`¿Eliminar jugador ${jugador.nombre}?`)) deleteJugador(jugador.id);
-                              }}
-                              className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => openSheetModal('jugador', jugador)}
+                                className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                                title="Editar jugador"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`¿Eliminar jugador ${jugador.nombre}?`)) deleteJugador(jugador.id);
+                                }}
+                                className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -977,14 +1214,23 @@ export const AdminPanel: React.FC = () => {
                               </div>
                             </td>
                             <td className="py-3 px-4 text-right">
-                              <button
-                                onClick={() => {
-                                  if (confirm(`¿Eliminar entrenador ${ent.nombre}?`)) deleteEntrenador(ent.id);
-                                }}
-                                className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => openSheetModal('entrenador', ent)}
+                                  className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                                  title="Editar entrenador"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`¿Eliminar entrenador ${ent.nombre}?`)) deleteEntrenador(ent.id);
+                                  }}
+                                  className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1040,16 +1286,25 @@ export const AdminPanel: React.FC = () => {
                             )}
                           </td>
                           <td className="py-3 px-4 text-right">
-                            <button
-                              onClick={() => {
-                                if (confirm(`¿Eliminar partido ${partido.local} vs ${partido.visitante}?`)) {
-                                  deletePartido(partido.id);
-                                }
-                              }}
-                              className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => openSheetModal('partido', partido)}
+                                className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                                title="Editar partido"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`¿Eliminar partido ${partido.local} vs ${partido.visitante}?`)) {
+                                    deletePartido(partido.id);
+                                  }
+                                }}
+                                className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1119,6 +1374,7 @@ export const AdminPanel: React.FC = () => {
                       <th className="py-3 px-4">Futbolista</th>
                       <th className="py-3 px-4">Equipo</th>
                       <th className="py-3 px-4">Asistencia</th>
+                      <th className="py-3 px-4 text-right">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -1140,6 +1396,25 @@ export const AdminPanel: React.FC = () => {
                               {asist.estado}
                             </span>
                           </td>
+                          <td className="py-2.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => openSheetModal('asistencia', asist)}
+                                className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                                title="Editar asistencia"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm('¿Eliminar este registro de asistencia?')) deleteAsistencia(asist.id);
+                                }}
+                                className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -1160,6 +1435,7 @@ export const AdminPanel: React.FC = () => {
                       <th className="py-3 px-4 text-center">Asistencias</th>
                       <th className="py-3 px-4 text-center">Tarjetas</th>
                       <th className="py-3 px-4 text-center">Partidos</th>
+                      <th className="py-3 px-4 text-right">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -1180,6 +1456,15 @@ export const AdminPanel: React.FC = () => {
                           </td>
                           <td className="py-2.5 px-4 text-center font-athletic font-bold text-gray-600">
                             {stat.partidosJugados}
+                          </td>
+                          <td className="py-2.5 px-4 text-right">
+                            <button
+                              onClick={() => openSheetModal('estadistica', stat)}
+                              className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                              title="Editar estadísticas"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
                           </td>
                         </tr>
                       );
@@ -1737,6 +2022,472 @@ export const AdminPanel: React.FC = () => {
               className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-colors shadow-md shadow-orange-500/20"
             >
               {editingCat ? 'Guardar Cambios' : 'Crear Categoría'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal genérico: edición/alta de registros de hojas */}
+      <Modal
+        isOpen={sheetModalKind !== null}
+        onClose={() => {
+          setSheetModalKind(null);
+          setEditingSheetItem(null);
+        }}
+        title={
+          editingSheetItem
+            ? `Editar ${sheetModalKind === 'equipo' ? 'Equipo' : sheetModalKind === 'jugador' ? 'Jugador' : sheetModalKind === 'entrenador' ? 'Entrenador' : sheetModalKind === 'partido' ? 'Partido' : sheetModalKind === 'asistencia' ? 'Asistencia' : 'Estadísticas'}`
+            : `Nuevo ${sheetModalKind === 'equipo' ? 'Equipo' : sheetModalKind === 'jugador' ? 'Jugador' : sheetModalKind === 'entrenador' ? 'Entrenador' : sheetModalKind === 'partido' ? 'Partido' : sheetModalKind === 'asistencia' ? 'Asistencia' : 'Registro'}`
+        }
+        subtitle="Completa los campos y guarda los cambios en la hoja seleccionada"
+        maxWidth="max-w-lg"
+      >
+        <form onSubmit={handleSaveSheetForm} className="space-y-4">
+          {sheetModalKind === 'equipo' && (
+            <>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Nombre del Equipo *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Alevín A"
+                  value={sf.nombre || ''}
+                  onChange={e => setSf({ ...sf, nombre: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Categoría</label>
+                  <select
+                    value={sf.categoria || ''}
+                    onChange={e => setSf({ ...sf, categoria: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    {categorias.map(c => (
+                      <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Letra</label>
+                  <input
+                    type="text"
+                    maxLength={3}
+                    value={sf.letra || ''}
+                    onChange={e => setSf({ ...sf, letra: e.target.value.toUpperCase() })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">División</label>
+                  <input
+                    type="text"
+                    placeholder="Ej: 2ª División"
+                    value={sf.division || ''}
+                    onChange={e => setSf({ ...sf, division: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Grupo</label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Grupo 3"
+                    value={sf.grupo || ''}
+                    onChange={e => setSf({ ...sf, grupo: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Link de clasificación</label>
+                <input
+                  type="url"
+                  placeholder="https://... (clasificación oficial)"
+                  value={sf.linkClasificacion || ''}
+                  onChange={e => setSf({ ...sf, linkClasificacion: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Entrenador</label>
+                  <input
+                    type="text"
+                    value={sf.entrenador || ''}
+                    onChange={e => setSf({ ...sf, entrenador: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Escudo (URL)</label>
+                  <input
+                    type="url"
+                    value={sf.escudo || ''}
+                    onChange={e => setSf({ ...sf, escudo: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {sheetModalKind === 'jugador' && (
+            <>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Nombre *</label>
+                <input
+                  type="text"
+                  required
+                  value={sf.nombre || ''}
+                  onChange={e => setSf({ ...sf, nombre: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Dorsal</label>
+                  <input
+                    type="text"
+                    value={sf.dorsal || ''}
+                    onChange={e => setSf({ ...sf, dorsal: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Posición</label>
+                  <select
+                    value={sf.posicion || 'Delantero'}
+                    onChange={e => setSf({ ...sf, posicion: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    <option value="Portero">Portero</option>
+                    <option value="Defensa">Defensa</option>
+                    <option value="Centrocampista">Centrocampista</option>
+                    <option value="Delantero">Delantero</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Equipo *</label>
+                  <select
+                    required
+                    value={sf.equipo || ''}
+                    onChange={e => setSf({ ...sf, equipo: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    {equipos.map(eq => (
+                      <option key={eq.id} value={eq.nombre}>{eq.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Categoría</label>
+                  <select
+                    value={sf.categoria || ''}
+                    onChange={e => setSf({ ...sf, categoria: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    {categorias.map(c => (
+                      <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Fecha de Alta</label>
+                <input
+                  type="date"
+                  value={sf.fechaAlta || ''}
+                  onChange={e => setSf({ ...sf, fechaAlta: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+            </>
+          )}
+
+          {sheetModalKind === 'entrenador' && (
+            <>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Nombre *</label>
+                <input
+                  type="text"
+                  required
+                  value={sf.nombre || ''}
+                  onChange={e => setSf({ ...sf, nombre: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Teléfono</label>
+                <input
+                  type="text"
+                  value={sf.telefono || ''}
+                  onChange={e => setSf({ ...sf, telefono: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+            </>
+          )}
+
+          {sheetModalKind === 'partido' && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Nuestro Equipo *</label>
+                  <select
+                    required
+                    value={sf.equipo || ''}
+                    onChange={e => setSf({ ...sf, equipo: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    {equipos.map(eq => (
+                      <option key={eq.id} value={eq.nombre}>{eq.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Condición *</label>
+                  <select
+                    value={sf.condicion || 'casa'}
+                    onChange={e => setSf({ ...sf, condicion: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    <option value="casa">En casa (local)</option>
+                    <option value="fuera">Fuera (visitante)</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Rival *</label>
+                <input
+                  type="text"
+                  required
+                  value={sf.rival || ''}
+                  onChange={e => setSf({ ...sf, rival: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Fecha y Hora *</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={sf.fecha || ''}
+                    onChange={e => setSf({ ...sf, fecha: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Categoría</label>
+                  <select
+                    value={sf.categoria || ''}
+                    onChange={e => setSf({ ...sf, categoria: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    {categorias.map(c => (
+                      <option key={c.id} value={c.nombre}>{c.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Tipo</label>
+                  <select
+                    value={sf.tipo || 'Liga'}
+                    onChange={e => setSf({ ...sf, tipo: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    <option value="Liga">Liga</option>
+                    <option value="Amistoso">Amistoso</option>
+                    <option value="Torneo">Torneo</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Jornada</label>
+                  <input
+                    type="text"
+                    value={sf.jornada || ''}
+                    onChange={e => setSf({ ...sf, jornada: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Campo</label>
+                  <input
+                    type="text"
+                    value={sf.campo || ''}
+                    onChange={e => setSf({ ...sf, campo: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Goles Local</label>
+                  <input
+                    type="text"
+                    value={sf.golesLocal || ''}
+                    onChange={e => setSf({ ...sf, golesLocal: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Goles Visitante</label>
+                  <input
+                    type="text"
+                    value={sf.golesVisitante || ''}
+                    onChange={e => setSf({ ...sf, golesVisitante: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Estado</label>
+                  <select
+                    value={sf.finalizado || '0'}
+                    onChange={e => setSf({ ...sf, finalizado: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    <option value="0">Por disputar</option>
+                    <option value="1">Finalizado</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Hora Convocatoria</label>
+                <input
+                  type="datetime-local"
+                  value={sf.horaConvocatoria || ''}
+                  onChange={e => setSf({ ...sf, horaConvocatoria: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+            </>
+          )}
+
+          {sheetModalKind === 'asistencia' && (
+            <>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Jugador *</label>
+                <select
+                  required
+                  value={sf.jugadorId || ''}
+                  onChange={e => setSf({ ...sf, jugadorId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                >
+                  {jugadores.map(j => (
+                    <option key={j.id} value={j.id}>{j.nombre} ({j.equipo})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Fecha *</label>
+                  <input
+                    type="date"
+                    required
+                    value={sf.fecha || ''}
+                    onChange={e => setSf({ ...sf, fecha: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Estado</label>
+                  <select
+                    value={sf.estado || 'asiste'}
+                    onChange={e => setSf({ ...sf, estado: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    <option value="asiste">Asiste</option>
+                    <option value="no asiste">No asiste</option>
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
+
+          {sheetModalKind === 'estadistica' && (
+            <>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Jugador *</label>
+                <select
+                  required
+                  value={sf.jugadorId || ''}
+                  onChange={e => setSf({ ...sf, jugadorId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                >
+                  {jugadores.map(j => (
+                    <option key={j.id} value={j.id}>{j.nombre} ({j.equipo})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Goles</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={sf.goles || '0'}
+                    onChange={e => setSf({ ...sf, goles: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Asistencias</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={sf.asistencias || '0'}
+                    onChange={e => setSf({ ...sf, asistencias: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Tarjetas</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={sf.tarjetas || '0'}
+                    onChange={e => setSf({ ...sf, tarjetas: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Partidos Jugados</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={sf.partidosJugados || '0'}
+                    onChange={e => setSf({ ...sf, partidosJugados: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-gray-150">
+            <button
+              type="button"
+              onClick={() => {
+                setSheetModalKind(null);
+                setEditingSheetItem(null);
+              }}
+              className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-xs font-semibold hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-colors shadow-md shadow-orange-500/20"
+            >
+              {editingSheetItem ? 'Guardar Cambios' : 'Crear Registro'}
             </button>
           </div>
         </form>

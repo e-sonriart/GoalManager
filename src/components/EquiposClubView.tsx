@@ -300,6 +300,9 @@ export const EquiposClubView: React.FC = () => {
   const [eqAno, setEqAno] = useState<AnoEquipo | ''>('');
   const [eqEntrenadores, setEqEntrenadores] = useState<string[]>([]);
   const [eqEscudo, setEqEscudo] = useState('');
+  const [eqDivision, setEqDivision] = useState('');
+  const [eqGrupo, setEqGrupo] = useState('');
+  const [eqLinkClasificacion, setEqLinkClasificacion] = useState('');
 
   // Estados formulario Entrenador
   const [entNombre, setEntNombre] = useState('');
@@ -330,6 +333,9 @@ export const EquiposClubView: React.FC = () => {
       const listEnt = equipo.entrenadores || (equipo.entrenador ? equipo.entrenador.split(',').map(s => s.trim()).filter(Boolean) : [entrenadores[0]?.nombre || '']);
       setEqEntrenadores(listEnt);
       setEqEscudo(equipo.escudo || '');
+      setEqDivision(equipo.division || '');
+      setEqGrupo(equipo.grupo || '');
+      setEqLinkClasificacion(equipo.linkClasificacion || '');
     } else {
       setEditingItem(null);
       const defaultCat = categorias[0]?.nombre || 'Senior';
@@ -338,6 +344,9 @@ export const EquiposClubView: React.FC = () => {
       setEqAno('');
       setEqEntrenadores([entrenadores[0]?.nombre || '']);
       setEqEscudo('');
+      setEqDivision('');
+      setEqGrupo('');
+      setEqLinkClasificacion('');
     }
     setModalType('equipo');
   };
@@ -369,7 +378,10 @@ export const EquiposClubView: React.FC = () => {
       ano: (isF8 && eqAno) ? (eqAno as AnoEquipo) : undefined,
       entrenadores: cleanEntrenadores,
       entrenador: cleanEntrenadores.join(', '),
-      escudo: eqEscudo.trim() || undefined
+      escudo: eqEscudo.trim() || undefined,
+      division: eqDivision.trim() || undefined,
+      grupo: eqGrupo.trim() || undefined,
+      linkClasificacion: eqLinkClasificacion.trim() || undefined
     });
     setModalType(null);
   };
@@ -977,6 +989,51 @@ export const EquiposClubView: React.FC = () => {
                 value={eqEscudo}
                 onChange={e => setEqEscudo(e.target.value)}
                 className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Liga: división, grupo y clasificación */}
+          <div className="bg-blue-50/50 p-3 rounded-2xl border border-blue-200/70 space-y-3">
+            <div className="text-[10px] uppercase font-bold tracking-wider text-blue-800">
+              Liga / Competición (opcional)
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  División
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: 2ª División"
+                  value={eqDivision}
+                  onChange={e => setEqDivision(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Grupo
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Grupo 3"
+                  value={eqGrupo}
+                  onChange={e => setEqGrupo(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                Link de clasificación
+              </label>
+              <input
+                type="url"
+                placeholder="https://... (clasificación oficial de la liga)"
+                value={eqLinkClasificacion}
+                onChange={e => setEqLinkClasificacion(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
               />
             </div>
           </div>

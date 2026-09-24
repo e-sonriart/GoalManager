@@ -108,6 +108,8 @@ interface ClubContextType {
   batchSetConvocatoriaEstado: (partidoId: string, jugadorIds: string[], estado: EstadoConvocatoria) => Promise<void>;
 
   // Asistencias
+  saveAsistencia: (asistencia: Partial<Asistencia>) => Promise<boolean>;
+  deleteAsistencia: (id: string) => Promise<boolean>;
   toggleAsistencia: (jugadorId: string, fecha: string, estado: EstadoAsistencia) => Promise<void>;
   batchMarkAsistencia: (fecha: string, jugadorIds: string[], estado: EstadoAsistencia) => Promise<void>;
 
@@ -793,6 +795,34 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [partidos, savePartido, applyEventStats]);
 
   // Asistencias
+  const saveAsistencia = useCallback(async (asistencia: Partial<Asistencia>): Promise<boolean> => {
+    try {
+      if (asistencia.id) {
+        const updated = await asistenciasService.update(asistencia as Asistencia);
+        setAsistencias(prev => prev.map(a => a.id === updated.id ? updated : a));
+      } else {
+        const created = await asistenciasService.create(asistencia as Omit<Asistencia, 'id'>);
+        setAsistencias(prev => [...prev, created]);
+      }
+      addToast({ type: 'success', title: 'Asistencia guardada', message: 'Registro actualizado.' });
+      return true;
+    } catch {
+      addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar la asistencia.' });
+      return false;
+    }
+  }, [addToast]);
+
+  const deleteAsistencia = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      await asistenciasService.delete(id);
+      setAsistencias(prev => prev.filter(a => a.id !== id));
+      return true;
+    } catch {
+      addToast({ type: 'error', title: 'Error', message: 'No se pudo eliminar la asistencia.' });
+      return false;
+    }
+  }, [addToast]);
+
   const toggleAsistencia = useCallback(async (jugadorId: string, fecha: string, estado: EstadoAsistencia): Promise<void> => {
     const existing = asistencias.find(a => a.jugadorId === jugadorId && a.fecha === fecha);
     if (existing) {
@@ -1022,6 +1052,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setConvocatoriaEstado,
     batchSetConvocatoriaEstado,
 
+    saveAsistencia,
+    deleteAsistencia,
     toggleAsistencia,
     batchMarkAsistencia,
 
@@ -1053,7 +1085,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     saveJugador, deleteJugador, saveEquipo, deleteEquipo, saveCategoria, deleteCategoria,
     saveEntrenador, deleteEntrenador, savePartido, deletePartido, saveSesion, deleteSesion,
     toggleConvocatoria, setConvocatoriaEstado, batchSetConvocatoriaEstado,
-    toggleAsistencia, batchMarkAsistencia, saveEstadistica, applyEventStats,
+    saveAsistencia, deleteAsistencia, toggleAsistencia, batchMarkAsistencia, saveEstadistica, applyEventStats,
     isConfigModalOpen, setIsConfigModalOpen, exportAllSheets,
     saveUser, deleteUser, exportSheet
   ]);

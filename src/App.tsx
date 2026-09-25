@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+﻿import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { ClubProvider, useClub } from './context/ClubContext';
 import { Navbar, ActiveTab } from './components/Navbar';
 import { LoginScreen } from './components/LoginScreen';
@@ -13,16 +13,37 @@ import { TeamShield } from './components/TeamShield';
 import { useIsDesktop } from './hooks/useMediaQuery';
 import { Loader2, Radio, RefreshCw, TriangleAlert } from 'lucide-react';
 
-// Carga diferida de vistas (code splitting): reduce el JS inicial y acelera la primera carga
-const DashboardView = lazy(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
-const EquiposClubView = lazy(() => import('./components/EquiposClubView').then(m => ({ default: m.EquiposClubView })));
-const PartidosView = lazy(() => import('./components/PartidosView').then(m => ({ default: m.PartidosView })));
-const EntrenamientosView = lazy(() => import('./components/EntrenamientosView').then(m => ({ default: m.EntrenamientosView })));
-const ConvocatoriasView = lazy(() => import('./components/ConvocatoriasView').then(m => ({ default: m.ConvocatoriasView })));
-const AlineacionView = lazy(() => import('./components/AlineacionView').then(m => ({ default: m.AlineacionView })));
-const EventosPartidoView = lazy(() => import('./components/EventosPartidoView').then(m => ({ default: m.EventosPartidoView })));
-const EstadisticasRankingView = lazy(() => import('./components/EstadisticasRankingView').then(m => ({ default: m.EstadisticasRankingView })));
-const AdminPanel = lazy(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
+// Carga diferida de vistas (code splitting): reduce el JS inicial y acelera la primera carga.
+// Si un chunk desaparece tras un despliegue nuevo (404), recargar una vez para tomar el HTML nuevo.
+const CHUNK_RETRY_KEY = 'gm_chunk_retry_ts';
+
+const lazyView = <T extends React.ComponentType<unknown>>(
+  factory: () => Promise<{ default: T }>
+): React.LazyExoticComponent<T> =>
+  React.lazy(() =>
+    factory().catch(err => {
+      try {
+        const last = Number(sessionStorage.getItem(CHUNK_RETRY_KEY) || 0);
+        if (Date.now() - last > 60000) {
+          sessionStorage.setItem(CHUNK_RETRY_KEY, String(Date.now()));
+          window.location.reload();
+        }
+      } catch {
+        // sessionStorage no disponible: dejar fallar y mostrar el ErrorBoundary
+      }
+      throw err;
+    })
+  );
+
+const DashboardView = lazyView(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
+const EquiposClubView = lazyView(() => import('./components/EquiposClubView').then(m => ({ default: m.EquiposClubView })));
+const PartidosView = lazyView(() => import('./components/PartidosView').then(m => ({ default: m.PartidosView })));
+const EntrenamientosView = lazyView(() => import('./components/EntrenamientosView').then(m => ({ default: m.EntrenamientosView })));
+const ConvocatoriasView = lazyView(() => import('./components/ConvocatoriasView').then(m => ({ default: m.ConvocatoriasView })));
+const AlineacionView = lazyView(() => import('./components/AlineacionView').then(m => ({ default: m.AlineacionView })));
+const EventosPartidoView = lazyView(() => import('./components/EventosPartidoView').then(m => ({ default: m.EventosPartidoView })));
+const EstadisticasRankingView = lazyView(() => import('./components/EstadisticasRankingView').then(m => ({ default: m.EstadisticasRankingView })));
+const AdminPanel = lazyView(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
 
 const VIEW_FALLBACK: React.FC<{ label?: string }> = ({ label }) => (
   <div className="flex flex-col items-center justify-center py-20 text-gray-400">

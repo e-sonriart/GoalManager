@@ -234,7 +234,9 @@ export const EquiposClubView: React.FC = () => {
       categoria: targetEq?.categoria || editingPlayer?.categoria || selectedEquipoForSquad?.categoria || '',
       equipo: playerEquipo.trim(),
       temporada: clubConfig.temporada || '2025/2026',
-      fechaAlta: editingPlayer?.fechaAlta || new Date().toISOString().split('T')[0]
+      fechaAlta: editingPlayer?.fechaAlta || new Date().toISOString().split('T')[0],
+      fechaNacimiento: editingPlayer?.fechaNacimiento || '',
+      pass: editingPlayer?.pass || ''
     });
     setIsPlayerModalOpen(false);
   };

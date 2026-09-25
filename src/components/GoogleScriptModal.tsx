@@ -138,9 +138,9 @@ export const GoogleScriptModal: React.FC<GoogleScriptModalProps> = ({ isOpen, on
           <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
               {[
-                { name: '1. jugadores', cols: 'id | nombre | dorsal | posicion | categoria | equipo | fechaAlta' },
+                { name: '1. jugadores', cols: 'id | nombre | dorsal | posicion | categoria | equipo | fechaAlta | fechaNacimiento | pass' },
                 { name: '2. equipos', cols: 'id | nombre | categoria | letra | entrenadores | escudo | temporada' },
-                { name: '3. categorias', cols: 'id | nombre | tipo | tiempojuego' },
+                { name: '3. categorias', cols: 'id | nombre | tipo | tiempojuego | anos' },
                 { name: '4. entrenadores', cols: 'id | nombre | telefono' },
                 { name: '5. partidos', cols: 'id | local | visitante | fecha | goles | eventos | finalizado | convocados | titulares | formacion' },
                 { name: '6. asistencias', cols: 'id | jugadorId | fecha | estado' },

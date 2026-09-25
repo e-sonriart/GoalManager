@@ -122,6 +122,7 @@ export const AdminPanel: React.FC = () => {
   const [catFormNombre, setCatFormNombre] = useState('');
   const [catFormTipo, setCatFormTipo] = useState<TipoFutbol>('F11');
   const [catFormTiempo, setCatFormTiempo] = useState<number>(45);
+  const [catFormAnos, setCatFormAnos] = useState('');
 
   // Modal genérico de edición/Alta para hojas del Admin
   type SheetModalKind = 'equipo' | 'jugador' | 'entrenador' | 'partido' | 'asistencia' | 'estadistica';
@@ -152,7 +153,9 @@ export const AdminPanel: React.FC = () => {
         posicion: j?.posicion || 'Delantero',
         categoria: j?.categoria || categorias[0]?.nombre || '',
         equipo: j ? (j.equipo || '') : (equipos[0]?.nombre || ''),
-        fechaAlta: j?.fechaAlta || new Date().toISOString().split('T')[0]
+        fechaAlta: j?.fechaAlta || new Date().toISOString().split('T')[0],
+        fechaNacimiento: j?.fechaNacimiento || '',
+        pass: j?.pass || ''
       });
     } else if (kind === 'entrenador') {
       const ent = item as Entrenador | undefined;
@@ -221,7 +224,9 @@ export const AdminPanel: React.FC = () => {
         posicion: (sf.posicion || 'Delantero') as PosicionJugador,
         categoria: sf.categoria || categorias[0]?.nombre || 'Senior',
         equipo: sf.equipo.trim(),
-        fechaAlta: sf.fechaAlta || (editingSheetItem as Jugador | null)?.fechaAlta || new Date().toISOString().split('T')[0]
+        fechaAlta: sf.fechaAlta || (editingSheetItem as Jugador | null)?.fechaAlta || new Date().toISOString().split('T')[0],
+        fechaNacimiento: sf.fechaNacimiento || '',
+        pass: sf.pass || ''
       });
     } else if (sheetModalKind === 'entrenador') {
       if (!sf.nombre.trim()) return;
@@ -280,6 +285,7 @@ export const AdminPanel: React.FC = () => {
     setCatFormNombre('');
     setCatFormTipo('F11');
     setCatFormTiempo(45);
+    setCatFormAnos('');
     setIsCatModalOpen(true);
   };
 
@@ -296,6 +302,7 @@ export const AdminPanel: React.FC = () => {
     );
     setCatFormTipo(defTipo);
     setCatFormTiempo(Number(cat.tiempojuego || cat.tiempoJuego) || (defTipo === 'F8' ? 25 : 45));
+    setCatFormAnos(cat.anos || '');
     setIsCatModalOpen(true);
   };
 
@@ -306,7 +313,8 @@ export const AdminPanel: React.FC = () => {
       id: editingCat?.id,
       nombre: catFormNombre.trim(),
       tipo: catFormTipo,
-      tiempojuego: Number(catFormTiempo) || (catFormTipo === 'F8' ? 25 : 45)
+      tiempojuego: Number(catFormTiempo) || (catFormTipo === 'F8' ? 25 : 45),
+      anos: catFormAnos.trim()
     });
     setIsCatModalOpen(false);
   };
@@ -874,7 +882,7 @@ export const AdminPanel: React.FC = () => {
                 <p className="text-[11px] text-gray-500 mt-0.5">
                   {selectedSheet === 'categorias' && 'Campos: nombre | tipo (F8 o F11) | tiempojuego (minutos por parte)'}
                   {selectedSheet === 'equipos' && 'Campos: escudo | nombre | categoria | entrenador | division | grupo | linkClasificacion'}
-                  {selectedSheet === 'jugadores' && 'Campos: dorsal | nombre | posicion | equipo | categoria | fechaAlta'}
+                  {selectedSheet === 'jugadores' && 'Campos: dorsal | nombre | posicion | equipo | categoria | fechaAlta | fechaNacimiento | pass'}
                   {selectedSheet === 'entrenadores' && 'Campos: nombre | telefono'}
                   {selectedSheet === 'partidos' && 'Campos: local | visitante | fecha | categoria | equipo | hora | campo | tipo | jornada | golesLocal | golesVisitante | eventos | finalizado | convocados | titulares | formacion'}
                   {selectedSheet === 'usuarios' && 'Campos: nombre | email | rol | equipo'}
@@ -978,6 +986,7 @@ export const AdminPanel: React.FC = () => {
                     <tr>
                       <th className="py-3 px-4">Categoría</th>
                       <th className="py-3 px-4">Modalidad</th>
+                      <th className="py-3 px-4">Años</th>
                       <th className="py-3 px-4">Tiempo de Juego (Reglamentario)</th>
                       <th className="py-3 px-4">Equipos Vinculados</th>
                       <th className="py-3 px-4 text-right">Acciones</th>
@@ -1004,6 +1013,9 @@ export const AdminPanel: React.FC = () => {
                               >
                                 ⚽ {cat.tipo || 'F11'}
                               </span>
+                            </td>
+                            <td className="py-3 px-4 text-gray-600">
+                              {cat.anos || <span className="text-gray-400">—</span>}
                             </td>
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-2">
@@ -1203,6 +1215,8 @@ export const AdminPanel: React.FC = () => {
                                   <th className="py-2.5 px-4">Posición</th>
                                   <th className="py-2.5 px-4">Categoría</th>
                                   <th className="py-2.5 px-4">Fecha de Alta</th>
+                                  <th className="py-2.5 px-4">Fecha Nacimiento</th>
+                                  <th className="py-2.5 px-4">Pass</th>
                                   <th className="py-2.5 px-4 text-right">Acciones</th>
                                 </tr>
                               </thead>
@@ -1220,6 +1234,8 @@ export const AdminPanel: React.FC = () => {
                                     </td>
                                     <td className="py-2.5 px-4 text-gray-600">{jugador.categoria}</td>
                                     <td className="py-2.5 px-4 text-gray-400 font-mono text-[11px]">{jugador.fechaAlta}</td>
+                                    <td className="py-2.5 px-4 text-gray-400 font-mono text-[11px]">{jugador.fechaNacimiento || '—'}</td>
+                                    <td className="py-2.5 px-4 text-gray-600 font-mono text-[11px]">{jugador.pass || '—'}</td>
                                     <td className="py-2.5 px-4 text-right">
                                       <div className="flex items-center justify-end gap-1">
                                         <button
@@ -1978,6 +1994,19 @@ export const AdminPanel: React.FC = () => {
             />
           </div>
 
+          <div>
+            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+              Años (columna anos)
+            </label>
+            <input
+              type="text"
+              placeholder="Ej: 2010/2011"
+              value={catFormAnos}
+              onChange={e => setCatFormAnos(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+            />
+          </div>
+
           {/* Campo tipo: F8 o F11 */}
           <div>
             <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
@@ -2268,12 +2297,34 @@ export const AdminPanel: React.FC = () => {
                   </select>
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Fecha de Alta</label>
+                  <input
+                    type="date"
+                    value={sf.fechaAlta || ''}
+                    onChange={e => setSf({ ...sf, fechaAlta: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Fecha de Nacimiento</label>
+                  <input
+                    type="date"
+                    value={sf.fechaNacimiento || ''}
+                    onChange={e => setSf({ ...sf, fechaNacimiento: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+              </div>
               <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Fecha de Alta</label>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Pass (contraseña de acceso)</label>
                 <input
-                  type="date"
-                  value={sf.fechaAlta || ''}
-                  onChange={e => setSf({ ...sf, fechaAlta: e.target.value })}
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Contraseña con la que el jugador entra a la app"
+                  value={sf.pass || ''}
+                  onChange={e => setSf({ ...sf, pass: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 />
               </div>

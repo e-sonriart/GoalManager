@@ -9,6 +9,8 @@ export interface Jugador {
   equipo: string;
   temporada?: string; // Columna temporada
   fechaAlta: string;
+  fechaNacimiento?: string; // Fecha de nacimiento (YYYY-MM-DD)
+  pass?: string; // Contraseña de acceso del jugador
 }
 
 export type TipoFutbol = 'F8' | 'F11';
@@ -45,6 +47,7 @@ export interface Categoria {
   tiempojuego: number; // Minutos de cada parte (2 partes)
   tiempoJuego?: number; // Alias para compatibilidad de nomenclatura
   temporada?: string; // Columna temporada
+  anos?: string; // Años de la categoría (ej: "2010/2011")
 }
 
 export interface Entrenador {

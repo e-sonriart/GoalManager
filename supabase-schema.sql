@@ -6,7 +6,8 @@ create table if not exists categorias (
   nombre text,
   tipo text,
   tiempojuego int,
-  temporada text
+  temporada text,
+  anos text
 );
 
 create table if not exists entrenadores (
@@ -39,7 +40,9 @@ create table if not exists jugadores (
   categoria text,
   equipo text,
   temporada text,
-  "fechaAlta" text
+  "fechaAlta" text,
+  "fechaNacimiento" text,
+  "pass" text
 );
 
 create table if not exists estadisticas (
@@ -158,3 +161,8 @@ create table if not exists club_config (
 );
 alter table club_config enable row level security;
 create policy "rw club_config" on club_config for all using (true) with check (true);
+
+-- Nuevas columnas (ejecutar una vez en bases de datos existentes)
+alter table categorias add column if not exists anos text;
+alter table jugadores add column if not exists "fechaNacimiento" text;
+alter table jugadores add column if not exists "pass" text;

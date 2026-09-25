@@ -35,6 +35,7 @@ export interface ClubConfig {
   acronimo?: string;
   lema?: string;
   temporada?: string;
+  ts?: number; // Marca de última edición (sincronización entre dispositivos)
 }
 
 export interface Categoria {

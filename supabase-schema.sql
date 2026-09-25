@@ -145,3 +145,16 @@ create table if not exists match_clocks (
 );
 alter table match_clocks enable row level security;
 create policy "rw match_clocks" on match_clocks for all using (true) with check (true);
+
+-- Identidad del club (nombre/escudo/lema) sincronizada entre dispositivos
+create table if not exists club_config (
+  id text primary key,
+  nombre text,
+  escudo text,
+  acronimo text,
+  lema text,
+  temporada text,
+  ts bigint default 0
+);
+alter table club_config enable row level security;
+create policy "rw club_config" on club_config for all using (true) with check (true);

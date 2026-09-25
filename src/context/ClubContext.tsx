@@ -26,6 +26,7 @@ import { sesionesService } from '../services/sesiones';
 import { asistenciasService } from '../services/asistencias';
 import { estadisticasService } from '../services/estadisticas';
 import { usuariosService } from '../services/usuarios';
+import { clubConfigService } from '../services/clubConfig';
 import { apiClient, getGasUrl, setGasUrl as setGasUrlStore } from '../services/apiClient';
 import { getSupabaseUrl, getSupabaseAnonKey } from '../services/supabaseClient';
 import { exportToCsv } from '../utils/exportUtils';
@@ -147,6 +148,23 @@ const TEAM_SCOPED_ROLES = new Set<RolUsuario>(['entrenador', 'jugador']);
 
 const ClubContext = createContext<ClubContextType | undefined>(undefined);
 
+const DEFAULT_CLUB_CONFIG: ClubConfig = {
+  nombre: 'Club de Fútbol Naranja',
+  escudo: DEFAULT_CLUB_SHIELD,
+  acronimo: 'CFN',
+  lema: 'Pasión, disciplina y victoria',
+  temporada: '2025/2026'
+};
+
+const readLocalClubConfig = (): (ClubConfig & { ts?: number }) | null => {
+  try {
+    const raw = localStorage.getItem('cf_club_config');
+    return raw ? (JSON.parse(raw) as ClubConfig & { ts?: number }) : null;
+  } catch {
+    return null;
+  }
+};
+
 export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
   const [gasUrl, setGasUrlState] = useState<string>(getGasUrl());
@@ -167,23 +185,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Configuración e Identidad del Club
   const [clubConfig, setClubConfig] = useState<ClubConfig>(() => {
-    const defaultConfig: ClubConfig = {
-      nombre: 'Club de Fútbol Naranja',
-      escudo: DEFAULT_CLUB_SHIELD,
-      acronimo: 'CFN',
-      lema: 'Pasión, disciplina y victoria',
-      temporada: '2025/2026'
-    };
-    try {
-      const saved = localStorage.getItem('cf_club_config');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return { ...defaultConfig, ...parsed };
-      }
-    } catch {
-      // ignore
-    }
-    return defaultConfig;
+    const saved = readLocalClubConfig();
+    return saved ? { ...DEFAULT_CLUB_CONFIG, ...saved } : { ...DEFAULT_CLUB_CONFIG };
   });
 
   const addToast = useCallback((toast: Omit<ToastMessage, 'id'>) => {
@@ -199,17 +202,24 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const saveClubConfig = useCallback((newConfig: Partial<ClubConfig>) => {
-    setClubConfig(prev => {
-      const merged = { ...prev, ...newConfig };
+    const ts = Date.now();
+    const merged: ClubConfig = { ...clubConfig, ...newConfig, ts };
+    setClubConfig(merged);
+    try {
       localStorage.setItem('cf_club_config', JSON.stringify(merged));
-      return merged;
+    } catch {
+      // ignore
+    }
+    // Subir a Supabase para que móvil y PC compartan la misma identidad (best-effort)
+    clubConfigService.save(merged).catch(err => {
+      console.warn('[clubConfig] No se pudo sincronizar la identidad del club', err);
     });
     addToast({
       type: 'success',
       title: 'Identidad Actualizada',
       message: 'El nombre y escudo del club han sido guardados correctamente.'
     });
-  }, [addToast]);
+  }, [clubConfig, addToast]);
 
   // Mapa de escudos por equipo (cacheado para evitar búsquedas lineales en cada render)
   const escudoByTeam = useMemo(() => {
@@ -329,6 +339,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const refreshAll = useCallback(async () => {
     setLoading(true);
     try {
+      const localConfig = readLocalClubConfig();
       const [
         jugs,
         eqs,
@@ -338,7 +349,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         asists,
         stats,
         sesses,
-        usrs
+        usrs,
+        remoteConfig
       ] = await Promise.all([
         jugadoresService.getAll(),
         equiposService.getAll(),
@@ -348,7 +360,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         asistenciasService.getAll(),
         estadisticasService.getAll(),
         sesionesService.getAll(),
-        usuariosService.getAll()
+        usuariosService.getAll(),
+        clubConfigService.get()
       ]);
 
       setJugadores(jugs);
@@ -382,6 +395,30 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
 
       setUsers(sanitizedUsrs);
+
+      // Sincronizar identidad del club (nombre/escudo) entre dispositivos: gana la última edición (ts)
+      try {
+        const localTs = Number(localConfig?.ts) || 0;
+        const remoteTs = Number(remoteConfig?.ts) || 0;
+        if (remoteConfig && remoteTs > localTs) {
+          const merged: ClubConfig = {
+            ...DEFAULT_CLUB_CONFIG,
+            nombre: remoteConfig.nombre || DEFAULT_CLUB_CONFIG.nombre,
+            escudo: remoteConfig.escudo || DEFAULT_CLUB_CONFIG.escudo,
+            acronimo: remoteConfig.acronimo ?? DEFAULT_CLUB_CONFIG.acronimo,
+            lema: remoteConfig.lema ?? DEFAULT_CLUB_CONFIG.lema,
+            temporada: remoteConfig.temporada ?? DEFAULT_CLUB_CONFIG.temporada,
+            ts: remoteTs
+          };
+          localStorage.setItem('cf_club_config', JSON.stringify(merged));
+          setClubConfig(merged);
+        } else if (localConfig && localTs > remoteTs) {
+          // Este dispositivo tiene una edición más reciente → subirla al resto
+          await clubConfigService.save({ ...localConfig, ts: localTs });
+        }
+      } catch {
+        // Sincronización de identidad: mejor esfuerzo, no bloquea la carga
+      }
 
       // Restaurar SOLO la sesión guardada; si no hay sesión válida, mostrar pantalla de login
       if (!currentUser && sanitizedUsrs.length > 0) {

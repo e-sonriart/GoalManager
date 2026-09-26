@@ -4,7 +4,7 @@ import { Estadistica, Partido } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import { HighlightIcon } from './MatchHighlights';
-import { eventsForPartido, minutoNum } from '../utils/matchHighlights';
+import { eventsForPartido, minutoNum, attributeJugadorId, rosterForPartido } from '../utils/matchHighlights';
 import { useRemoteClocks } from '../hooks/useRemoteClocks';
 import type { MatchEvent, TipoEvento } from '../utils/matchClock';
 import {
@@ -19,7 +19,9 @@ import {
   Zap,
   Target,
   RefreshCw,
-  History
+  History,
+  ChevronDown,
+  Info
 } from 'lucide-react';
 
 const fmtFechaCorta = (fecha: string): string => {
@@ -122,6 +124,72 @@ export const EstadisticasRankingView: React.FC = () => {
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partidos, remoteClocks, activeTab]);
+
+  /** Jugador con el desplegable de asistencias abierto (pestaña Asistencias) */
+  const [openAssistPlayer, setOpenAssistPlayer] = useState<string | null>(null);
+
+  /** Asistencias propias de cada jugador, atribuidas por jugadorId o «#dorsal nombre» */
+  const assistsByJugador = useMemo(() => {
+    const map = new Map<string, Array<{ key: string; evento: MatchEvent; partido: Partido }>>();
+    for (const p of partidos) {
+      const evs = eventsForPartido(p, remoteClocks);
+      if (evs.length === 0) continue;
+      const roster = rosterForPartido(p, jugadores);
+      for (const e of evs) {
+        if (e.tipo !== 'asistencia') continue;
+        const jid = attributeJugadorId(e, roster, jugadores);
+        if (!jid) continue;
+        if (!map.has(jid)) map.set(jid, []);
+        map.get(jid)!.push({ key: `${p.id}_${e.id}`, evento: e, partido: p });
+      }
+    }
+    const fm = (v: string) => {
+      const t = new Date(v).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    map.forEach(list =>
+      list.sort(
+        (a, b) =>
+          fm(b.partido.fecha) - fm(a.partido.fecha) ||
+          minutoNum(a.evento.minuto) - minutoNum(b.evento.minuto)
+      )
+    );
+    return map;
+  }, [partidos, remoteClocks, jugadores]);
+
+  /** Lista de asistencias de UN jugador (fecha, rival y minuto) */
+  const renderAssistList = (jugadorId: string) => {
+    const rows = assistsByJugador.get(jugadorId) || [];
+    if (rows.length === 0) {
+      return (
+        <p className="py-2 text-xs text-gray-400">
+          Sin asistencias registradas todavía: se rellenan al confirmar el acta con el reloj del partido.
+        </p>
+      );
+    }
+    return (
+      <ul className="divide-y divide-blue-100">
+        {rows.map(r => (
+          <li key={r.key} className="flex items-center gap-3 py-2 min-w-0">
+            <span className="w-9 shrink-0 text-right font-black tabular-nums text-blue-600 text-xs">
+              {r.evento.minuto}′
+            </span>
+            <HighlightIcon event={r.evento} />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-gray-900 truncate">{r.evento.texto}</p>
+              <p className="text-[10px] text-gray-500 truncate">
+                {fmtFechaCorta(r.partido.fecha)} · {r.partido.local} vs {r.partido.visitante} · {r.partido.categoria}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    );
+  };
+
+  const toggleAssistPlayer = (jugadorId: string) => {
+    setOpenAssistPlayer(prev => (prev === jugadorId ? null : jugadorId));
+  };
 
   const handleUpdateStat = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -354,43 +422,53 @@ export const EstadisticasRankingView: React.FC = () => {
         </button>
       </div>
 
-      {/* Desglose: cada apartado filtra y muestra CUÁNDO han sido los datos */}
-      <div className="bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-gray-950 border-b border-gray-800">
-          <div className="min-w-0">
-            <p className="text-[11px] font-black uppercase tracking-wider text-orange-400 flex items-center gap-1.5">
-              <History className="w-3.5 h-3.5 shrink-0" />
-              {breakdownTitle}
-            </p>
-            <p className="text-[10px] text-gray-400 mt-0.5">
-              {breakdown.length} acción{breakdown.length === 1 ? '' : 'es'} con fecha, rival y minuto
-              {breakdown.length > 80 && ' · últimas 80'}
-            </p>
+      {/* Desglose general (Pichichi / Tabla Completa): cada apartado filtra y muestra CUÁNDO han sido los datos.
+          En Asistencias NO: ahí cada jugador abre sus propias asistencias pulsando su cifra */}
+      {activeTab !== 'asistencias' && (
+        <div className="bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-gray-950 border-b border-gray-800">
+            <div className="min-w-0">
+              <p className="text-[11px] font-black uppercase tracking-wider text-orange-400 flex items-center gap-1.5">
+                <History className="w-3.5 h-3.5 shrink-0" />
+                {breakdownTitle}
+              </p>
+              <p className="text-[10px] text-gray-400 mt-0.5">
+                {breakdown.length} acción{breakdown.length === 1 ? '' : 'es'} con fecha, rival y minuto
+                {breakdown.length > 80 && ' · últimas 80'}
+              </p>
+            </div>
           </div>
+          {breakdown.length === 0 ? (
+            <p className="px-4 py-4 text-xs text-gray-400 text-center">
+              Sin eventos registrados todavía: se rellenan al confirmar el acta con el reloj del partido.
+            </p>
+          ) : (
+            <ul className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+              {breakdown.slice(0, 80).map(row => (
+                <li key={row.key} className="flex items-center gap-3 px-4 py-2.5 min-w-0">
+                  <span className="w-9 shrink-0 text-right font-black tabular-nums text-orange-600 text-xs">
+                    {row.evento.minuto}′
+                  </span>
+                  <HighlightIcon event={row.evento} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-gray-900 truncate">{row.evento.texto}</p>
+                    <p className="text-[10px] text-gray-500 truncate">
+                      {fmtFechaCorta(row.partido.fecha)} · {row.partido.local} vs {row.partido.visitante} · {row.partido.categoria}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        {breakdown.length === 0 ? (
-          <p className="px-4 py-4 text-xs text-gray-400 text-center">
-            Sin eventos registrados todavía: se rellenan al confirmar el acta con el reloj del partido.
-          </p>
-        ) : (
-          <ul className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
-            {breakdown.slice(0, 80).map(row => (
-              <li key={row.key} className="flex items-center gap-3 px-4 py-2.5 min-w-0">
-                <span className="w-9 shrink-0 text-right font-black tabular-nums text-orange-600 text-xs">
-                  {row.evento.minuto}′
-                </span>
-                <HighlightIcon event={row.evento} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold text-gray-900 truncate">{row.evento.texto}</p>
-                  <p className="text-[10px] text-gray-500 truncate">
-                    {fmtFechaCorta(row.partido.fecha)} · {row.partido.local} vs {row.partido.visitante} · {row.partido.categoria}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      )}
+
+      {activeTab === 'asistencias' && (
+        <p className="flex items-center gap-1.5 text-xs text-gray-500">
+          <Info className="w-3.5 h-3.5 shrink-0 text-blue-500" />
+          Pulsa las asistencias de un jugador para ver las suyas: fecha, rival y minuto.
+        </p>
+      )}
 
       {/* Tabla de Ranking (escritorio) */}
       <div className="hidden sm:block bg-white rounded-2xl border border-gray-150 shadow-sm overflow-x-auto scroll-x">
@@ -411,63 +489,94 @@ export const EstadisticasRankingView: React.FC = () => {
           <tbody className="divide-y divide-gray-100">
             {currentRanking.map((item, idx) => {
               return (
-                <tr key={item.jugadorId} className="hover:bg-orange-50/30 transition-colors">
-                  <td className="py-3 px-4 text-center">{getRankBadge(idx)}</td>
-                  <td className="py-3 px-4">
-                    <div className="font-bold text-gray-900 text-sm">{item.jugador.nombre}</div>
-                    <div className="text-[11px] text-gray-400">
-                      #{item.jugador.dorsal} • {item.jugador.posicion}
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-gray-700 font-medium">
-                    <div className="flex items-center gap-2">
-                      <div className="w-5 h-5 rounded-md bg-white border border-gray-200 p-0.5 flex items-center justify-center shrink-0">
-                        <TeamShield
-                          escudoUrl={getTeamEscudo(item.jugador.equipo)}
-                          teamName={item.jugador.equipo}
-                          size="xs"
-                          className="w-full h-full"
-                        />
+                <React.Fragment key={item.jugadorId}>
+                  <tr className="hover:bg-orange-50/30 transition-colors">
+                    <td className="py-3 px-4 text-center">{getRankBadge(idx)}</td>
+                    <td className="py-3 px-4">
+                      <div className="font-bold text-gray-900 text-sm">{item.jugador.nombre}</div>
+                      <div className="text-[11px] text-gray-400">
+                        #{item.jugador.dorsal} • {item.jugador.posicion}
                       </div>
-                      <span className="truncate">{item.jugador.equipo}</span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-center font-semibold text-gray-700">
-                    {item.partidosJugados}
-                  </td>
-                  <td className="py-3 px-4 text-center font-black text-orange-600 font-athletic text-base">
-                    {item.goles}
-                  </td>
-                  <td className="py-3 px-4 text-center font-bold text-blue-600 font-athletic text-base">
-                    {item.asistencias}
-                  </td>
-                  <td className="py-3 px-4 text-center text-gray-500 font-mono">
-                    {item.golesPorPartido}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold">
-                      {item.tarjetas}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <button
-                      onClick={() =>
-                        setEditingStat({
-                          id: item.id,
-                          jugadorId: item.jugadorId,
-                          goles: item.goles,
-                          asistencias: item.asistencias,
-                          tarjetas: item.tarjetas,
-                          partidosJugados: item.partidosJugados
-                        })
-                      }
-                      className={`p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors ${canManage ? 'inline-flex' : 'hidden'}`}
-                      title="Modificar estadísticas"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="py-3 px-4 text-gray-700 font-medium">
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 rounded-md bg-white border border-gray-200 p-0.5 flex items-center justify-center shrink-0">
+                          <TeamShield
+                            escudoUrl={getTeamEscudo(item.jugador.equipo)}
+                            teamName={item.jugador.equipo}
+                            size="xs"
+                            className="w-full h-full"
+                          />
+                        </div>
+                        <span className="truncate">{item.jugador.equipo}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-center font-semibold text-gray-700">
+                      {item.partidosJugados}
+                    </td>
+                    <td className="py-3 px-4 text-center font-black text-orange-600 font-athletic text-base">
+                      {item.goles}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {activeTab === 'asistencias' ? (
+                        <button
+                          onClick={() => toggleAssistPlayer(item.jugadorId)}
+                          title={`Ver las asistencias de ${item.jugador.nombre}`}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg font-bold text-blue-600 font-athletic text-base transition-colors hover:bg-blue-50 ${
+                            openAssistPlayer === item.jugadorId ? 'bg-blue-100 ring-2 ring-blue-300' : ''
+                          }`}
+                        >
+                          {item.asistencias}
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 transition-transform ${
+                              openAssistPlayer === item.jugadorId ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </button>
+                      ) : (
+                        <span className="font-bold text-blue-600 font-athletic text-base">
+                          {item.asistencias}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center text-gray-500 font-mono">
+                      {item.golesPorPartido}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold">
+                        {item.tarjetas}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        onClick={() =>
+                          setEditingStat({
+                            id: item.id,
+                            jugadorId: item.jugadorId,
+                            goles: item.goles,
+                            asistencias: item.asistencias,
+                            tarjetas: item.tarjetas,
+                            partidosJugados: item.partidosJugados
+                          })
+                        }
+                        className={`p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors ${canManage ? 'inline-flex' : 'hidden'}`}
+                        title="Modificar estadísticas"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                  {activeTab === 'asistencias' && openAssistPlayer === item.jugadorId && (
+                    <tr className="bg-blue-50/50">
+                      <td colSpan={9} className="px-4 py-2">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-blue-500 mb-1">
+                          Asistencias de {item.jugador.nombre} · {assistsByJugador.get(item.jugadorId)?.length || 0}
+                        </p>
+                        {renderAssistList(item.jugadorId)}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -516,7 +625,24 @@ export const EstadisticasRankingView: React.FC = () => {
                   </div>
                   <div className="rounded-lg bg-blue-50 py-1.5">
                     <p className="text-[9px] font-bold uppercase text-blue-400">Asist.</p>
-                    <p className="text-sm font-bold text-blue-600 font-athletic">{item.asistencias}</p>
+                    {activeTab === 'asistencias' ? (
+                      <button
+                        onClick={() => toggleAssistPlayer(item.jugadorId)}
+                        title={`Ver las asistencias de ${item.jugador.nombre}`}
+                        className={`w-full inline-flex items-center justify-center gap-0.5 text-sm font-bold text-blue-600 font-athletic ${
+                          openAssistPlayer === item.jugadorId ? 'ring-2 ring-blue-300 rounded-md bg-blue-100' : ''
+                        }`}
+                      >
+                        {item.asistencias}
+                        <ChevronDown
+                          className={`w-3 h-3 transition-transform ${
+                            openAssistPlayer === item.jugadorId ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </button>
+                    ) : (
+                      <p className="text-sm font-bold text-blue-600 font-athletic">{item.asistencias}</p>
+                    )}
                   </div>
                   <div className="rounded-lg bg-gray-50 py-1.5">
                     <p className="text-[9px] font-bold uppercase text-gray-400">G/P</p>
@@ -527,6 +653,14 @@ export const EstadisticasRankingView: React.FC = () => {
                     <p className="text-sm font-bold text-amber-700">{item.tarjetas}</p>
                   </div>
                 </div>
+                {activeTab === 'asistencias' && openAssistPlayer === item.jugadorId && (
+                  <div className="mt-2.5 pt-2 border-t border-blue-100">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-blue-500 mb-1">
+                      Sus asistencias · {assistsByJugador.get(item.jugadorId)?.length || 0}
+                    </p>
+                    {renderAssistList(item.jugadorId)}
+                  </div>
+                )}
               </div>
             </div>
           </div>

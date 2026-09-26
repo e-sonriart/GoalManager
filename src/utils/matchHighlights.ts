@@ -74,6 +74,32 @@ export function attributeJugadorId(
   return found?.id;
 }
 
+const idList = (v: unknown): string[] => {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.filter(Boolean) as string[];
+  if (typeof v === 'string') {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+/** Convocados + titulares de un partido resueltos a jugadores (acepta array o JSON) */
+export function rosterForPartido(
+  partido: { convocados?: unknown; titulares?: unknown },
+  jugadores: Jugador[]
+): Jugador[] {
+  const ids = new Set([...idList(partido.convocados), ...idList(partido.titulares)]);
+  const byId = new Map(jugadores.map(j => [j.id, j]));
+  return [...ids]
+    .map(id => byId.get(id))
+    .filter((j): j is Jugador => Boolean(j));
+}
+
 /**
  * Eventos de un partido: el reloj con más eventos (local o remoto) o, en su
  * defecto, el resumen de texto guardado en partido.eventos.

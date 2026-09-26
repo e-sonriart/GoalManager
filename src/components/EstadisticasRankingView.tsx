@@ -3,7 +3,7 @@ import { useClub } from '../context/ClubContext';
 import { Estadistica } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
-import { eventsForPartido, attributeJugadorId, rosterForPartido } from '../utils/matchHighlights';
+import { eventsForPartido, attributeJugadorId, rosterForPartido, idList } from '../utils/matchHighlights';
 import { useRemoteClocks } from '../hooks/useRemoteClocks';
 import {
   Trophy,
@@ -43,6 +43,33 @@ type MatchDetail = {
 };
 
 type StatKind = 'pj' | 'goles' | 'asistencias';
+
+type StatItem = {
+  jugadorId: string;
+  jugador: { nombre: string; posicion?: string };
+  goles?: number;
+};
+
+const isPortero = (j: { posicion?: string }): boolean => /porter/i.test(j.posicion || '');
+
+const pushDetail = (map: Map<string, MatchDetail[]>, jid: string, row: MatchDetail): void => {
+  const list = map.get(jid);
+  if (!list) {
+    map.set(jid, [{ ...row }]);
+    return;
+  }
+  const same = list.find(r => r.key === row.key);
+  if (same) same.count++;
+  else list.push({ ...row });
+};
+
+const sortDetails = (map: Map<string, MatchDetail[]>): void => {
+  const fm = (v: string) => {
+    const t = new Date(v).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
+  map.forEach(list => list.sort((a, b) => fm(b.fecha) - fm(a.fecha)));
+};
 
 export const EstadisticasRankingView: React.FC = () => {
   const { jugadores, estadisticas, partidos, saveEstadistica, recalcularEstadisticas, exportSheet, getTeamEscudo, can } = useClub();
@@ -107,17 +134,6 @@ export const EstadisticasRankingView: React.FC = () => {
    * con eventos (los mismos que alimentan las estadísticas).
    */
   const detailsByJugador = useMemo(() => {
-    const push = (map: Map<string, MatchDetail[]>, jid: string, row: MatchDetail) => {
-      const list = map.get(jid);
-      if (!list) {
-        map.set(jid, [{ ...row }]);
-        return;
-      }
-      const same = list.find(r => r.key === row.key);
-      if (same) same.count++;
-      else list.push({ ...row });
-    };
-
     const goals = new Map<string, MatchDetail[]>();
     const assists = new Map<string, MatchDetail[]>();
     const matches = new Map<string, MatchDetail[]>();
@@ -139,23 +155,61 @@ export const EstadisticasRankingView: React.FC = () => {
         resultado,
         count: 1
       };
-      roster.forEach(j => push(matches, j.id, base));
+      roster.forEach(j => pushDetail(matches, j.id, base));
       for (const e of evs) {
         if (e.tipo !== 'gol' && e.tipo !== 'asistencia') continue;
         const jid = attributeJugadorId(e, roster, jugadores);
         if (!jid) continue;
-        push(e.tipo === 'gol' ? goals : assists, jid, base);
+        pushDetail(e.tipo === 'gol' ? goals : assists, jid, base);
       }
     }
 
-    const fm = (v: string) => {
-      const t = new Date(v).getTime();
-      return Number.isFinite(t) ? t : 0;
-    };
-    [goals, assists, matches].forEach(map =>
-      map.forEach(list => list.sort((a, b) => fm(b.fecha) - fm(a.fecha)))
-    );
+    sortDetails(goals);
+    sortDetails(assists);
+    sortDetails(matches);
     return { goals, assists, matches };
+  }, [partidos, remoteClocks, jugadores]);
+
+  /**
+   * Goles encajados por portero: los goles del rival en los partidos finalizados
+   * con eventos en los que el portero estuvo en el campo (titular, o convocado
+   * si aún no hay alineación).
+   */
+  const concededByJugador = useMemo(() => {
+    const map = new Map<string, MatchDetail[]>();
+    for (const p of partidos) {
+      if (!isFinalizado(p.finalizado)) continue;
+      if (eventsForPartido(p, remoteClocks).length === 0) continue;
+      const titIds = new Set(idList(p.titulares));
+      const playedIds = titIds.size > 0 ? titIds : new Set(idList(p.convocados));
+      const gl = Number(p.golesLocal);
+      const gv = Number(p.golesVisitante);
+      const resultado =
+        p.golesLocal === undefined && p.golesVisitante === undefined
+          ? '–'
+          : `${p.golesLocal ?? 0}-${p.golesVisitante ?? 0}`;
+      const base: MatchDetail = {
+        key: p.id,
+        fecha: p.fecha,
+        local: p.local,
+        visitante: p.visitante,
+        resultado,
+        count: 1
+      };
+      for (const j of jugadores) {
+        if (!isPortero(j) || !playedIds.has(j.id)) continue;
+        let conceded: number | null = null;
+        if (j.equipo === p.local) conceded = gv;
+        else if (j.equipo === p.visitante) conceded = gl;
+        else if (p.equipo === p.local || p.equipo === p.visitante) {
+          conceded = p.equipo === p.local ? gv : gl;
+        }
+        if (conceded === null || !Number.isFinite(conceded) || conceded <= 0) continue;
+        pushDetail(map, j.id, { ...base, count: conceded });
+      }
+    }
+    sortDetails(map);
+    return map;
   }, [partidos, remoteClocks, jugadores]);
 
   /** Celda desplegada: qué cifra (PJ / goles / asistencias) de qué jugador */
@@ -167,30 +221,42 @@ export const EstadisticasRankingView: React.FC = () => {
     );
   };
 
-  const rowsFor = (jugadorId: string, kind: StatKind): MatchDetail[] | undefined =>
-    kind === 'pj'
-      ? detailsByJugador.matches.get(jugadorId)
-      : kind === 'goles'
-        ? detailsByJugador.goals.get(jugadorId)
-        : detailsByJugador.assists.get(jugadorId);
+  const rowsFor = (jugadorId: string, kind: StatKind): MatchDetail[] | undefined => {
+    if (kind === 'pj') return detailsByJugador.matches.get(jugadorId);
+    if (kind === 'asistencias') return detailsByJugador.assists.get(jugadorId);
+    const j = jugadores.find(x => x.id === jugadorId);
+    return j && isPortero(j)
+      ? concededByJugador.get(jugadorId)
+      : detailsByJugador.goals.get(jugadorId);
+  };
 
   const countFor = (jugadorId: string, kind: StatKind): number =>
     (rowsFor(jugadorId, kind) || []).reduce((s, r) => s + r.count, 0);
 
-  const labelFor = (kind: StatKind): string =>
-    kind === 'pj' ? 'Partidos' : kind === 'goles' ? 'Goles' : 'Asistencias';
+  const labelFor = (kind: StatKind, jugador?: { posicion?: string }): string => {
+    if (kind === 'pj') return 'Partidos';
+    if (kind === 'asistencias') return 'Asistencias';
+    return jugador && isPortero(jugador) ? 'Goles encajados' : 'Goles';
+  };
+
+  /** Cifra de la columna Goles: para porteros, los encajados; para el resto, los marcados */
+  const displayGoles = (item: StatItem): number =>
+    isPortero(item.jugador) ? countFor(item.jugadorId, 'goles') : Number(item.goles) || 0;
 
   /** Lista desplegada: partido, resultado y fecha (×N si repite en el mismo partido) */
-  const renderStatDetail = (jugadorId: string, kind: StatKind) => {
-    const rows = rowsFor(jugadorId, kind);
+  const renderStatDetail = (item: StatItem, kind: StatKind) => {
+    const rows = rowsFor(item.jugadorId, kind);
     if (!rows || rows.length === 0) {
+      const esPorteroGoles = kind === 'goles' && isPortero(item.jugador);
       return (
         <p className="py-2 text-xs text-gray-400">
           {kind === 'pj'
             ? 'Sin partidos registrados todavía.'
-            : kind === 'goles'
-              ? 'Sin goles registrados todavía.'
-              : 'Sin asistencias registradas todavía.'}
+            : esPorteroGoles
+              ? 'Sin goles encajados todavía.'
+              : kind === 'goles'
+                ? 'Sin goles registrados todavía.'
+                : 'Sin asistencias registradas todavía.'}
         </p>
       );
     }
@@ -219,12 +285,12 @@ export const EstadisticasRankingView: React.FC = () => {
   };
 
   /** Celda-cifra desplegable (PJ / goles / asistencias) */
-  const statCell = (value: number | undefined, jugadorId: string, nombre: string, kind: StatKind, cls: string) => {
-    const open = expandedStat?.jugadorId === jugadorId && expandedStat.kind === kind;
+  const statCell = (value: number | undefined, item: StatItem, kind: StatKind, cls: string) => {
+    const open = expandedStat?.jugadorId === item.jugadorId && expandedStat.kind === kind;
     return (
       <button
-        onClick={() => toggleStat(jugadorId, kind)}
-        title={`Ver ${labelFor(kind).toLowerCase()} de ${nombre}`}
+        onClick={() => toggleStat(item.jugadorId, kind)}
+        title={`Ver ${labelFor(kind, item.jugador).toLowerCase()} de ${item.jugador.nombre}`}
         className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg font-bold transition-colors hover:bg-blue-50 ${cls} ${
           open ? 'bg-blue-100 ring-2 ring-blue-300' : ''
         }`}
@@ -235,10 +301,10 @@ export const EstadisticasRankingView: React.FC = () => {
     );
   };
 
-  /** Cabecera del bloque desplegado: «Goles de Nombre · N» */
-  const expandedHeader = (item: { jugadorId: string; jugador: { nombre: string } }, kind: StatKind) => (
+  /** Cabecera del bloque desplegado: «Goles de Nombre · N» (o «Goles encajados» si es portero) */
+  const expandedHeader = (item: StatItem, kind: StatKind) => (
     <p className="text-[10px] font-black uppercase tracking-wider text-blue-500 mb-1">
-      {labelFor(kind)} de {item.jugador.nombre} · {countFor(item.jugadorId, kind)}
+      {labelFor(kind, item.jugador)} de {item.jugador.nombre} · {countFor(item.jugadorId, kind)}
     </p>
   );
 
@@ -488,7 +554,12 @@ export const EstadisticasRankingView: React.FC = () => {
               <th className="py-3 px-4 whitespace-nowrap">Jugador</th>
               <th className="py-3 px-4 whitespace-nowrap">Equipo</th>
               <th className="py-3 px-4 text-center whitespace-nowrap">Partidos</th>
-              <th className="py-3 px-4 text-center whitespace-nowrap">Goles</th>
+              <th
+                className="py-3 px-4 text-center whitespace-nowrap"
+                title="En porteros se muestran los goles encajados en lugar de los marcados"
+              >
+                Goles
+              </th>
               <th className="py-3 px-4 text-center whitespace-nowrap">Asistencias</th>
               <th className="py-3 px-4 text-center whitespace-nowrap">G/P</th>
               <th className="py-3 px-4 text-center whitespace-nowrap">Tarjetas</th>
@@ -521,13 +592,13 @@ export const EstadisticasRankingView: React.FC = () => {
                       </div>
                     </td>
                     <td className="py-3 px-4 text-center font-semibold text-gray-700">
-                      {statCell(item.partidosJugados, item.jugadorId, item.jugador.nombre, 'pj', 'text-gray-700')}
+                      {statCell(item.partidosJugados, item, 'pj', 'text-gray-700')}
                     </td>
                     <td className="py-3 px-4 text-center font-black text-orange-600 font-athletic text-base">
-                      {statCell(item.goles, item.jugadorId, item.jugador.nombre, 'goles', 'text-orange-600 font-athletic text-base')}
+                      {statCell(displayGoles(item), item, 'goles', 'text-orange-600 font-athletic text-base')}
                     </td>
                     <td className="py-3 px-4 text-center">
-                      {statCell(item.asistencias, item.jugadorId, item.jugador.nombre, 'asistencias', 'text-blue-600 font-athletic text-base')}
+                      {statCell(item.asistencias, item, 'asistencias', 'text-blue-600 font-athletic text-base')}
                     </td>
                     <td className="py-3 px-4 text-center text-gray-500 font-mono">
                       {item.golesPorPartido}
@@ -560,7 +631,7 @@ export const EstadisticasRankingView: React.FC = () => {
                     <tr className="bg-blue-50/50">
                       <td colSpan={9} className="px-4 py-2">
                         {expandedHeader(item, expandedStat.kind)}
-                        {renderStatDetail(item.jugadorId, expandedStat.kind)}
+                        {renderStatDetail(item, expandedStat.kind)}
                       </td>
                     </tr>
                   )}
@@ -605,15 +676,17 @@ export const EstadisticasRankingView: React.FC = () => {
                 <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
                   <div className="rounded-lg bg-gray-50 py-1.5">
                     <p className="text-[9px] font-bold uppercase text-gray-400">PJ</p>
-                    {statCell(item.partidosJugados, item.jugadorId, item.jugador.nombre, 'pj', 'text-sm text-gray-800 mx-auto')}
+                    {statCell(item.partidosJugados, item, 'pj', 'text-sm text-gray-800 mx-auto')}
                   </div>
                   <div className="rounded-lg bg-orange-50 py-1.5">
-                    <p className="text-[9px] font-bold uppercase text-orange-400">Goles</p>
-                    {statCell(item.goles, item.jugadorId, item.jugador.nombre, 'goles', 'text-sm text-orange-600 font-athletic mx-auto')}
+                    <p className="text-[9px] font-bold uppercase text-orange-400">
+                      {isPortero(item.jugador) ? 'Encaj.' : 'Goles'}
+                    </p>
+                    {statCell(displayGoles(item), item, 'goles', 'text-sm text-orange-600 font-athletic mx-auto')}
                   </div>
                   <div className="rounded-lg bg-blue-50 py-1.5">
                     <p className="text-[9px] font-bold uppercase text-blue-400">Asist.</p>
-                    {statCell(item.asistencias, item.jugadorId, item.jugador.nombre, 'asistencias', 'text-sm text-blue-600 font-athletic mx-auto')}
+                    {statCell(item.asistencias, item, 'asistencias', 'text-sm text-blue-600 font-athletic mx-auto')}
                   </div>
                   <div className="rounded-lg bg-gray-50 py-1.5">
                     <p className="text-[9px] font-bold uppercase text-gray-400">G/P</p>
@@ -627,7 +700,7 @@ export const EstadisticasRankingView: React.FC = () => {
                 {expandedStat?.jugadorId === item.jugadorId && (
                   <div className="mt-2.5 pt-2 border-t border-blue-100">
                     {expandedHeader(item, expandedStat.kind)}
-                    {renderStatDetail(item.jugadorId, expandedStat.kind)}
+                    {renderStatDetail(item, expandedStat.kind)}
                   </div>
                 )}
               </div>

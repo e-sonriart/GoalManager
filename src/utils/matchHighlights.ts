@@ -74,7 +74,7 @@ export function attributeJugadorId(
   return found?.id;
 }
 
-const idList = (v: unknown): string[] => {
+export const idList = (v: unknown): string[] => {
   if (!v) return [];
   if (Array.isArray(v)) return v.filter(Boolean) as string[];
   if (typeof v === 'string') {

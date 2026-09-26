@@ -1,8 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useClub } from '../context/ClubContext';
-import { Estadistica } from '../types';
+import { Estadistica, Partido } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
+import { HighlightIcon } from './MatchHighlights';
+import { eventsForPartido, minutoNum } from '../utils/matchHighlights';
+import { useRemoteClocks } from '../hooks/useRemoteClocks';
+import type { MatchEvent, TipoEvento } from '../utils/matchClock';
 import {
   Trophy,
   Medal,
@@ -13,16 +17,34 @@ import {
   Edit2,
   Shield,
   Zap,
-  Target
+  Target,
+  RefreshCw,
+  History
 } from 'lucide-react';
 
+const fmtFechaCorta = (fecha: string): string => {
+  const d = new Date(fecha);
+  if (isNaN(d.getTime())) return fecha || '—';
+  return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: '2-digit' });
+};
+
 export const EstadisticasRankingView: React.FC = () => {
-  const { jugadores, estadisticas, saveEstadistica, exportSheet, getTeamEscudo, can } = useClub();
+  const { jugadores, estadisticas, partidos, saveEstadistica, recalcPartidosJugados, exportSheet, getTeamEscudo, can } = useClub();
 
   const canManage = can('manage:estadisticas');
 
   const [activeTab, setActiveTab] = useState<'pichichi' | 'asistencias' | 'general'>('pichichi');
   const [editingStat, setEditingStat] = useState<Estadistica | null>(null);
+
+  /** Relojes remotos: eventos (goles/tarjetas) de partidos jugados en otro dispositivo */
+  const remoteClocks = useRemoteClocks();
+
+  const handleRecalcPJ = async () => {
+    const ok = window.confirm(
+      'Recalcular partidos jugados: se contabilizará +1 por cada partido finalizado en el que el jugador figura como convocado o titular (corrige dobles contados). ¿Continuar?'
+    );
+    if (ok) await recalcPartidosJugados();
+  };
 
   // Estadísticas completas vinculadas a jugadores
   const playerStatsList = useMemo(() => {
@@ -62,6 +84,44 @@ export const EstadisticasRankingView: React.FC = () => {
 
   const top3Pichichi = rankingGoleadores.slice(0, 3);
   const currentRanking = activeTab === 'asistencias' ? rankingAsistentes : rankingGoleadores;
+
+  /** Apartado activo → qué tipos de acción se desglosan en "¿cuándo ha sido?" */
+  const breakdownTipos: TipoEvento[] =
+    activeTab === 'pichichi'
+      ? ['gol']
+      : activeTab === 'asistencias'
+        ? ['asistencia']
+        : ['gol', 'gol_contra', 'asistencia', 'tarjeta'];
+
+  const breakdownTitle =
+    activeTab === 'pichichi'
+      ? 'Goles — ¿cuándo han sido?'
+      : activeTab === 'asistencias'
+        ? 'Asistencias — ¿cuándo han sido?'
+        : 'Todas las acciones — ¿cuándo han sido?';
+
+  /** Cada apartado, al pulsarlo, filtra los datos y muestra CUÁNDO han sido (fecha, rival y minuto) */
+  const breakdown = useMemo(() => {
+    const rows: Array<{ key: string; evento: MatchEvent; partido: Partido }> = [];
+    for (const p of partidos) {
+      for (const e of eventsForPartido(p, remoteClocks)) {
+        if (breakdownTipos.includes(e.tipo)) {
+          rows.push({ key: `${p.id}_${e.id}`, evento: e, partido: p });
+        }
+      }
+    }
+    const fm = (v: string) => {
+      const t = new Date(v).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    rows.sort(
+      (a, b) =>
+        fm(b.partido.fecha) - fm(a.partido.fecha) ||
+        minutoNum(a.evento.minuto) - minutoNum(b.evento.minuto)
+    );
+    return rows;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partidos, remoteClocks, activeTab]);
 
   const handleUpdateStat = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,6 +173,16 @@ export const EstadisticasRankingView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {canManage && (
+            <button
+              onClick={handleRecalcPJ}
+              className="px-3.5 py-2 bg-white hover:bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+              title="Recalcular partidos jugados desde los partidos finalizados"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Recalcular PJ
+            </button>
+          )}
           <button
             onClick={() => exportSheet('estadisticas')}
             className="px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
@@ -282,6 +352,44 @@ export const EstadisticasRankingView: React.FC = () => {
           <BarChart2 className="w-4 h-4" />
           Tabla Completa & Edición
         </button>
+      </div>
+
+      {/* Desglose: cada apartado filtra y muestra CUÁNDO han sido los datos */}
+      <div className="bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-gray-950 border-b border-gray-800">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-wider text-orange-400 flex items-center gap-1.5">
+              <History className="w-3.5 h-3.5 shrink-0" />
+              {breakdownTitle}
+            </p>
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              {breakdown.length} acción{breakdown.length === 1 ? '' : 'es'} con fecha, rival y minuto
+              {breakdown.length > 80 && ' · últimas 80'}
+            </p>
+          </div>
+        </div>
+        {breakdown.length === 0 ? (
+          <p className="px-4 py-4 text-xs text-gray-400 text-center">
+            Sin eventos registrados todavía: se rellenan al confirmar el acta con el reloj del partido.
+          </p>
+        ) : (
+          <ul className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+            {breakdown.slice(0, 80).map(row => (
+              <li key={row.key} className="flex items-center gap-3 px-4 py-2.5 min-w-0">
+                <span className="w-9 shrink-0 text-right font-black tabular-nums text-orange-600 text-xs">
+                  {row.evento.minuto}′
+                </span>
+                <HighlightIcon event={row.evento} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-gray-900 truncate">{row.evento.texto}</p>
+                  <p className="text-[10px] text-gray-500 truncate">
+                    {fmtFechaCorta(row.partido.fecha)} · {row.partido.local} vs {row.partido.visitante} · {row.partido.categoria}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* Tabla de Ranking (escritorio) */}

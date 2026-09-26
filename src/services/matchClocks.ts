@@ -73,3 +73,21 @@ export function mergeClocks(
   if (remoteEvents > localEvents) return remote;
   return null;
 }
+
+/** Todos los relojes remotos indexados por partidoId (para resúmenes/estadísticas). */
+export async function listClocksRemote(): Promise<Map<string, MatchClock>> {
+  const out = new Map<string, MatchClock>();
+  const supabase = getSupabase();
+  if (!supabase) return out;
+  try {
+    const { data, error } = await supabase.from(TABLE).select('id, clock');
+    if (error) throw error;
+    for (const row of data || []) {
+      const clock = parseClock(row.clock);
+      if (clock) out.set(row.id, clock);
+    }
+  } catch (err) {
+    console.warn('[matchClocks] Error al listar relojes de Supabase', err);
+  }
+  return out;
+}

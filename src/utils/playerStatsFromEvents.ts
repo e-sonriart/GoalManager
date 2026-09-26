@@ -27,6 +27,7 @@ const emptyDelta = (jugadorId: string): PlayerStatsDelta => ({
  * - titulares → partidosJugados + titular (solo si se pasan)
  * - goles / asistencias / tarjetas con jugadorId
  * - suplentes con evento (gol, asistencia, tarjeta, cambio) → partidosJugados
+ * NOTA: para el acta usa actaStatsDeltas (evita dobles contados de partidos).
  */
 export function aggregateEventStats(
   events: MatchEvent[],
@@ -77,62 +78,47 @@ export function aggregateEventStats(
 }
 
 /**
- * Deltas al guardar la convocatoria:
- * - quien entra → +1 partido jugado (si no es ya titular de este partido)
- * - quien sale → -1 partido jugado (si no es titular)
- * - un titular no suma partido otra vez por convocatoria (ya lo cuenta la alineación)
+ * Deltas al confirmar el acta (el partido se cuenta SOLO cuando se juega):
+ * - +1 partido jugado a cada convocado y titular (deduplicado)
+ * - +1 titular a cada titular
+ * - goles / asistencias / tarjetas de los eventos, SIN partidosJugados
+ *   (evita el doble conteo: convocar o alinear ya no suma partidos)
  */
-export function convocatoriaStatsDeltas(
-  prevConvocados: string[],
-  nextConvocados: string[],
-  titulares: string[] = []
+export function actaStatsDeltas(
+  convocados: string[],
+  titulares: string[],
+  events: MatchEvent[]
 ): PlayerStatsDelta[] {
-  const tit = new Set(titulares.filter(Boolean));
-  const prev = new Set(prevConvocados.filter(Boolean));
-  const next = new Set(nextConvocados.filter(Boolean));
-  const deltas: PlayerStatsDelta[] = [];
+  const map = new Map<string, PlayerStatsDelta>();
+  const ensure = (id: string): PlayerStatsDelta => {
+    let d = map.get(id);
+    if (!d) {
+      d = emptyDelta(id);
+      map.set(id, d);
+    }
+    return d;
+  };
 
-  for (const id of next) {
-    if (prev.has(id)) continue;
-    if (tit.has(id)) continue;
-    deltas.push({ ...emptyDelta(id), partidosJugados: 1 });
-  }
-  for (const id of prev) {
-    if (next.has(id)) continue;
-    if (tit.has(id)) continue;
-    deltas.push({ ...emptyDelta(id), partidosJugados: -1 });
-  }
-  return deltas;
-}
-
-/**
- * Deltas al guardar la alineación titular:
- * - quien entra → +1 titular; +1 partido solo si aún no estaba convocado
- * - quien sale → revierte lo anterior
- */
-export function titularesStatsDeltas(
-  prevTitulares: string[],
-  nextTitulares: string[],
-  convocados: string[] = []
-): PlayerStatsDelta[] {
   const conv = new Set(convocados.filter(Boolean));
-  const prev = new Set(prevTitulares.filter(Boolean));
-  const next = new Set(nextTitulares.filter(Boolean));
-  const deltas: PlayerStatsDelta[] = [];
+  const tit = new Set(titulares.filter(Boolean));
 
-  for (const id of next) {
-    if (prev.has(id)) continue;
-    const d = { ...emptyDelta(id), titular: 1 };
-    if (!conv.has(id)) d.partidosJugados = 1;
-    deltas.push(d);
+  for (const id of new Set([...conv, ...tit])) {
+    ensure(id).partidosJugados += 1;
   }
-  for (const id of prev) {
-    if (next.has(id)) continue;
-    const d = { ...emptyDelta(id), titular: -1 };
-    if (!conv.has(id)) d.partidosJugados = -1;
-    deltas.push(d);
+  for (const id of tit) {
+    ensure(id).titular += 1;
   }
-  return deltas;
+
+  for (const d of aggregateEventStats(events, [])) {
+    const t = ensure(d.jugadorId);
+    t.goles += d.goles;
+    t.asistencias += d.asistencias;
+    t.tarjetas += d.tarjetas;
+    t.tarjetasAmarillas += d.tarjetasAmarillas;
+    t.tarjetasRojas += d.tarjetasRojas;
+  }
+
+  return Array.from(map.values());
 }
 
 export function scaleEventStatsDeltas(

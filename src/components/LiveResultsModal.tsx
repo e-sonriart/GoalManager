@@ -3,6 +3,9 @@ import { Modal } from './Modal';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
 import { resolveVisitorShield } from '../utils/shieldPresets';
+import { MatchHighlights } from './MatchHighlights';
+import { eventsForPartido } from '../utils/matchHighlights';
+import { useRemoteClocks } from '../hooks/useRemoteClocks';
 import { Partido, Categoria } from '../types';
 import {
   FASE_LABEL,
@@ -63,6 +66,9 @@ export const LiveResultsModal: React.FC<LiveResultsModalProps> = ({ isOpen, onCl
 
   /** Tick en vivo del reloj de pared (no depende de sesión ni de la vista de eventos) */
   const [now, setNow] = useState(() => Date.now());
+
+  /** Relojes remotos: goles/tarjetas de partidos jugados en otro dispositivo */
+  const remoteClocks = useRemoteClocks(isOpen);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -250,6 +256,9 @@ export const LiveResultsModal: React.FC<LiveResultsModalProps> = ({ isOpen, onCl
             </div>
           </div>
         </div>
+
+        {/* Acciones destacadas bajo el resultado (goles/tarjetas cronológicos) */}
+        <MatchHighlights events={eventsForPartido(p, remoteClocks)} tone="dark" />
 
         {p.campo && (
           <p className="px-3.5 py-1.5 text-[10px] text-gray-400 bg-gray-50 border-t border-gray-100 truncate">

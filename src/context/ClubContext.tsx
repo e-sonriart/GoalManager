@@ -33,7 +33,6 @@ import { exportToCsv } from '../utils/exportUtils';
 import { Permission, canRole, allowedTabsFor } from '../utils/permissions';
 import { getJugadorUsuario } from '../utils/playerUsername';
 import type { PlayerStatsDelta } from '../utils/playerStatsFromEvents';
-import { convocatoriaStatsDeltas } from '../utils/playerStatsFromEvents';
 
 /** Sesión sintética para el acceso de jugadores (usuario = nombre.dorsal). */
 const toJugadorUsuario = (j: Jugador, all: Jugador[]): Usuario => ({
@@ -129,6 +128,8 @@ interface ClubContextType {
   // Estadísticas
   saveEstadistica: (estadistica: Partial<Estadistica> & { jugadorId: string }) => Promise<boolean>;
   applyEventStats: (deltas: PlayerStatsDelta[], sign: 1 | -1) => Promise<boolean>;
+  /** Recalcula partidosJugados desde los partidos finalizados (convocados ∪ titulares) */
+  recalcPartidosJugados: () => Promise<number>;
 
   // Apuestas (Porra)
   submitApuesta: (partidoId: string, resultado: string) => Promise<boolean>;
@@ -782,7 +783,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [addToast, estadisticas]);
 
-  /** Deltas de jugadores → estadísticas (convocatoria/alineación/eventos; sign +1 aplica, -1 revierte) */
+  /** Deltas de jugadores → estadísticas (acta/eventos; sign +1 aplica, -1 revierte) */
   const applyEventStats = useCallback(async (deltas: PlayerStatsDelta[], sign: 1 | -1): Promise<boolean> => {
     if (!deltas.length) return true;
     try {
@@ -834,10 +835,62 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [estadisticas]);
 
-  // Convocatorias (suman/reversan +1 partido jugado en estadísticas)
   const asIdList = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter((id): id is string => typeof id === 'string') : [];
 
+  /**
+   * Recalcula partidosJugados desde cero: +1 por cada partido finalizado en el que
+   * el figura como convocado o titular. Corrige dobles contabilizaciones históricas.
+   */
+  const recalcPartidosJugados = useCallback(async (): Promise<number> => {
+    try {
+      const isFinal = (v: unknown): boolean =>
+        typeof v === 'boolean'
+          ? v
+          : ['true', '1', 'si', 'sí', 'final', 'finalizado'].includes(String(v ?? '').trim().toLowerCase());
+      const pj = new Map<string, number>();
+      const finals = partidos.filter(p => isFinal(p.finalizado));
+      for (const p of finals) {
+        const ids = new Set([...asIdList(p.convocados), ...asIdList(p.titulares)]);
+        ids.forEach(id => pj.set(id, (pj.get(id) || 0) + 1));
+      }
+
+      const updates = new Map<string, Estadistica>();
+      for (const s of estadisticas) {
+        const n = pj.get(s.jugadorId) ?? 0;
+        if ((Number(s.partidosJugados) || 0) === n) continue;
+        updates.set(s.id, await estadisticasService.update({ ...s, partidosJugados: n }));
+      }
+      const haveRow = new Set(estadisticas.map(s => s.jugadorId));
+      for (const j of jugadores) {
+        const n = pj.get(j.id) || 0;
+        if (n === 0 || haveRow.has(j.id)) continue;
+        const created = await estadisticasService.create({
+          jugadorId: j.id,
+          goles: 0,
+          asistencias: 0,
+          tarjetas: 0,
+          partidosJugados: n
+        });
+        setEstadisticas(prev => [...prev, created]);
+      }
+      if (updates.size > 0) {
+        setEstadisticas(prev => prev.map(s => updates.get(s.id) || s));
+      }
+      addToast({
+        type: 'success',
+        title: 'Partidos jugados recalculados',
+        message: `${finals.length} partido${finals.length === 1 ? '' : 's'} finalizado${finals.length === 1 ? '' : 's'} · ${updates.size} ficha${updates.size === 1 ? '' : 's'} corregida${updates.size === 1 ? '' : 's'}.`
+      });
+      return finals.length;
+    } catch (err) {
+      console.error('[recalcPartidosJugados]', err);
+      addToast({ type: 'error', title: 'Error', message: 'No se pudieron recalcular los partidos jugados.' });
+      return 0;
+    }
+  }, [partidos, estadisticas, jugadores, addToast]);
+
+  // Convocatorias (la lista NO toca estadísticas: el partido se cuenta al confirmar el acta)
   const toggleConvocatoria = useCallback(async (partidoId: string, jugadorId: string): Promise<void> => {
     const partido = partidos.find(p => p.id === partidoId);
     if (!partido) return;
@@ -846,9 +899,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       ? prev.filter(id => id !== jugadorId)
       : [...prev, jugadorId];
     await savePartido({ ...partido, convocados: updatedConvocados });
-    const deltas = convocatoriaStatsDeltas(prev, updatedConvocados, asIdList(partido.titulares));
-    if (deltas.length) await applyEventStats(deltas, 1);
-  }, [partidos, savePartido, applyEventStats]);
+  }, [partidos, savePartido]);
 
   const setConvocatoriaEstado = useCallback(async (partidoId: string, jugadorId: string, estado: EstadoConvocatoria): Promise<void> => {
     const partido = partidos.find(p => p.id === partidoId);
@@ -861,9 +912,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updatedConvocados = updatedConvocados.filter(id => id !== jugadorId);
     }
     await savePartido({ ...partido, convocados: updatedConvocados });
-    const deltas = convocatoriaStatsDeltas(prev, updatedConvocados, asIdList(partido.titulares));
-    if (deltas.length) await applyEventStats(deltas, 1);
-  }, [partidos, savePartido, applyEventStats]);
+  }, [partidos, savePartido]);
 
   const batchSetConvocatoriaEstado = useCallback(async (partidoId: string, jugadorIds: string[], estado: EstadoConvocatoria): Promise<void> => {
     const partido = partidos.find(p => p.id === partidoId);
@@ -875,11 +924,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } else {
       jugadorIds.forEach(id => current.delete(id));
     }
-    const updated = Array.from(current);
-    await savePartido({ ...partido, convocados: updated });
-    const deltas = convocatoriaStatsDeltas(prev, updated, asIdList(partido.titulares));
-    if (deltas.length) await applyEventStats(deltas, 1);
-  }, [partidos, savePartido, applyEventStats]);
+    await savePartido({ ...partido, convocados: Array.from(current) });
+  }, [partidos, savePartido]);
 
   // Asistencias
   const saveAsistencia = useCallback(async (asistencia: Partial<Asistencia>): Promise<boolean> => {
@@ -1147,6 +1193,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     saveEstadistica,
     applyEventStats,
+    recalcPartidosJugados,
 
     submitApuesta: async () => false,
     deleteApuesta: async () => false,
@@ -1174,6 +1221,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     saveEntrenador, deleteEntrenador, savePartido, deletePartido, saveSesion, deleteSesion,
     toggleConvocatoria, setConvocatoriaEstado, batchSetConvocatoriaEstado,
     saveAsistencia, deleteAsistencia, toggleAsistencia, batchMarkAsistencia, saveEstadistica, applyEventStats,
+    recalcPartidosJugados,
     isConfigModalOpen, setIsConfigModalOpen, exportAllSheets,
     saveUser, deleteUser, exportSheet
   ]);

@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
 import { resolveVisitorShield } from '../utils/shieldPresets';
-import { convocatoriaStatsDeltas } from '../utils/playerStatsFromEvents';
 import { Jugador, Partido } from '../types';
 import {
   ClipboardList,
@@ -52,7 +51,6 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     equipos,
     categorias,
     savePartido,
-    applyEventStats,
     getTeamEscudo,
     can
   } = useClub();
@@ -197,22 +195,14 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     setLocalConvocados(new Set());
   };
 
-  // ACEPTAR: guarda la selección y suma +1 partido jugado a cada convocado nuevo
+  // ACEPTAR: guarda la selección (el partido jugado se contabiliza al confirmar el acta)
   const handleAccept = async () => {
     if (!selectedPartido || !canManage) return;
-    const prev: string[] = Array.isArray(selectedPartido.convocados)
-      ? selectedPartido.convocados.filter((id): id is string => typeof id === 'string')
-      : [];
     const next: string[] = Array.from(localConvocados).filter((id): id is string => typeof id === 'string');
     await savePartido({
       ...selectedPartido,
       convocados: next
     });
-    const titulares: string[] = Array.isArray(selectedPartido.titulares)
-      ? selectedPartido.titulares.filter((id): id is string => typeof id === 'string')
-      : [];
-    const deltas = convocatoriaStatsDeltas(prev, next, titulares);
-    if (deltas.length) await applyEventStats(deltas, 1);
     onBack?.(selectedPartido.id);
   };
 

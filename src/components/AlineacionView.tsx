@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
 import { resolveVisitorShield } from '../utils/shieldPresets';
-import { titularesStatsDeltas } from '../utils/playerStatsFromEvents';
 import {
   ArrowLeft,
   Play,
@@ -121,7 +120,6 @@ export const AlineacionView: React.FC<AlineacionViewProps> = ({
     equipos,
     categorias,
     savePartido,
-    applyEventStats,
     getTeamEscudo,
     can
   } = useClub();
@@ -300,14 +298,12 @@ export const AlineacionView: React.FC<AlineacionViewProps> = ({
 
   const persistLineup = async (partido: typeof selectedPartido, nextTitulares: string[]) => {
     if (!partido) return;
-    const prev = partido.titulares || [];
+    // La alineación solo guarda la lista: los stats se contabilizan al confirmar el acta
     await savePartido({
       ...partido,
       formacion,
       titulares: nextTitulares
     });
-    const deltas = titularesStatsDeltas(prev, nextTitulares, partido.convocados || []);
-    if (deltas.length) await applyEventStats(deltas, 1);
   };
 
   const handleStart = async () => {

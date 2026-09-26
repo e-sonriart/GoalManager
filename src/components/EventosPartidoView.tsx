@@ -14,7 +14,8 @@ import {
   saveClock,
   fmtTime
 } from '../utils/matchClock';
-import { aggregateEventStats } from '../utils/playerStatsFromEvents';
+import { actaStatsDeltas } from '../utils/playerStatsFromEvents';
+import { MatchHighlights } from './MatchHighlights';
 import { saveClockRemote, loadClockRemote, mergeClocks } from '../services/matchClocks';
 import {
   ClipboardList,
@@ -405,7 +406,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     });
   };
 
-  /** El entrenador cierra el acta → finaliza y suma goles/asistencias/tarjetas (PJ/titular ya van en convocatoria y alineación) */
+  /** El entrenador cierra el acta → finaliza y suma: +1 partido a convocados/titulares, +titular y goles/asistencias/tarjetas */
   const confirmarActa = async () => {
     if (!selectedPartido || selectedPartido.finalizado) return;
     const ev = buildEvent('fase', 'Acta confirmada por el entrenador', 'acta');
@@ -418,8 +419,13 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
       eventos: summaryFrom(newEvents) || selectedPartido.eventos,
       finalizado: true
     });
-    // Solo eventos (gol/asistencia/tarjeta/cambio). Sin titulares: no duplicar PJ/titular.
-    const deltas = aggregateEventStats(newEvents, []);
+    const asIds = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((id): id is string => typeof id === 'string') : [];
+    const deltas = actaStatsDeltas(
+      asIds(selectedPartido.convocados),
+      asIds(selectedPartido.titulares),
+      newEvents
+    );
     await applyEventStats(deltas, 1);
   };
 
@@ -429,7 +435,13 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     const prevEvents = clockRef.current.events;
     const wasFinalizado = Boolean(selectedPartido.finalizado);
     if (wasFinalizado) {
-      const deltas = aggregateEventStats(prevEvents, []);
+      const asIds = (v: unknown): string[] =>
+        Array.isArray(v) ? v.filter((id): id is string => typeof id === 'string') : [];
+      const deltas = actaStatsDeltas(
+        asIds(selectedPartido.convocados),
+        asIds(selectedPartido.titulares),
+        prevEvents
+      );
       await applyEventStats(deltas, -1);
     }
     const empty = emptyClock();
@@ -727,6 +739,11 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
               {selectedPartido.visitante}
             </p>
           </div>
+        </div>
+
+        {/* Acciones destacadas bajo el resultado (en vivo: goles/tarjetas cronológicos) */}
+        <div className="mt-3">
+          <MatchHighlights events={events} tone="dark" />
         </div>
       </div>
 

@@ -4,6 +4,9 @@ import { Partido, CondicionPartido, TipoPartido, Equipo } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import { resolveVisitorShield, DEFAULT_VISITOR_SHIELD } from '../utils/shieldPresets';
+import { MatchHighlights } from './MatchHighlights';
+import { eventsForPartido } from '../utils/matchHighlights';
+import { useRemoteClocks } from '../hooks/useRemoteClocks';
 import {
   Calendar,
   Plus,
@@ -48,6 +51,9 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
 
   const canManage = can('manage:partidos');
   const canGoConvocatoria = allowedTabs.includes('convocatorias');
+
+  /** Relojes remotos: goles/tarjetas de partidos jugados en otro dispositivo */
+  const remoteClocks = useRemoteClocks();
 
   const [filterStatus, setFilterStatus] = useState<'todos' | 'pendientes' | 'finalizados'>('pendientes');
   const [filterCategoria, setFilterCategoria] = useState('');
@@ -345,6 +351,9 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Acciones destacadas bajo el resultado (goles/tarjetas cronológicos) */}
+        <MatchHighlights events={eventsForPartido(partido, remoteClocks)} tone="dark" standalone />
 
         {/* Action Buttons: Convocar / Convocados + Comenzar */}
         {canGoConvocatoria && (

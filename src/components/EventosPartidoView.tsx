@@ -741,9 +741,9 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
           </div>
         </div>
 
-        {/* Acciones destacadas bajo el resultado (en vivo: goles/tarjetas cronológicos) */}
+        {/* Resumen del partido bajo el resultado (en vivo: solo goles y tarjetas por bando) */}
         <div className="mt-3">
-          <MatchHighlights events={events} tone="dark" />
+          <MatchHighlights events={events} partido={selectedPartido} tone="dark" />
         </div>
       </div>
 

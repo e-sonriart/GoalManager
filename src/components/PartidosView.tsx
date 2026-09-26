@@ -352,8 +352,8 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
           </div>
         </div>
 
-        {/* Acciones destacadas bajo el resultado (goles/tarjetas cronológicos) */}
-        <MatchHighlights events={eventsForPartido(partido, remoteClocks)} tone="dark" standalone />
+        {/* Resumen del partido bajo el resultado (solo goles y tarjetas por bando) */}
+        <MatchHighlights events={eventsForPartido(partido, remoteClocks)} partido={partido} tone="dark" standalone />
 
         {/* Action Buttons: Convocar / Convocados + Comenzar */}
         {canGoConvocatoria && (

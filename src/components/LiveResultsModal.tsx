@@ -257,8 +257,8 @@ export const LiveResultsModal: React.FC<LiveResultsModalProps> = ({ isOpen, onCl
           </div>
         </div>
 
-        {/* Acciones destacadas bajo el resultado (goles/tarjetas cronológicos) */}
-        <MatchHighlights events={eventsForPartido(p, remoteClocks)} tone="dark" />
+        {/* Resumen del partido bajo el resultado (solo goles y tarjetas por bando) */}
+        <MatchHighlights events={eventsForPartido(p, remoteClocks)} partido={p} tone="dark" />
 
         {p.campo && (
           <p className="px-3.5 py-1.5 text-[10px] text-gray-400 bg-gray-50 border-t border-gray-100 truncate">

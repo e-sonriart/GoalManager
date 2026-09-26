@@ -1,8 +1,8 @@
 import { loadClock, type MatchClock, type MatchEvent, type TipoEvento } from './matchClock';
 import type { Jugador } from '../types';
 
-/** Tipos que se muestran como acción destacada bajo el resultado */
-export const HIGHLIGHT_TIPOS: TipoEvento[] = ['gol', 'gol_contra', 'asistencia', 'tarjeta'];
+/** Tipos que se muestran como resumen bajo el resultado: solo goles y tarjetas */
+export const HIGHLIGHT_TIPOS: TipoEvento[] = ['gol', 'gol_contra', 'tarjeta'];
 
 const LABEL_TO_TIPO: Record<string, TipoEvento> = {
   Gol: 'gol',
@@ -24,9 +24,58 @@ export function sortHighlights(events: MatchEvent[]): MatchEvent[] {
   return [...events].sort((a, b) => minutoNum(a.minuto) - minutoNum(b.minuto));
 }
 
-/** Solo goles / asistencias / tarjetas, en orden cronológico */
+/** Solo goles / tarjetas, en orden cronológico (las asistencias no se muestran) */
 export function highlightEvents(events: MatchEvent[]): MatchEvent[] {
   return sortHighlights((events || []).filter(e => HIGHLIGHT_TIPOS.includes(e.tipo)));
+}
+
+export interface HighlightSideRow {
+  event: MatchEvent;
+  /** Marcador que deja el gol (local-visitante); solo en goles */
+  score?: string;
+}
+
+export interface HighlightSides {
+  local: HighlightSideRow[];
+  visitante: HighlightSideRow[];
+}
+
+/**
+ * Resumen por bandos: goles y tarjetas repartidos según el autor
+ * (equipo local o visitante) y, en los goles, el marcador que han supuesto.
+ * - 'gol' y 'tarjeta' → nuestro equipo; 'gol_contra' → el rival.
+ */
+export function highlightSides(
+  events: MatchEvent[],
+  partido?: { local?: string; visitante?: string; equipo?: string; condicion?: string }
+): HighlightSides {
+  const localName = (partido?.local || '').trim().toLowerCase();
+  const visitName = (partido?.visitante || '').trim().toLowerCase();
+  const nuestro = (partido?.equipo || '').trim().toLowerCase();
+  const esLocal = nuestro
+    ? localName === nuestro || (localName !== nuestro && visitName !== nuestro && partido?.condicion !== 'fuera')
+    : partido?.condicion !== 'fuera';
+
+  const sides: HighlightSides = { local: [], visitante: [] };
+  let gl = 0;
+  let gv = 0;
+  for (const event of highlightEvents(events)) {
+    let ours = esLocal;
+    if (event.tipo === 'gol') {
+      if (esLocal) gl += 1;
+      else gv += 1;
+    } else if (event.tipo === 'gol_contra') {
+      ours = !esLocal;
+      if (esLocal) gv += 1;
+      else gl += 1;
+    }
+    const row: HighlightSideRow =
+      event.tipo === 'gol' || event.tipo === 'gol_contra'
+        ? { event, score: `${gl}-${gv}` }
+        : { event };
+    sides[ours ? 'local' : 'visitante'].push(row);
+  }
+  return sides;
 }
 
 /** Reconstruye eventos desde el resumen de texto de partido.eventos (fallback sin reloj estructurado) */

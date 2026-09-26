@@ -1,16 +1,15 @@
 import React from 'react';
-import { CircleDot, Handshake } from 'lucide-react';
+import { CircleDot } from 'lucide-react';
 import type { MatchEvent } from '../utils/matchClock';
-import { highlightEvents } from '../utils/matchHighlights';
+import { highlightSides } from '../utils/matchHighlights';
 
-/** Icono de una acción destacada (gol ⚽, asistencia, tarjeta amarilla/roja) */
+/** Icono de una acción del resumen (gol / gol en contra / tarjeta) */
 export const HighlightIcon: React.FC<{ event: MatchEvent; className?: string }> = ({
   event,
   className = 'w-3.5 h-3.5 shrink-0'
 }) => {
   if (event.tipo === 'gol') return <CircleDot className={`${className} text-emerald-500`} />;
   if (event.tipo === 'gol_contra') return <CircleDot className={`${className} text-red-500`} />;
-  if (event.tipo === 'asistencia') return <Handshake className={`${className} text-sky-500`} />;
   const roja = event.extra === 'roja' || /\broja\b/i.test(event.texto);
   return (
     <span
@@ -25,20 +24,29 @@ interface MatchHighlightsProps {
   tone?: 'dark' | 'light';
   /** true → tarjeta independiente (Partidos); false → franja pegada bajo un bloque oscuro */
   standalone?: boolean;
+  /** Partido para repartir las acciones por bando (local/visitante) */
+  partido?: { local?: string; visitante?: string; equipo?: string; condicion?: string };
 }
 
 /**
- * Acciones destacadas (gol / gol en contra / asistencia / tarjeta) en orden
- * cronológico, para mostrar debajo del resultado.
+ * Resumen del partido bajo el resultado: solo goles y tarjetas, en dos columnas
+ * según el autor (equipo local o visitante). Cada gol muestra el marcador que
+ * ha supuesto.
  */
 export const MatchHighlights: React.FC<MatchHighlightsProps> = ({
   events,
   tone = 'dark',
-  standalone = false
+  standalone = false,
+  partido
 }) => {
-  const items = highlightEvents(events);
-  if (items.length === 0) return null;
+  const sides = highlightSides(events, partido);
+  if (sides.local.length === 0 && sides.visitante.length === 0) return null;
   const dark = tone === 'dark';
+
+  const columns: Array<{ label: string; rows: typeof sides.local }> = [
+    { label: partido?.local || 'Local', rows: sides.local },
+    { label: partido?.visitante || 'Visitante', rows: sides.visitante }
+  ];
 
   return (
     <div
@@ -53,30 +61,58 @@ export const MatchHighlights: React.FC<MatchHighlightsProps> = ({
           dark ? 'text-orange-400' : 'text-gray-400'
         }`}
       >
-        Acciones destacadas
+        Resumen del partido
       </p>
-      <ul className="space-y-1">
-        {items.map(e => (
-          <li
-            key={e.id}
-            className={`flex items-center gap-2 min-w-0 text-[11px] leading-tight ${
-              dark ? 'text-gray-200' : 'text-gray-700'
-            }`}
-          >
-            <span
-              className={`w-9 shrink-0 text-right font-black tabular-nums ${
-                dark ? 'text-orange-300' : 'text-orange-600'
+      <div className="grid grid-cols-2 gap-x-3">
+        {columns.map(col => (
+          <div key={col.label} className="min-w-0">
+            <p
+              className={`text-[9px] font-black uppercase tracking-wider mb-1 truncate ${
+                dark ? 'text-gray-400' : 'text-gray-500'
               }`}
+              title={col.label}
             >
-              {e.minuto}′
-            </span>
-            <HighlightIcon event={e} />
-            <span className="truncate font-medium" title={e.texto}>
-              {e.texto}
-            </span>
-          </li>
+              {col.label}
+            </p>
+            {col.rows.length === 0 ? (
+              <p className={`text-[10px] font-medium ${dark ? 'text-gray-600' : 'text-gray-400'}`}>—</p>
+            ) : (
+              <ul className="space-y-1">
+                {col.rows.map(({ event: e, score }) => (
+                  <li
+                    key={e.id}
+                    className={`flex items-center gap-1.5 min-w-0 text-[11px] leading-tight ${
+                      dark ? 'text-gray-200' : 'text-gray-700'
+                    }`}
+                  >
+                    <span
+                      className={`w-7 shrink-0 text-right font-black tabular-nums ${
+                        dark ? 'text-orange-300' : 'text-orange-600'
+                      }`}
+                    >
+                      {e.minuto}′
+                    </span>
+                    <HighlightIcon event={e} />
+                    <span className="truncate flex-1 min-w-0 font-medium" title={e.texto}>
+                      {e.texto}
+                    </span>
+                    {score && (
+                      <span
+                        className={`shrink-0 font-black tabular-nums text-[10px] px-1 rounded ${
+                          dark ? 'bg-white/10 text-emerald-300' : 'bg-gray-100 text-emerald-700'
+                        }`}
+                        title="Resultado tras el gol"
+                      >
+                        {score}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         ))}
-      </ul>
+      </div>
     </div>
   );
 };

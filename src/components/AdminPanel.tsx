@@ -8,6 +8,7 @@ import { RolePermissionsMatrix } from './RolePermissionsMatrix';
 import { ROLE_ORDER, getRoleInfo, roleRequiresTeam, SCOPE_LABELS } from '../utils/roles';
 import { validateUserForm } from '../utils/validation';
 import { compareTeams } from '../utils/teamOrder';
+import { getJugadorUsuario } from '../utils/playerUsername';
 import {
   Settings,
   Users,
@@ -1216,6 +1217,7 @@ export const AdminPanel: React.FC = () => {
                                   <th className="py-2.5 px-4">Categoría</th>
                                   <th className="py-2.5 px-4">Fecha de Alta</th>
                                   <th className="py-2.5 px-4">Fecha Nacimiento</th>
+                                  <th className="py-2.5 px-4">Usuario</th>
                                   <th className="py-2.5 px-4">Pass</th>
                                   <th className="py-2.5 px-4 text-right">Acciones</th>
                                 </tr>
@@ -1235,7 +1237,15 @@ export const AdminPanel: React.FC = () => {
                                     <td className="py-2.5 px-4 text-gray-600">{jugador.categoria}</td>
                                     <td className="py-2.5 px-4 text-gray-400 font-mono text-[11px]">{jugador.fechaAlta}</td>
                                     <td className="py-2.5 px-4 text-gray-400 font-mono text-[11px]">{jugador.fechaNacimiento || '—'}</td>
-                                    <td className="py-2.5 px-4 text-gray-600 font-mono text-[11px]">{jugador.pass || '—'}</td>
+                                    <td className="py-2.5 px-4 font-mono text-[11px] font-semibold text-gray-800">
+                                      {getJugadorUsuario(jugador, jugadores)}
+                                    </td>
+                                    <td className={`py-2.5 px-4 font-mono text-[11px] ${jugador.pass ? 'text-gray-600' : 'text-gray-400 italic'}`}>
+                                      {jugador.pass || '123456'}
+                                      {!jugador.pass && (
+                                        <span className="not-italic text-[10px] text-gray-400 ml-1">(defecto)</span>
+                                      )}
+                                    </td>
                                     <td className="py-2.5 px-4 text-right">
                                       <div className="flex items-center justify-end gap-1">
                                         <button

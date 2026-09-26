@@ -18,14 +18,14 @@ export const LoginScreen: React.FC = () => {
     e.preventDefault();
     setError('');
     if (!email.trim() || !password) {
-      setError('Introduce tu correo electrónico y tu contraseña.');
+      setError('Introduce tu correo o tu usuario y tu contraseña.');
       return;
     }
     setSubmitting(true);
     const ok = await login(email, password);
     setSubmitting(false);
     if (!ok) {
-      setError('Correo electrónico o contraseña incorrectos.');
+      setError('Correo, usuario o contraseña incorrectos.');
     }
   };
 
@@ -78,15 +78,15 @@ export const LoginScreen: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                Correo Electrónico
+                Correo o Usuario
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
                 <input
-                  type="email"
+                  type="text"
                   autoFocus
-                  autoComplete="email"
-                  placeholder="tu@clubfutbol.com"
+                  autoComplete="username"
+                  placeholder="tu@clubfutbol.com o sergio.21"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   className="w-full pl-9 pr-3 py-2.5 bg-gray-950 border border-gray-800 rounded-xl text-sm text-white placeholder-gray-600 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none"
@@ -140,6 +140,8 @@ export const LoginScreen: React.FC = () => {
         {/* Credenciales de demostración */}
         <p className="text-center text-[10px] text-gray-600 mt-4 leading-relaxed">
           Demo: admin@clubfutbol.com · contraseña 123456
+          <br />
+          Jugadores: usuario = nombre.dorsal (ej: sergio.21) · contraseña 123456
         </p>
       </div>
 

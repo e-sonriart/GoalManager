@@ -31,8 +31,18 @@ import { apiClient, getGasUrl, setGasUrl as setGasUrlStore } from '../services/a
 import { getSupabaseUrl, getSupabaseAnonKey } from '../services/supabaseClient';
 import { exportToCsv } from '../utils/exportUtils';
 import { Permission, canRole, allowedTabsFor } from '../utils/permissions';
+import { getJugadorUsuario } from '../utils/playerUsername';
 import type { PlayerStatsDelta } from '../utils/playerStatsFromEvents';
 import { convocatoriaStatsDeltas } from '../utils/playerStatsFromEvents';
+
+/** Sesión sintética para el acceso de jugadores (usuario = nombre.dorsal). */
+const toJugadorUsuario = (j: Jugador, all: Jugador[]): Usuario => ({
+  id: j.id,
+  nombre: j.nombre,
+  email: getJugadorUsuario(j, all),
+  rol: 'jugador',
+  equipo: j.equipo || undefined
+});
 
 interface ClubContextType {
   // Estado de usuario y autenticación
@@ -421,9 +431,14 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       // Restaurar SOLO la sesión guardada; si no hay sesión válida, mostrar pantalla de login
-      if (!currentUser && sanitizedUsrs.length > 0) {
+      if (!currentUser && (sanitizedUsrs.length > 0 || jugs.length > 0)) {
         const storedUser = localStorage.getItem('cf_current_user_id');
-        const found = storedUser ? sanitizedUsrs.find(u => u.id === storedUser) : undefined;
+        let found = storedUser ? sanitizedUsrs.find(u => u.id === storedUser) : undefined;
+        if (!found && storedUser) {
+          // Sesión de jugador (usuario sintético: id = jugador.id)
+          const pj = jugs.find(j => j.id === storedUser);
+          if (pj) found = toJugadorUsuario(pj, jugs);
+        }
         if (found) {
           setCurrentUser(found);
         } else {
@@ -431,7 +446,12 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       } else if (currentUser) {
         const refreshed = sanitizedUsrs.find(u => u.id === currentUser.id);
-        if (refreshed) setCurrentUser(refreshed);
+        if (refreshed) {
+          setCurrentUser(refreshed);
+        } else if (currentUser.rol === 'jugador') {
+          const pj = jugs.find(j => j.id === currentUser.id);
+          if (pj) setCurrentUser(toJugadorUsuario(pj, jugs));
+        }
       }
     } catch (err) {
       console.error('Error al cargar datos del club:', err);
@@ -462,25 +482,53 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     const target = email.trim().toLowerCase();
+
+    // 1) Personal del club: por correo electrónico (tabla usuarios)
     const found = users.find(u => u.email.trim().toLowerCase() === target);
-    if (!found || !found.password || found.password !== password) {
+    if (found) {
+      if (!found.password || found.password !== password) {
+        addToast({
+          type: 'error',
+          title: 'Acceso denegado',
+          message: 'El correo electrónico o la contraseña no son correctos.'
+        });
+        return false;
+      }
+      setCurrentUser(found);
+      localStorage.setItem('cf_current_user_id', found.id);
+      const teamInfo = (found.rol === 'entrenador' || found.rol === 'jugador') && found.equipo ? ` - ${found.equipo}` : '';
       addToast({
-        type: 'error',
-        title: 'Acceso denegado',
-        message: 'El correo electrónico o la contraseña no son correctos.'
+        type: 'success',
+        title: 'Sesión iniciada',
+        message: `Bienvenido, ${found.nombre} (${found.rol.toUpperCase()}${teamInfo})`
       });
-      return false;
+      return true;
     }
-    setCurrentUser(found);
-    localStorage.setItem('cf_current_user_id', found.id);
-    const teamInfo = (found.rol === 'entrenador' || found.rol === 'jugador') && found.equipo ? ` - ${found.equipo}` : '';
+
+    // 2) Jugadores: usuario = nombre.lower + '.' + dorsal (ej: sergio.21), pass = el suyo o 123456
+    const pj = jugadores.find(j => getJugadorUsuario(j, jugadores) === target);
+    if (pj) {
+      const expectedPass = pj.pass && pj.pass.trim() ? pj.pass.trim() : '123456';
+      if (password === expectedPass) {
+        const jugadorUser = toJugadorUsuario(pj, jugadores);
+        setCurrentUser(jugadorUser);
+        localStorage.setItem('cf_current_user_id', jugadorUser.id);
+        addToast({
+          type: 'success',
+          title: 'Sesión iniciada',
+          message: `Bienvenido, ${pj.nombre} (JUGADOR${jugadorUser.equipo ? ` - ${jugadorUser.equipo}` : ''})`
+        });
+        return true;
+      }
+    }
+
     addToast({
-      type: 'success',
-      title: 'Sesión iniciada',
-      message: `Bienvenido, ${found.nombre} (${found.rol.toUpperCase()}${teamInfo})`
+      type: 'error',
+      title: 'Acceso denegado',
+      message: 'El correo, el usuario o la contraseña no son correctos.'
     });
-    return true;
-  }, [addToast, users]);
+    return false;
+  }, [addToast, users, jugadores]);
 
   const logout = useCallback(() => {
     setCurrentUser(null);

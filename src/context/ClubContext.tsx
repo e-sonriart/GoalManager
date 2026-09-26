@@ -33,6 +33,8 @@ import { exportToCsv } from '../utils/exportUtils';
 import { Permission, canRole, allowedTabsFor } from '../utils/permissions';
 import { getJugadorUsuario } from '../utils/playerUsername';
 import type { PlayerStatsDelta } from '../utils/playerStatsFromEvents';
+import { listClocksRemote } from '../services/matchClocks';
+import { eventsForPartido, attributeJugadorId } from '../utils/matchHighlights';
 
 /** Sesión sintética para el acceso de jugadores (usuario = nombre.dorsal). */
 const toJugadorUsuario = (j: Jugador, all: Jugador[]): Usuario => ({
@@ -128,8 +130,8 @@ interface ClubContextType {
   // Estadísticas
   saveEstadistica: (estadistica: Partial<Estadistica> & { jugadorId: string }) => Promise<boolean>;
   applyEventStats: (deltas: PlayerStatsDelta[], sign: 1 | -1) => Promise<boolean>;
-  /** Recalcula partidosJugados desde los partidos finalizados (convocados ∪ titulares) */
-  recalcPartidosJugados: () => Promise<number>;
+  /** Reconstruye goles/asistencias/tarjetas/PJ/titular desde los partidos finalizados con eventos */
+  recalcularEstadisticas: () => Promise<number>;
 
   // Apuestas (Porra)
   submitApuesta: (partidoId: string, resultado: string) => Promise<boolean>;
@@ -839,38 +841,104 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     Array.isArray(v) ? v.filter((id): id is string => typeof id === 'string') : [];
 
   /**
-   * Recalcula partidosJugados desde cero: +1 por cada partido finalizado en el que
-   * el figura como convocado o titular. Corrige dobles contabilizaciones históricas.
+   * Reconstruye TODAS las estadísticas desde cero con los datos reales:
+   * - goles / asistencias / tarjetas ← eventos de los partidos finalizados (reloj local/remoto o resumen)
+   * - partidosJugados / titular ← convocados y titulares de esos partidos
+   * Un partido solo cuenta si está finalizado Y tiene eventos registrados (acta real);
+   * así desaparecen los datos de demostración (que no tienen eventos).
    */
-  const recalcPartidosJugados = useCallback(async (): Promise<number> => {
+  const recalcularEstadisticas = useCallback(async (): Promise<number> => {
     try {
       const isFinal = (v: unknown): boolean =>
         typeof v === 'boolean'
           ? v
           : ['true', '1', 'si', 'sí', 'final', 'finalizado'].includes(String(v ?? '').trim().toLowerCase());
-      const pj = new Map<string, number>();
-      const finals = partidos.filter(p => isFinal(p.finalizado));
-      for (const p of finals) {
-        const ids = new Set([...asIdList(p.convocados), ...asIdList(p.titulares)]);
-        ids.forEach(id => pj.set(id, (pj.get(id) || 0) + 1));
+      const remote = await listClocksRemote();
+      const jugById = new Map(jugadores.map(j => [j.id, j]));
+
+      interface Tot {
+        goles: number;
+        asistencias: number;
+        tarjetas: number;
+        am: number;
+        ro: number;
+        pj: number;
+        tit: number;
+      }
+      const totals = new Map<string, Tot>();
+      const ensure = (id: string): Tot => {
+        let t = totals.get(id);
+        if (!t) {
+          t = { goles: 0, asistencias: 0, tarjetas: 0, am: 0, ro: 0, pj: 0, tit: 0 };
+          totals.set(id, t);
+        }
+        return t;
+      };
+
+      let matches = 0;
+      for (const p of partidos) {
+        if (!isFinal(p.finalizado)) continue;
+        const evs = eventsForPartido(p, remote);
+        if (evs.length === 0) continue;
+        matches++;
+        const roster = [...asIdList(p.convocados), ...asIdList(p.titulares)]
+          .map(id => jugById.get(id))
+          .filter((j): j is Jugador => Boolean(j));
+        for (const e of evs) {
+          const jid = attributeJugadorId(e, roster, jugadores);
+          if (!jid) continue;
+          const t = ensure(jid);
+          if (e.tipo === 'gol') t.goles++;
+          else if (e.tipo === 'asistencia') t.asistencias++;
+          else if (e.tipo === 'tarjeta') {
+            t.tarjetas++;
+            if (e.extra === 'roja') t.ro++;
+            else t.am++;
+          }
+        }
+        const tit = new Set(asIdList(p.titulares));
+        const conv = new Set([...asIdList(p.convocados), ...tit]);
+        conv.forEach(id => ensure(id).pj++);
+        tit.forEach(id => ensure(id).tit++);
       }
 
       const updates = new Map<string, Estadistica>();
       for (const s of estadisticas) {
-        const n = pj.get(s.jugadorId) ?? 0;
-        if ((Number(s.partidosJugados) || 0) === n) continue;
-        updates.set(s.id, await estadisticasService.update({ ...s, partidosJugados: n }));
+        const t = totals.get(s.jugadorId);
+        const next: Estadistica = {
+          ...s,
+          goles: t?.goles ?? 0,
+          asistencias: t?.asistencias ?? 0,
+          tarjetas: t?.tarjetas ?? 0,
+          tarjetasAmarillas: t?.am ?? 0,
+          tarjetasRojas: t?.ro ?? 0,
+          partidosJugados: t?.pj ?? 0,
+          titular: t?.tit ?? 0
+        };
+        const changed =
+          next.goles !== (Number(s.goles) || 0) ||
+          next.asistencias !== (Number(s.asistencias) || 0) ||
+          next.tarjetas !== (Number(s.tarjetas) || 0) ||
+          next.tarjetasAmarillas !== (Number(s.tarjetasAmarillas) || 0) ||
+          next.tarjetasRojas !== (Number(s.tarjetasRojas) || 0) ||
+          next.partidosJugados !== (Number(s.partidosJugados) || 0) ||
+          next.titular !== (Number(s.titular) || 0);
+        if (!changed) continue;
+        updates.set(s.id, await estadisticasService.update(next));
       }
       const haveRow = new Set(estadisticas.map(s => s.jugadorId));
-      for (const j of jugadores) {
-        const n = pj.get(j.id) || 0;
-        if (n === 0 || haveRow.has(j.id)) continue;
+      for (const [jid, t] of totals) {
+        if (haveRow.has(jid)) continue;
+        if (!(t.goles || t.asistencias || t.tarjetas || t.pj || t.tit)) continue;
         const created = await estadisticasService.create({
-          jugadorId: j.id,
-          goles: 0,
-          asistencias: 0,
-          tarjetas: 0,
-          partidosJugados: n
+          jugadorId: jid,
+          goles: t.goles,
+          asistencias: t.asistencias,
+          tarjetas: t.tarjetas,
+          tarjetasAmarillas: t.am,
+          tarjetasRojas: t.ro,
+          partidosJugados: t.pj,
+          titular: t.tit
         });
         setEstadisticas(prev => [...prev, created]);
       }
@@ -879,13 +947,13 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       addToast({
         type: 'success',
-        title: 'Partidos jugados recalculados',
-        message: `${finals.length} partido${finals.length === 1 ? '' : 's'} finalizado${finals.length === 1 ? '' : 's'} · ${updates.size} ficha${updates.size === 1 ? '' : 's'} corregida${updates.size === 1 ? '' : 's'}.`
+        title: 'Estadísticas recalculadas',
+        message: `${matches} partido${matches === 1 ? '' : 's'} con acta · ${updates.size} ficha${updates.size === 1 ? '' : 's'} actualizada${updates.size === 1 ? '' : 's'}.`
       });
-      return finals.length;
+      return matches;
     } catch (err) {
-      console.error('[recalcPartidosJugados]', err);
-      addToast({ type: 'error', title: 'Error', message: 'No se pudieron recalcular los partidos jugados.' });
+      console.error('[recalcularEstadisticas]', err);
+      addToast({ type: 'error', title: 'Error', message: 'No se pudieron recalcular las estadísticas.' });
       return 0;
     }
   }, [partidos, estadisticas, jugadores, addToast]);
@@ -1193,7 +1261,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     saveEstadistica,
     applyEventStats,
-    recalcPartidosJugados,
+    recalcularEstadisticas,
 
     submitApuesta: async () => false,
     deleteApuesta: async () => false,
@@ -1221,7 +1289,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     saveEntrenador, deleteEntrenador, savePartido, deletePartido, saveSesion, deleteSesion,
     toggleConvocatoria, setConvocatoriaEstado, batchSetConvocatoriaEstado,
     saveAsistencia, deleteAsistencia, toggleAsistencia, batchMarkAsistencia, saveEstadistica, applyEventStats,
-    recalcPartidosJugados,
+    recalcularEstadisticas,
     isConfigModalOpen, setIsConfigModalOpen, exportAllSheets,
     saveUser, deleteUser, exportSheet
   ]);

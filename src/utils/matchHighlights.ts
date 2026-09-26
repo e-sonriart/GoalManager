@@ -1,4 +1,5 @@
 import { loadClock, type MatchClock, type MatchEvent, type TipoEvento } from './matchClock';
+import type { Jugador } from '../types';
 
 /** Tipos que se muestran como acción destacada bajo el resultado */
 export const HIGHLIGHT_TIPOS: TipoEvento[] = ['gol', 'gol_contra', 'asistencia', 'tarjeta'];
@@ -50,8 +51,32 @@ export function parseSummaryEvents(summary?: string): MatchEvent[] {
 }
 
 /**
- * Eventos de un partido: el reloj con más eventos (local o remoto) o, en su defecto,
- * el resumen de texto guardado en partido.eventos.
+ * Resuelve a qué jugador pertenece un evento. Los relojes guardan jugadorId;
+ * los eventos reconstruidos desde el resumen de texto se atribuyen por «#dorsal + nombre».
+ */
+export function attributeJugadorId(
+  event: MatchEvent,
+  roster: Jugador[],
+  allJugadores: Jugador[]
+): string | undefined {
+  if (event.jugadorId) return event.jugadorId;
+  if (event.tipo !== 'gol' && event.tipo !== 'asistencia' && event.tipo !== 'tarjeta') {
+    return undefined;
+  }
+  const m = event.texto.match(/#(\d+)\s+(.+)/);
+  if (!m) return undefined;
+  const dorsal = m[1];
+  const rest = m[2].toLowerCase();
+  const pool = roster.length > 0 ? roster : allJugadores;
+  const found = pool.find(
+    j => String(j.dorsal) === dorsal && rest.includes(String(j.nombre).toLowerCase())
+  );
+  return found?.id;
+}
+
+/**
+ * Eventos de un partido: el reloj con más eventos (local o remoto) o, en su
+ * defecto, el resumen de texto guardado en partido.eventos.
  */
 export function eventsForPartido(
   partido: { id: string; finalizado?: boolean | string; eventos?: string },

@@ -29,7 +29,7 @@ const fmtFechaCorta = (fecha: string): string => {
 };
 
 export const EstadisticasRankingView: React.FC = () => {
-  const { jugadores, estadisticas, partidos, saveEstadistica, recalcPartidosJugados, exportSheet, getTeamEscudo, can } = useClub();
+  const { jugadores, estadisticas, partidos, saveEstadistica, recalcularEstadisticas, exportSheet, getTeamEscudo, can } = useClub();
 
   const canManage = can('manage:estadisticas');
 
@@ -39,11 +39,11 @@ export const EstadisticasRankingView: React.FC = () => {
   /** Relojes remotos: eventos (goles/tarjetas) de partidos jugados en otro dispositivo */
   const remoteClocks = useRemoteClocks();
 
-  const handleRecalcPJ = async () => {
+  const handleRecalc = async () => {
     const ok = window.confirm(
-      'Recalcular partidos jugados: se contabilizará +1 por cada partido finalizado en el que el jugador figura como convocado o titular (corrige dobles contados). ¿Continuar?'
+      'Recalcular TODAS las estadísticas desde los partidos finalizados con acta/eventos: goles, asistencias, tarjetas, partidos y titulares. Los datos de demostración desaparecerán y solo quedará lo registrado en los partidos. ¿Continuar?'
     );
-    if (ok) await recalcPartidosJugados();
+    if (ok) await recalcularEstadisticas();
   };
 
   // Estadísticas completas vinculadas a jugadores
@@ -175,12 +175,12 @@ export const EstadisticasRankingView: React.FC = () => {
         <div className="flex items-center gap-2">
           {canManage && (
             <button
-              onClick={handleRecalcPJ}
+              onClick={handleRecalc}
               className="px-3.5 py-2 bg-white hover:bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
-              title="Recalcular partidos jugados desde los partidos finalizados"
+              title="Reconstruye goles, asistencias, tarjetas, partidos y titulares desde los partidos con acta/eventos"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              Recalcular PJ
+              Recalcular estadísticas
             </button>
           )}
           <button

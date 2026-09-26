@@ -179,6 +179,21 @@ export const EquiposClubView: React.FC = () => {
     return null;
   }, [partidos, selectedEquipoForSquad]);
 
+  /**
+   * Puntos de liga del equipo abierto: solo los partidos tipo 'Liga' suman.
+   * Los amistosos y torneos no puntúan → si no hay partidos de liga, no procede.
+   */
+  const teamLigaPts = useMemo<number | null>(() => {
+    if (!selectedEquipoForSquad) return null;
+    const nombre = selectedEquipoForSquad.nombre.trim().toLowerCase();
+    const liga = partidos.filter(p => (p.tipo ?? 'Liga') === 'Liga');
+    for (const { rows } of computeStandings(liga)) {
+      const hit = rows.find(r => r.equipo.trim().toLowerCase() === nombre);
+      if (hit) return hit.puntos;
+    }
+    return null;
+  }, [partidos, selectedEquipoForSquad]);
+
   const squadPlayers = useMemo(
     () => selectedEquipoForSquad
       ? sortSquadByPos(jugadores.filter(j => j.equipo === selectedEquipoForSquad.nombre))
@@ -1204,7 +1219,11 @@ export const EquiposClubView: React.FC = () => {
                 <span>DG <strong className="text-white">
                   {(teamSeasonRow?.dif ?? 0) > 0 ? '+' : ''}{teamSeasonRow?.dif ?? 0}
                 </strong></span>
-                <span>Pts <strong className="text-orange-400">{teamSeasonRow?.puntos ?? 0}</strong></span>
+                {teamLigaPts !== null && (
+                  <span title="Solo partidos de Liga: los amistosos y torneos no puntúan">
+                    Pts <strong className="text-orange-400">{teamLigaPts}</strong>
+                  </span>
+                )}
                 {!teamSeasonRow && (
                   <span className="text-gray-500 italic">Sin partidos finalizados aún</span>
                 )}

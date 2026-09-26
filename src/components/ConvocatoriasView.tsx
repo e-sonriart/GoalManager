@@ -3,7 +3,7 @@ import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
 import { resolveVisitorShield } from '../utils/shieldPresets';
 import { convocatoriaStatsDeltas } from '../utils/playerStatsFromEvents';
-import { Jugador } from '../types';
+import { Jugador, Partido } from '../types';
 import {
   ClipboardList,
   CheckCircle2,
@@ -23,6 +23,20 @@ const POS_DISK: Record<string, string> = {
   Defensa: 'bg-emerald-500 text-white border-emerald-300',
   Centrocampista: 'bg-sky-500 text-white border-sky-300',
   Delantero: 'bg-rose-500 text-white border-rose-300'
+};
+
+/** Un partido sigue siendo convocable si su fecha es hoy o posterior (los pasados se ocultan). */
+const isUpcomingPartido = (p: Partido): boolean => {
+  const raw = (p.fecha || '').trim();
+  if (!raw) return true;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const datePart = raw.slice(0, 10);
+  const t = /^\d{4}-\d{2}-\d{2}$/.test(datePart)
+    ? new Date(`${datePart}T00:00:00`).getTime()
+    : Date.parse(raw);
+  if (Number.isNaN(t)) return true;
+  return t >= today.getTime();
 };
 
 interface ConvocatoriasViewProps {
@@ -52,6 +66,29 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
 
   // Selección local: NO se guarda hasta pulsar "Convocar" (aceptar)
   const [localConvocados, setLocalConvocados] = useState<Set<string>>(new Set());
+
+  // Partidos seleccionables: solo los que aún no han pasado (fecha de hoy en adelante),
+  // ordenados del más próximo al más lejano. Si no queda ninguno, se muestra la lista completa.
+  const selectablePartidos = useMemo(() => {
+    const upcoming = partidos.filter(isUpcomingPartido);
+    if (upcoming.length === 0) return partidos;
+    return [...upcoming].sort((a, b) => {
+      const ta = Date.parse(a.fecha || '');
+      const tb = Date.parse(b.fecha || '');
+      if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+      if (Number.isNaN(ta)) return 1;
+      if (Number.isNaN(tb)) return -1;
+      return ta - tb;
+    });
+  }, [partidos]);
+
+  // Si la selección actual no está disponible (p. ej. enlace a un partido pasado), cambiar al primero
+  useEffect(() => {
+    if (selectablePartidos.length === 0) return;
+    if (!selectablePartidos.some(p => p.id === selectedPartidoId)) {
+      setSelectedPartidoId(selectablePartidos[0].id);
+    }
+  }, [selectablePartidos, selectedPartidoId]);
 
   const selectedPartido = useMemo(() => {
     return partidos.find(p => p.id === selectedPartidoId) || partidos[0];
@@ -348,14 +385,15 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex-1">
             <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-              Seleccionar Partido a Convocar:
+              Seleccionar Partido a Convocar{' '}
+              <span className="text-gray-400 normal-case font-medium">(solo fechas de hoy en adelante)</span>:
             </label>
             <select
               value={selectedPartidoId}
               onChange={e => setSelectedPartidoId(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold text-gray-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
             >
-              {partidos.map(p => (
+              {selectablePartidos.map(p => (
                 <option key={p.id} value={p.id}>
                   {p.local} vs {p.visitante} — {p.categoria} ({new Date(p.fecha).toLocaleDateString('es-ES')})
                 </option>

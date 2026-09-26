@@ -136,3 +136,41 @@ export function scaleEventStatsDeltas(
     titular: d.titular * sign
   }));
 }
+
+/**
+ * Diferencia entre dos conjuntos de deltas (nuevo − anterior), por jugador.
+ * Sirve para re-sincronizar las estadísticas al modificar un acta ya
+ * confirmada (editar/borrar/añadir un evento recalcula solo lo que cambia).
+ */
+export function diffStatsDeltas(
+  prev: PlayerStatsDelta[],
+  next: PlayerStatsDelta[]
+): PlayerStatsDelta[] {
+  const map = new Map<string, PlayerStatsDelta>();
+  const add = (id: string, mult: 1 | -1, d: PlayerStatsDelta) => {
+    let m = map.get(id);
+    if (!m) {
+      m = emptyDelta(id);
+      map.set(id, m);
+    }
+    m.goles += mult * d.goles;
+    m.asistencias += mult * d.asistencias;
+    m.tarjetas += mult * d.tarjetas;
+    m.tarjetasAmarillas += mult * d.tarjetasAmarillas;
+    m.tarjetasRojas += mult * d.tarjetasRojas;
+    m.partidosJugados += mult * d.partidosJugados;
+    m.titular += mult * d.titular;
+  };
+  for (const d of prev) add(d.jugadorId, -1, d);
+  for (const d of next) add(d.jugadorId, 1, d);
+  return Array.from(map.values()).filter(
+    d =>
+      d.goles ||
+      d.asistencias ||
+      d.tarjetas ||
+      d.tarjetasAmarillas ||
+      d.tarjetasRojas ||
+      d.partidosJugados ||
+      d.titular
+  );
+}

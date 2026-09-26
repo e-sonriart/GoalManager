@@ -14,9 +14,10 @@ import {
   saveClock,
   fmtTime
 } from '../utils/matchClock';
-import { actaStatsDeltas } from '../utils/playerStatsFromEvents';
+import { actaStatsDeltas, diffStatsDeltas } from '../utils/playerStatsFromEvents';
 import { MatchHighlights } from './MatchHighlights';
-import { saveClockRemote, loadClockRemote, mergeClocks } from '../services/matchClocks';
+import { parseSummaryEvents } from '../utils/matchHighlights';
+import { saveClockRemote, loadClockRemote } from '../services/matchClocks';
 import {
   ClipboardList,
   Clock,
@@ -69,6 +70,33 @@ function nowHora(): string {
   });
 }
 
+const asIdList = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((id): id is string => typeof id === 'string') : [];
+
+/** Marcador = base del partido + goles de los eventos */
+function scoreFromEvents(
+  evs: MatchEvent[],
+  esClubLocal: boolean,
+  baseLocal: number,
+  baseVisit: number
+): { gl: number; gv: number } {
+  const gClub = evs.filter(e => e.tipo === 'gol').length;
+  const gRival = evs.filter(e => e.tipo === 'gol_contra').length;
+  return esClubLocal
+    ? { gl: baseLocal + gClub, gv: baseVisit + gRival }
+    : { gl: baseLocal + gRival, gv: baseVisit + gClub };
+}
+
+/** Estado del modal «Añadir evento» (modificar el acta con minuto manual) */
+interface AddDraft {
+  minuto: string;
+  tipo: TipoEvento;
+  jugadorId: string;
+  extra: string;
+  dorsalRival: string;
+  texto: string;
+}
+
 export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
   initialPartidoId,
   onBack
@@ -93,7 +121,18 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     texto: string;
     tipo: TipoEvento;
     extra: string;
-  }>({ minuto: '0', texto: '', tipo: 'nota', extra: '' });
+    jugadorId: string;
+  }>({ minuto: '0', texto: '', tipo: 'nota', extra: '', jugadorId: '' });
+  /** Modal «Añadir evento» con minuto manual (modificar el acta) */
+  const [addOpen, setAddOpen] = useState(false);
+  const [addDraft, setAddDraft] = useState<AddDraft>({
+    minuto: '0',
+    tipo: 'gol',
+    jugadorId: '',
+    extra: 'amarilla',
+    dorsalRival: '',
+    texto: ''
+  });
   const [baseLocal, setBaseLocal] = useState(0);
   const [baseVisit, setBaseVisit] = useState(0);
   /** Dorsal del rival para gol en contra (solo número) */
@@ -218,36 +257,64 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     [suplentes, expelledIds]
   );
 
-  const { golLocal, golVisitante } = useMemo(() => {
-    const gClub = events.filter(e => e.tipo === 'gol').length;
-    const gRival = events.filter(e => e.tipo === 'gol_contra').length;
-    if (esClubLocal) {
-      return { golLocal: baseLocal + gClub, golVisitante: baseVisit + gRival };
-    }
-    return { golLocal: baseLocal + gRival, golVisitante: baseVisit + gClub };
-  }, [events, baseLocal, baseVisit, esClubLocal]);
+  const { gl: golLocal, gv: golVisitante } = useMemo(
+    () => scoreFromEvents(events, esClubLocal, baseLocal, baseVisit),
+    [events, esClubLocal, baseLocal, baseVisit]
+  );
 
   // ——— Cargar partido + reloj de localStorage (wall-clock: sigue con logout/cierre de pestaña) ———
   useEffect(() => {
     if (!selectedPartido) return;
-    setBaseLocal(Number(selectedPartido.golesLocal) || 0);
-    setBaseVisit(Number(selectedPartido.golesVisitante) || 0);
     setEditId(null);
+    setEditDraft({ minuto: '0', texto: '', tipo: 'nota', extra: '', jugadorId: '' });
+    setAddOpen(false);
+
+    /**
+     * El marcador guardado en el partido YA incluye los goles de los eventos
+     * (se almacena así al confirmar/persistir), así que la base es la
+     * diferencia: evita doble conteo al reabrir un acta.
+     */
+    const applyBase = (evs: MatchEvent[]) => {
+      const savedL = Number(selectedPartido.golesLocal) || 0;
+      const savedV = Number(selectedPartido.golesVisitante) || 0;
+      const gClub = evs.filter(e => e.tipo === 'gol').length;
+      const gRival = evs.filter(e => e.tipo === 'gol_contra').length;
+      const evL = esClubLocal ? gClub : gRival;
+      const evV = esClubLocal ? gRival : gClub;
+      setBaseLocal(Math.max(0, savedL - evL));
+      setBaseVisit(Math.max(0, savedV - evV));
+    };
+
     const c = loadClock(selectedPartido.id, selectedPartido.finalizado);
+    applyBase(c.events || []);
     setClock(c);
     setTickNow(Date.now());
     setClockLoadedId(selectedPartido.id);
-    // Si Supabase tiene más eventos que el local, úsalos
+
+    // Si Supabase tiene más eventos que el local, úsalos; si no hay reloj
+    // en ningún sitio, reconstruye el acta desde el resumen guardado.
     let cancelled = false;
     loadClockRemote(selectedPartido.id).then(remote => {
-      if (cancelled || !remote) return;
-      const winner = mergeClocks(c, remote);
-      if (winner) {
-        const finalClock = selectedPartido.finalizado
-          ? { ...winner, running: false, startedAtMs: null, fase: 'fin' as const }
-          : winner;
-        setClock(finalClock);
-        saveClock(selectedPartido.id, finalClock);
+      if (cancelled) return;
+      const useRemote = (remote?.events?.length || 0) > (c.events?.length || 0);
+      const best = useRemote && remote ? remote : c;
+      let finalEvents = Array.isArray(best.events) ? best.events : [];
+      if (finalEvents.length === 0 && selectedPartido.eventos) {
+        finalEvents = parseSummaryEvents(selectedPartido.eventos);
+      }
+      const finalClock: MatchClock = { ...best, events: finalEvents };
+      applyBase(finalEvents);
+      const normalized = selectedPartido.finalizado
+        ? { ...finalClock, running: false, startedAtMs: null, fase: 'fin' as const }
+        : finalClock;
+      const prev = clockRef.current;
+      if (
+        prev.events !== normalized.events ||
+        prev.fase !== normalized.fase ||
+        prev.running !== normalized.running
+      ) {
+        setClock(normalized);
+        saveClock(selectedPartido.id, normalized);
       }
     });
     return () => {
@@ -351,6 +418,30 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     evs
       .map(e => `${e.minuto}' ${EVENT_META[e.tipo].label}${e.extra ? ` (${e.extra})` : ''}: ${e.texto}${e.hora ? ` [${e.hora}]` : ''}`)
       .join(' | ');
+
+  /**
+   * Tras añadir/editar/borrar un evento: guarda el resumen y el marcador en
+   * el partido y, si el acta ya está cerrada, recalcula las estadísticas
+   * (solo la diferencia entre los eventos anteriores y los nuevos).
+   */
+  const aplicarCambioEventos = async (prevEvents: MatchEvent[], nextEvents: MatchEvent[]) => {
+    if (!selectedPartido) return;
+    const ordered = sortEvents(nextEvents);
+    const { gl, gv } = scoreFromEvents(ordered, esClubLocal, baseLocal, baseVisit);
+    const wasFinal = Boolean(selectedPartido.finalizado);
+    await savePartido({
+      ...selectedPartido,
+      golesLocal: gl,
+      golesVisitante: gv,
+      eventos: summaryFrom(ordered)
+    });
+    if (!wasFinal) return;
+    const diff = diffStatsDeltas(
+      actaStatsDeltas(asIdList(selectedPartido.convocados), asIdList(selectedPartido.titulares), prevEvents),
+      actaStatsDeltas(asIdList(selectedPartido.convocados), asIdList(selectedPartido.titulares), ordered)
+    );
+    if (diff.length) await applyEventStats(diff, 1);
+  };
 
   const advanceFase = async () => {
     if (fase === 'pre') {
@@ -570,42 +661,110 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
       minuto: ev.minuto,
       texto: ev.texto,
       tipo: ev.tipo,
-      extra: ev.extra || ''
+      extra: ev.extra || '',
+      jugadorId: ev.jugadorId || ''
     });
   };
 
   const saveEdit = () => {
     if (!editId) return;
-    setClock(prev => ({
-      ...prev,
-      events: sortEvents(
-        prev.events.map(e =>
-          e.id === editId
-            ? {
-                ...e,
-                minuto: editDraft.minuto || e.minuto,
-                texto: editDraft.texto,
-                tipo: editDraft.tipo,
-                extra:
-                  editDraft.tipo === 'tarjeta'
-                    ? editDraft.extra === 'roja'
-                      ? 'roja'
-                      : 'amarilla'
-                    : editDraft.tipo === 'gol_contra' || editDraft.tipo === 'gol' || editDraft.tipo === 'fase'
-                      ? e.extra
-                      : undefined
-              }
-            : e
-        )
+    const prevEvents = clockRef.current.events;
+    const nextEvents = sortEvents(
+      prevEvents.map(e =>
+        e.id === editId
+          ? {
+              ...e,
+              minuto: editDraft.minuto || e.minuto,
+              texto: editDraft.texto,
+              tipo: editDraft.tipo,
+              jugadorId: editDraft.jugadorId || undefined,
+              extra:
+                editDraft.tipo === 'tarjeta'
+                  ? editDraft.extra === 'roja'
+                    ? 'roja'
+                    : 'amarilla'
+                  : editDraft.tipo === 'gol_contra' || editDraft.tipo === 'gol' || editDraft.tipo === 'fase'
+                    ? e.extra
+                    : undefined
+            }
+          : e
       )
-    }));
+    );
+    setClock(prev => ({ ...prev, events: nextEvents }));
+    void aplicarCambioEventos(prevEvents, nextEvents);
     setEditId(null);
   };
 
   const deleteEdit = () => {
     if (!editId) return;
-    setClock(prev => ({ ...prev, events: prev.events.filter(e => e.id !== editId) }));
+    const prevEvents = clockRef.current.events;
+    const nextEvents = prevEvents.filter(e => e.id !== editId);
+    setClock(prev => ({ ...prev, events: nextEvents }));
+    void aplicarCambioEventos(prevEvents, nextEvents);
     setEditId(null);
+  };
+
+  // ——— Añadir evento con minuto manual (modificar el acta) ———
+  const jugadoresActa = useMemo(() => [...titulares, ...suplentes], [titulares, suplentes]);
+
+  const autoTexto = (d: AddDraft): string => {
+    const j = jugadores.find(x => x.id === d.jugadorId);
+    const dors = j?.dorsal ? `#${j.dorsal} ` : '';
+    if (d.tipo === 'gol') return j ? `Gol de ${dors}${j.nombre}` : 'Gol';
+    if (d.tipo === 'gol_contra') {
+      const rival = d.dorsalRival.trim();
+      return rival ? `Gol en contra · Rival #${rival}` : 'Gol en contra';
+    }
+    if (d.tipo === 'asistencia') return j ? `Asistencia de ${dors}${j.nombre}` : 'Asistencia';
+    if (d.tipo === 'tarjeta') return j ? `Tarjeta ${d.extra} a ${dors}${j.nombre}` : `Tarjeta ${d.extra}`;
+    return d.texto;
+  };
+
+  const setAddField = (key: keyof AddDraft, value: string) => {
+    setAddDraft(prev => {
+      const next = { ...prev, [key]: value } as AddDraft;
+      if (next.tipo !== 'nota') next.texto = autoTexto(next);
+      return next;
+    });
+  };
+
+  const openAdd = () => {
+    setAddDraft({
+      minuto: fase === 'pre' ? '0' : minuteLabel,
+      tipo: 'gol',
+      jugadorId: '',
+      extra: 'amarilla',
+      dorsalRival: '',
+      texto: ''
+    });
+    setAddOpen(true);
+  };
+
+  const confirmAdd = () => {
+    const minuto = addDraft.minuto.trim();
+    const texto = addDraft.texto.trim();
+    if (!minuto || !texto) return;
+    const ev: MatchEvent = {
+      id: `ev_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      minuto,
+      tipo: addDraft.tipo,
+      texto,
+      extra:
+        addDraft.tipo === 'tarjeta'
+          ? addDraft.extra === 'roja'
+            ? 'roja'
+            : 'amarilla'
+          : addDraft.tipo === 'gol_contra' && addDraft.dorsalRival.trim()
+            ? `rival #${addDraft.dorsalRival.trim()}`
+            : undefined,
+      jugadorId: addDraft.jugadorId || undefined,
+      hora: nowHora()
+    };
+    const prevEvents = clockRef.current.events;
+    const nextEvents = sortEvents([...prevEvents, ev]);
+    setClock(prev => ({ ...prev, events: nextEvents }));
+    void aplicarCambioEventos(prevEvents, nextEvents);
+    setAddOpen(false);
   };
 
   const editingEvent = events.find(e => e.id === editId) || null;
@@ -934,10 +1093,33 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
 
       {/* Cronología */}
       <div className="bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
-        <div className="p-3 bg-gray-50 border-b border-gray-150">
-          <h3 className="font-bold text-xs uppercase tracking-wider text-gray-700">
-            Cronología ({events.length})
-          </h3>
+        <div className="p-3 bg-gray-50 border-b border-gray-150 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="font-bold text-xs uppercase tracking-wider text-gray-700">
+              Cronología ({events.length})
+            </h3>
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              {finalizado
+                ? 'Acta cerrada: puedes añadir, editar o borrar eventos (se recalculan goles y estadísticas).'
+                : 'Pulsa el lápiz de cada evento para corregir el minuto, tipo o jugador.'}
+            </p>
+          </div>
+          <button
+            onClick={openAdd}
+            title={
+              finalizado
+                ? 'Añadir un evento al acta con el minuto que tú indiques'
+                : 'Añadir evento con minuto manual'
+            }
+            className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 border transition-colors ${
+              finalizado
+                ? 'bg-orange-500 hover:bg-orange-600 text-white border-orange-500 shadow-md shadow-orange-500/25'
+                : 'bg-white hover:bg-orange-50 text-orange-700 border-orange-200'
+            }`}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Añadir evento
+          </button>
         </div>
         {events.length === 0 ? (
           <div className="p-8 text-center text-gray-400">
@@ -1365,6 +1547,22 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                 </div>
               </div>
 
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Jugador</label>
+                <select
+                  value={editDraft.jugadorId}
+                  onChange={e => setEditDraft(prev => ({ ...prev, jugadorId: e.target.value }))}
+                  className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                >
+                  <option value="">Sin jugador</option>
+                  {jugadoresActa.map(j => (
+                    <option key={j.id} value={j.id}>
+                      #{j.dorsal} {j.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {editDraft.tipo === 'tarjeta' && (
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Color</label>
@@ -1427,6 +1625,167 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
               >
                 <Save className="w-3.5 h-3.5" />
                 Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Modal añadir evento (modificar el acta con minuto manual) ===== */}
+      {addOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/55 p-0 sm:p-4"
+          onClick={() => setAddOpen(false)}
+        >
+          <div
+            className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-gray-150 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="font-bold text-sm text-gray-900 flex items-center gap-2">
+                  <Plus className="w-4 h-4 text-orange-500" />
+                  Añadir evento al acta
+                </h3>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  Elige el minuto a mano — útil si se perdió la cobertura o la batería.
+                </p>
+              </div>
+              <button onClick={() => setAddOpen(false)} className="text-gray-400 hover:text-gray-600 text-xs font-bold px-2 py-1">
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Minuto</label>
+                  <input
+                    type="text"
+                    value={addDraft.minuto}
+                    onChange={e => setAddField('minuto', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    placeholder="ej: 23 o 90+2"
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tipo</label>
+                  <select
+                    value={addDraft.tipo}
+                    onChange={e => setAddField('tipo', e.target.value)}
+                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    <option value="gol">Gol</option>
+                    <option value="gol_contra">Gol en contra</option>
+                    <option value="asistencia">Asistencia</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="nota">Nota</option>
+                  </select>
+                </div>
+              </div>
+
+              {addDraft.tipo === 'gol_contra' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+                    Dorsal del rival (solo número)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={2}
+                    value={addDraft.dorsalRival}
+                    onChange={e => setAddField('dorsalRival', e.target.value.replace(/\D/g, ''))}
+                    placeholder="ej: 10"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-center focus:ring-2 focus:ring-red-500 focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {(addDraft.tipo === 'gol' || addDraft.tipo === 'asistencia' || addDraft.tipo === 'tarjeta') && (
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Jugador</label>
+                  <select
+                    value={addDraft.jugadorId}
+                    onChange={e => setAddField('jugadorId', e.target.value)}
+                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    <option value="">Selecciona un jugador…</option>
+                    <optgroup label="Titulares">
+                      {titulares.map(j => (
+                        <option key={j.id} value={j.id}>
+                          #{j.dorsal} {j.nombre}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Suplentes">
+                      {suplentes.map(j => (
+                        <option key={j.id} value={j.id}>
+                          #{j.dorsal} {j.nombre}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+              )}
+
+              {addDraft.tipo === 'tarjeta' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Color</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAddField('extra', 'amarilla')}
+                      className={`flex-1 py-2 rounded-lg text-xs font-bold border-2 ${
+                        addDraft.extra !== 'roja'
+                          ? 'bg-amber-100 border-amber-400 text-amber-900'
+                          : 'bg-white border-gray-200 text-gray-600'
+                      }`}
+                    >
+                      🟨 Amarilla
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddField('extra', 'roja')}
+                      className={`flex-1 py-2 rounded-lg text-xs font-bold border-2 ${
+                        addDraft.extra === 'roja'
+                          ? 'bg-red-100 border-red-400 text-red-800'
+                          : 'bg-white border-gray-200 text-gray-600'
+                      }`}
+                    >
+                      🟥 Roja
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Descripción</label>
+                <textarea
+                  value={addDraft.texto}
+                  onChange={e => setAddDraft(prev => ({ ...prev, texto: e.target.value }))}
+                  rows={2}
+                  placeholder="Se rellena al elegir el tipo y el jugador; puedes ajustarla."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="p-3 border-t border-gray-150 flex gap-2 shrink-0">
+              <button
+                onClick={() => setAddOpen(false)}
+                className="flex-1 py-2.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmAdd}
+                disabled={!addDraft.minuto.trim() || !addDraft.texto.trim()}
+                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-40"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Añadir
               </button>
             </div>
           </div>

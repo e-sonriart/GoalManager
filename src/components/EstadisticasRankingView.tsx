@@ -4,6 +4,7 @@ import { Estadistica } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import { eventsForPartido, attributeJugadorId, rosterForPartido, idList } from '../utils/matchHighlights';
+import { compareTeams } from '../utils/teamOrder';
 import { useRemoteClocks } from '../hooks/useRemoteClocks';
 import {
   Trophy,
@@ -72,7 +73,7 @@ const sortDetails = (map: Map<string, MatchDetail[]>): void => {
 };
 
 export const EstadisticasRankingView: React.FC = () => {
-  const { jugadores, estadisticas, partidos, saveEstadistica, recalcularEstadisticas, exportSheet, getTeamEscudo, can } = useClub();
+  const { jugadores, estadisticas, partidos, equipos, saveEstadistica, recalcularEstadisticas, exportSheet, getTeamEscudo, can } = useClub();
 
   const canManage = can('manage:estadisticas');
 
@@ -127,6 +128,26 @@ export const EstadisticasRankingView: React.FC = () => {
 
   const top3Pichichi = rankingGoleadores.slice(0, 3);
   const currentRanking = activeTab === 'asistencias' ? rankingAsistentes : rankingGoleadores;
+
+  /** Posición global de cada jugador (se conserva al agrupar por equipos) */
+  const rankIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    currentRanking.forEach((item, i) => m.set(item.jugadorId, i));
+    return m;
+  }, [currentRanking]);
+
+  /** Lista agrupada por equipos, en el orden de categorías del club */
+  const rankingPorEquipo = useMemo(() => {
+    const byTeam = new Map<string, typeof rankingGoleadores>();
+    currentRanking.forEach(item => {
+      const eq = item.jugador.equipo || 'Sin equipo';
+      const list = byTeam.get(eq);
+      if (list) list.push(item);
+      else byTeam.set(eq, [item]);
+    });
+    const names = [...byTeam.keys()].sort((a, b) => compareTeams(a, b, equipos));
+    return names.map(eq => ({ equipo: eq, items: byTeam.get(eq)! }));
+  }, [currentRanking, equipos]);
 
   /**
    * Detalle por jugador de goles, asistencias y partidos jugados: una fila por
@@ -567,143 +588,187 @@ export const EstadisticasRankingView: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {currentRanking.map((item, idx) => {
-              return (
-                <React.Fragment key={item.jugadorId}>
-                  <tr className="hover:bg-orange-50/30 transition-colors">
-                    <td className="py-3 px-4 text-center">{getRankBadge(idx)}</td>
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-gray-900 text-sm">{item.jugador.nombre}</div>
-                      <div className="text-[11px] text-gray-400">
-                        #{item.jugador.dorsal} • {item.jugador.posicion}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-gray-700 font-medium">
-                      <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-md bg-white border border-gray-200 p-0.5 flex items-center justify-center shrink-0">
-                          <TeamShield
-                            escudoUrl={getTeamEscudo(item.jugador.equipo)}
-                            teamName={item.jugador.equipo}
-                            size="xs"
-                            className="w-full h-full"
-                          />
-                        </div>
-                        <span className="truncate">{item.jugador.equipo}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-center font-semibold text-gray-700">
-                      {statCell(item.partidosJugados, item, 'pj', 'text-gray-700')}
-                    </td>
-                    <td className="py-3 px-4 text-center font-black text-orange-600 font-athletic text-base">
-                      {statCell(displayGoles(item), item, 'goles', 'text-orange-600 font-athletic text-base')}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      {statCell(item.asistencias, item, 'asistencias', 'text-blue-600 font-athletic text-base')}
-                    </td>
-                    <td className="py-3 px-4 text-center text-gray-500 font-mono">
-                      {item.golesPorPartido}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold">
-                        {item.tarjetas}
+            {rankingPorEquipo.map(group => (
+              <React.Fragment key={group.equipo}>
+                <tr className="bg-gray-50">
+                  <td colSpan={9} className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <TeamShield
+                        escudoUrl={getTeamEscudo(group.equipo)}
+                        teamName={group.equipo}
+                        size="xs"
+                        className="w-4 h-4"
+                      />
+                      <span className="font-black text-xs uppercase tracking-wider text-gray-800">
+                        {group.equipo}
                       </span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() =>
-                          setEditingStat({
-                            id: item.id,
-                            jugadorId: item.jugadorId,
-                            goles: item.goles,
-                            asistencias: item.asistencias,
-                            tarjetas: item.tarjetas,
-                            partidosJugados: item.partidosJugados
-                          })
-                        }
-                        className={`p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors ${canManage ? 'inline-flex' : 'hidden'}`}
-                        title="Modificar estadísticas"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                  {expandedStat?.jugadorId === item.jugadorId && (
-                    <tr className="bg-blue-50/50">
-                      <td colSpan={9} className="px-4 py-2">
-                        {expandedHeader(item, expandedStat.kind)}
-                        {renderStatDetail(item, expandedStat.kind)}
+                      <span className="text-[10px] font-bold text-gray-400">
+                        {group.items.length} jugador{group.items.length === 1 ? '' : 'es'}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+                {group.items.map(item => (
+                  <React.Fragment key={item.jugadorId}>
+                    <tr className="hover:bg-orange-50/30 transition-colors">
+                      <td className="py-3 px-4 text-center">
+                        {getRankBadge(rankIndex.get(item.jugadorId) ?? 0)}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-gray-900 text-sm">{item.jugador.nombre}</div>
+                        <div className="text-[11px] text-gray-400">
+                          #{item.jugador.dorsal} • {item.jugador.posicion}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-gray-700 font-medium">
+                        <div className="flex items-center gap-2">
+                          <div className="w-5 h-5 rounded-md bg-white border border-gray-200 p-0.5 flex items-center justify-center shrink-0">
+                            <TeamShield
+                              escudoUrl={getTeamEscudo(item.jugador.equipo)}
+                              teamName={item.jugador.equipo}
+                              size="xs"
+                              className="w-full h-full"
+                            />
+                          </div>
+                          <span className="truncate">{item.jugador.equipo}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-center font-semibold text-gray-700">
+                        {statCell(item.partidosJugados, item, 'pj', 'text-gray-700')}
+                      </td>
+                      <td className="py-3 px-4 text-center font-black text-orange-600 font-athletic text-base">
+                        {statCell(displayGoles(item), item, 'goles', 'text-orange-600 font-athletic text-base')}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        {statCell(item.asistencias, item, 'asistencias', 'text-blue-600 font-athletic text-base')}
+                      </td>
+                      <td className="py-3 px-4 text-center text-gray-500 font-mono">
+                        {item.golesPorPartido}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-bold">
+                          {item.tarjetas}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          onClick={() =>
+                            setEditingStat({
+                              id: item.id,
+                              jugadorId: item.jugadorId,
+                              goles: item.goles,
+                              asistencias: item.asistencias,
+                              tarjetas: item.tarjetas,
+                              partidosJugados: item.partidosJugados
+                            })
+                          }
+                          className={`p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors ${canManage ? 'inline-flex' : 'hidden'}`}
+                          title="Modificar estadísticas"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
+                    {expandedStat?.jugadorId === item.jugadorId && (
+                      <tr className="bg-blue-50/50">
+                        <td colSpan={9} className="px-4 py-2">
+                          {expandedHeader(item, expandedStat.kind)}
+                          {renderStatDetail(item, expandedStat.kind)}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </React.Fragment>
+            ))}
           </tbody>
         </table>
       </div>
 
-      {/* Ranking en móvil (tarjetas) */}
-      <div className="sm:hidden bg-white rounded-2xl border border-gray-150 shadow-sm divide-y divide-gray-100 overflow-hidden">
-        {currentRanking.map((item, idx) => (
-          <div key={item.jugadorId} className="p-3.5">
-            <div className="flex items-start gap-3">
-              <div className="shrink-0 pt-0.5">{getRankBadge(idx)}</div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-bold text-gray-900 text-sm truncate">{item.jugador.nombre}</p>
-                    <p className="text-[11px] text-gray-400 truncate">
-                      #{item.jugador.dorsal} • {item.jugador.posicion} • {item.jugador.equipo}
-                    </p>
+      {/* Ranking en móvil (tarjetas agrupadas por equipo) */}
+      <div className="sm:hidden bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
+        {rankingPorEquipo.map(group => (
+          <div key={group.equipo} className="border-t border-gray-100 first:border-t-0">
+            <div className="flex items-center gap-2 px-3.5 py-2 bg-gray-50">
+              <TeamShield
+                escudoUrl={getTeamEscudo(group.equipo)}
+                teamName={group.equipo}
+                size="xs"
+                className="w-4 h-4"
+              />
+              <span className="font-black text-xs uppercase tracking-wider text-gray-800">
+                {group.equipo}
+              </span>
+              <span className="text-[10px] font-bold text-gray-400">
+                {group.items.length} jugador{group.items.length === 1 ? '' : 'es'}
+              </span>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {group.items.map(item => (
+                <div key={item.jugadorId} className="p-3.5">
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 pt-0.5">
+                      {getRankBadge(rankIndex.get(item.jugadorId) ?? 0)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-900 text-sm truncate">{item.jugador.nombre}</p>
+                          <p className="text-[11px] text-gray-400 truncate">
+                            #{item.jugador.dorsal} • {item.jugador.posicion} • {item.jugador.equipo}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setEditingStat({
+                              id: item.id,
+                              jugadorId: item.jugadorId,
+                              goles: item.goles,
+                              asistencias: item.asistencias,
+                              tarjetas: item.tarjetas,
+                              partidosJugados: item.partidosJugados
+                            })
+                          }
+                          className={`w-9 h-9 shrink-0 items-center justify-center text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors ${canManage ? 'inline-flex' : 'hidden'}`}
+                          title="Modificar estadísticas"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
+                        <div className="rounded-lg bg-gray-50 py-1.5">
+                          <p className="text-[9px] font-bold uppercase text-gray-400">PJ</p>
+                          {statCell(item.partidosJugados, item, 'pj', 'text-sm text-gray-800 mx-auto')}
+                        </div>
+                        <div className="rounded-lg bg-orange-50 py-1.5">
+                          <p className="text-[9px] font-bold uppercase text-orange-400">
+                            {isPortero(item.jugador) ? 'Encaj.' : 'Goles'}
+                          </p>
+                          {statCell(displayGoles(item), item, 'goles', 'text-sm text-orange-600 font-athletic mx-auto')}
+                        </div>
+                        <div className="rounded-lg bg-blue-50 py-1.5">
+                          <p className="text-[9px] font-bold uppercase text-blue-400">Asist.</p>
+                          {statCell(item.asistencias, item, 'asistencias', 'text-sm text-blue-600 font-athletic mx-auto')}
+                        </div>
+                        <div className="rounded-lg bg-gray-50 py-1.5">
+                          <p className="text-[9px] font-bold uppercase text-gray-400">G/P</p>
+                          <p className="text-sm font-bold text-gray-700 font-mono">{item.golesPorPartido}</p>
+                        </div>
+                        <div className="rounded-lg bg-amber-50 py-1.5">
+                          <p className="text-[9px] font-bold uppercase text-amber-500">Tarj.</p>
+                          <p className="text-sm font-bold text-amber-700">{item.tarjetas}</p>
+                        </div>
+                      </div>
+                      {expandedStat?.jugadorId === item.jugadorId && (
+                        <div className="mt-2.5 pt-2 border-t border-blue-100">
+                          {expandedHeader(item, expandedStat.kind)}
+                          {renderStatDetail(item, expandedStat.kind)}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <button
-                    onClick={() =>
-                      setEditingStat({
-                        id: item.id,
-                        jugadorId: item.jugadorId,
-                        goles: item.goles,
-                        asistencias: item.asistencias,
-                        tarjetas: item.tarjetas,
-                        partidosJugados: item.partidosJugados
-                      })
-                    }
-                    className={`w-9 h-9 shrink-0 items-center justify-center text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors ${canManage ? 'inline-flex' : 'hidden'}`}
-                    title="Modificar estadísticas"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
                 </div>
-                <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
-                  <div className="rounded-lg bg-gray-50 py-1.5">
-                    <p className="text-[9px] font-bold uppercase text-gray-400">PJ</p>
-                    {statCell(item.partidosJugados, item, 'pj', 'text-sm text-gray-800 mx-auto')}
-                  </div>
-                  <div className="rounded-lg bg-orange-50 py-1.5">
-                    <p className="text-[9px] font-bold uppercase text-orange-400">
-                      {isPortero(item.jugador) ? 'Encaj.' : 'Goles'}
-                    </p>
-                    {statCell(displayGoles(item), item, 'goles', 'text-sm text-orange-600 font-athletic mx-auto')}
-                  </div>
-                  <div className="rounded-lg bg-blue-50 py-1.5">
-                    <p className="text-[9px] font-bold uppercase text-blue-400">Asist.</p>
-                    {statCell(item.asistencias, item, 'asistencias', 'text-sm text-blue-600 font-athletic mx-auto')}
-                  </div>
-                  <div className="rounded-lg bg-gray-50 py-1.5">
-                    <p className="text-[9px] font-bold uppercase text-gray-400">G/P</p>
-                    <p className="text-sm font-bold text-gray-700 font-mono">{item.golesPorPartido}</p>
-                  </div>
-                  <div className="rounded-lg bg-amber-50 py-1.5">
-                    <p className="text-[9px] font-bold uppercase text-amber-500">Tarj.</p>
-                    <p className="text-sm font-bold text-amber-700">{item.tarjetas}</p>
-                  </div>
-                </div>
-                {expandedStat?.jugadorId === item.jugadorId && (
-                  <div className="mt-2.5 pt-2 border-t border-blue-100">
-                    {expandedHeader(item, expandedStat.kind)}
-                    {renderStatDetail(item, expandedStat.kind)}
-                  </div>
-                )}
-              </div>
+              ))}
             </div>
           </div>
         ))}

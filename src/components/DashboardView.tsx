@@ -42,10 +42,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   // Métricas calculadas (memorizadas para evitar recálculo en cada render)
   const metrics = useMemo(() => {
     const partidosPendientes = partidos.filter(p => !p.finalizado).length;
-    return { partidosPendientes };
+    const now = new Date();
+    const dayKey = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const hoy = dayKey(now);
+    const manana = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+    let jugadosHoy = 0;
+    let partidosManana = 0;
+    for (const p of partidos) {
+      const raw = String(p.fecha || '');
+      const d = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T00:00:00`) : new Date(raw);
+      if (isNaN(d.getTime())) continue;
+      const key = dayKey(d);
+      if (key === hoy && Boolean(p.finalizado)) jugadosHoy += 1;
+      else if (key === manana) partidosManana += 1;
+    }
+    return { partidosPendientes, jugadosHoy, partidosManana };
   }, [partidos]);
 
-  const { partidosPendientes } = metrics;
+  const { partidosPendientes, jugadosHoy, partidosManana } = metrics;
 
   // Pichichi (Máximo Goleador)
   const estadisticasOrdenadas = useMemo(
@@ -217,16 +231,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
       {/* Metric Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl border border-gray-150 shadow-xs flex flex-col sm:flex-row items-center sm:items-start gap-2.5 sm:gap-4">
-          <div className="p-2 sm:p-3.5 rounded-xl sm:rounded-2xl bg-blue-100 text-blue-600 shrink-0">
+        <button
+          type="button"
+          onClick={() => onNavigate('partidos')}
+          disabled={!canGo('partidos')}
+          className="group text-left bg-white p-3.5 sm:p-5 rounded-2xl border border-gray-150 shadow-xs hover:border-orange-300 hover:shadow-md transition-all flex flex-col sm:flex-row items-center sm:items-start gap-2.5 sm:gap-4 disabled:cursor-default disabled:hover:border-gray-150 disabled:hover:shadow-xs"
+        >
+          <div className="p-2 sm:p-3.5 rounded-xl sm:rounded-2xl bg-blue-100 text-blue-600 shrink-0 group-hover:bg-blue-200 transition-colors">
             <Calendar className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <div className="text-center sm:text-left min-w-0">
+          <div className="text-center sm:text-left min-w-0 flex-1">
             <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 truncate">Por Jugar</p>
             <h3 className="text-xl sm:text-2xl font-black text-gray-900 font-athletic">{partidosPendientes}</h3>
             <p className="hidden sm:block text-[11px] text-gray-400">{partidos.length} partidos totales</p>
+            <div className="mt-1.5 flex flex-wrap items-center justify-center sm:justify-start gap-1.5 text-[11px]">
+              <span
+                className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 font-semibold"
+                title="Partidos finalizados con fecha de hoy"
+              >
+                Hoy: {jugadosHoy} {jugadosHoy === 1 ? 'jugado' : 'jugados'}
+              </span>
+              <span
+                className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100 font-semibold"
+                title="Partidos programados para mañana"
+              >
+                Mañana: {partidosManana} {partidosManana === 1 ? 'partido' : 'partidos'}
+              </span>
+            </div>
           </div>
-        </div>
+          {canGo('partidos') && (
+            <ChevronRight className="hidden sm:block w-5 h-5 text-gray-300 group-hover:text-orange-500 transition-colors shrink-0 self-center" />
+          )}
+        </button>
 
         <button
           onClick={() => setIsStatusOpen(true)}

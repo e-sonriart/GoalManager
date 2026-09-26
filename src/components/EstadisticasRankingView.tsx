@@ -236,6 +236,18 @@ export const EstadisticasRankingView: React.FC = () => {
   /** Celda desplegada: qué cifra (PJ / goles / asistencias) de qué jugador */
   const [expandedStat, setExpandedStat] = useState<{ jugadorId: string; kind: StatKind } | null>(null);
 
+  /** Equipos con sus jugadores desplegados (al pulsar la cabecera del equipo) */
+  const [openTeams, setOpenTeams] = useState<Set<string>>(new Set());
+
+  const toggleTeam = (equipo: string) => {
+    setOpenTeams(prev => {
+      const next = new Set(prev);
+      if (next.has(equipo)) next.delete(equipo);
+      else next.add(equipo);
+      return next;
+    });
+  };
+
   const toggleStat = (jugadorId: string, kind: StatKind) => {
     setExpandedStat(prev =>
       prev && prev.jugadorId === jugadorId && prev.kind === kind ? null : { jugadorId, kind }
@@ -560,10 +572,10 @@ export const EstadisticasRankingView: React.FC = () => {
         </button>
       </div>
 
-      {/* Cifras desplegables: pulsa partidos, goles o asistencias de un jugador para ver su detalle */}
+      {/* Cifras desplegables: pulsa un equipo para ver sus jugadores, y las cifras para el detalle */}
       <p className="flex items-center gap-1.5 text-xs text-gray-500">
         <Info className="w-3.5 h-3.5 shrink-0 text-blue-500" />
-        Pulsa partidos, goles o asistencias de un jugador para ver sus partidos con resultado y fecha.
+        Pulsa un equipo para desplegar sus jugadores; pulsa partidos, goles o asistencias de un jugador para ver el detalle con resultado y fecha.
       </p>
 
       {/* Tabla de Ranking (escritorio) */}
@@ -590,7 +602,10 @@ export const EstadisticasRankingView: React.FC = () => {
           <tbody className="divide-y divide-gray-100">
             {rankingPorEquipo.map(group => (
               <React.Fragment key={group.equipo}>
-                <tr className="bg-gray-50">
+                <tr
+                  className="bg-gray-50 cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                  onClick={() => toggleTeam(group.equipo)}
+                >
                   <td colSpan={9} className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <TeamShield
@@ -605,10 +620,16 @@ export const EstadisticasRankingView: React.FC = () => {
                       <span className="text-[10px] font-bold text-gray-400">
                         {group.items.length} jugador{group.items.length === 1 ? '' : 'es'}
                       </span>
+                      <ChevronDown
+                        className={`w-4 h-4 ml-auto text-gray-400 transition-transform ${
+                          openTeams.has(group.equipo) ? 'rotate-180' : ''
+                        }`}
+                      />
                     </div>
                   </td>
                 </tr>
-                {group.items.map(item => (
+                {openTeams.has(group.equipo) &&
+                  group.items.map(item => (
                   <React.Fragment key={item.jugadorId}>
                     <tr className="hover:bg-orange-50/30 transition-colors">
                       <td className="py-3 px-4 text-center">
@@ -689,7 +710,10 @@ export const EstadisticasRankingView: React.FC = () => {
       <div className="sm:hidden bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
         {rankingPorEquipo.map(group => (
           <div key={group.equipo} className="border-t border-gray-100 first:border-t-0">
-            <div className="flex items-center gap-2 px-3.5 py-2 bg-gray-50">
+            <div
+              className="flex items-center gap-2 px-3.5 py-2 bg-gray-50 cursor-pointer select-none active:bg-gray-100 transition-colors"
+              onClick={() => toggleTeam(group.equipo)}
+            >
               <TeamShield
                 escudoUrl={getTeamEscudo(group.equipo)}
                 teamName={group.equipo}
@@ -702,8 +726,14 @@ export const EstadisticasRankingView: React.FC = () => {
               <span className="text-[10px] font-bold text-gray-400">
                 {group.items.length} jugador{group.items.length === 1 ? '' : 'es'}
               </span>
+              <ChevronDown
+                className={`w-4 h-4 ml-auto text-gray-400 transition-transform ${
+                  openTeams.has(group.equipo) ? 'rotate-180' : ''
+                }`}
+              />
             </div>
-            <div className="divide-y divide-gray-100">
+            {openTeams.has(group.equipo) && (
+              <div className="divide-y divide-gray-100">
               {group.items.map(item => (
                 <div key={item.jugadorId} className="p-3.5">
                   <div className="flex items-start gap-3">
@@ -768,8 +798,9 @@ export const EstadisticasRankingView: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>

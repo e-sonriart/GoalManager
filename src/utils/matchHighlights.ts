@@ -89,7 +89,7 @@ export function parseSummaryEvents(summary?: string): MatchEvent[] {
   const out: MatchEvent[] = [];
   for (const seg of summary.split(' | ')) {
     const m = seg.match(
-      /^(\d+(?:\+\d+)?)' ([^:()]+?)(?: \(([^)]+)\))?: (.+?)(?: \[\d{1,2}:\d{2}(?::\d{2})?\])?$/
+      /^(\d+(?:\+\d+)?)' ([^:()]+?)(?: \(([^)]+)\))?: (.+?)(?: \[(\d{1,2}:\d{2}(?::\d{2})?)\])?$/
     );
     if (!m) continue;
     const tipo = LABEL_TO_TIPO[m[2].trim()] || 'nota';
@@ -98,7 +98,8 @@ export function parseSummaryEvents(summary?: string): MatchEvent[] {
       minuto: m[1],
       tipo,
       extra: m[3],
-      texto: m[4]
+      texto: m[4],
+      hora: m[5]
     });
   }
   return out;

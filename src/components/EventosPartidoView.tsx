@@ -90,6 +90,7 @@ function scoreFromEvents(
 /** Estado del modal «Añadir evento» (modificar el acta con minuto manual) */
 interface AddDraft {
   minuto: string;
+  hora: string;
   tipo: TipoEvento;
   jugadorId: string;
   extra: string;
@@ -118,15 +119,17 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
   const [editId, setEditId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<{
     minuto: string;
+    hora: string;
     texto: string;
     tipo: TipoEvento;
     extra: string;
     jugadorId: string;
-  }>({ minuto: '0', texto: '', tipo: 'nota', extra: '', jugadorId: '' });
+  }>({ minuto: '0', hora: '', texto: '', tipo: 'nota', extra: '', jugadorId: '' });
   /** Modal «Añadir evento» con minuto manual (modificar el acta) */
   const [addOpen, setAddOpen] = useState(false);
   const [addDraft, setAddDraft] = useState<AddDraft>({
     minuto: '0',
+    hora: '',
     tipo: 'gol',
     jugadorId: '',
     extra: 'amarilla',
@@ -266,7 +269,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
   useEffect(() => {
     if (!selectedPartido) return;
     setEditId(null);
-    setEditDraft({ minuto: '0', texto: '', tipo: 'nota', extra: '', jugadorId: '' });
+    setEditDraft({ minuto: '0', hora: '', texto: '', tipo: 'nota', extra: '', jugadorId: '' });
     setAddOpen(false);
 
     /**
@@ -659,6 +662,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     setEditId(ev.id);
     setEditDraft({
       minuto: ev.minuto,
+      hora: ev.hora || '',
       texto: ev.texto,
       tipo: ev.tipo,
       extra: ev.extra || '',
@@ -675,6 +679,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
           ? {
               ...e,
               minuto: editDraft.minuto || e.minuto,
+              hora: editDraft.hora.trim() || e.hora,
               texto: editDraft.texto,
               tipo: editDraft.tipo,
               jugadorId: editDraft.jugadorId || undefined,
@@ -731,6 +736,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
   const openAdd = () => {
     setAddDraft({
       minuto: fase === 'pre' ? '0' : minuteLabel,
+      hora: nowHora(),
       tipo: 'gol',
       jugadorId: '',
       extra: 'amarilla',
@@ -747,6 +753,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     const ev: MatchEvent = {
       id: `ev_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       minuto,
+      hora: addDraft.hora.trim() || nowHora(),
       tipo: addDraft.tipo,
       texto,
       extra:
@@ -757,8 +764,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
           : addDraft.tipo === 'gol_contra' && addDraft.dorsalRival.trim()
             ? `rival #${addDraft.dorsalRival.trim()}`
             : undefined,
-      jugadorId: addDraft.jugadorId || undefined,
-      hora: nowHora()
+      jugadorId: addDraft.jugadorId || undefined
     };
     const prevEvents = clockRef.current.events;
     const nextEvents = sortEvents([...prevEvents, ev]);
@@ -1519,6 +1525,19 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                   />
                 </div>
                 <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Hora</label>
+                  <input
+                    type="text"
+                    value={editDraft.hora}
+                    onChange={e => setEditDraft(prev => ({ ...prev, hora: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    placeholder="ej: 17:42"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tipo</label>
                   <select
                     value={editDraft.tipo}
@@ -1545,22 +1564,21 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                     <option value="fase">Fase</option>
                   </select>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Jugador</label>
-                <select
-                  value={editDraft.jugadorId}
-                  onChange={e => setEditDraft(prev => ({ ...prev, jugadorId: e.target.value }))}
-                  className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                >
-                  <option value="">Sin jugador</option>
-                  {jugadoresActa.map(j => (
-                    <option key={j.id} value={j.id}>
-                      #{j.dorsal} {j.nombre}
-                    </option>
-                  ))}
-                </select>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Jugador</label>
+                  <select
+                    value={editDraft.jugadorId}
+                    onChange={e => setEditDraft(prev => ({ ...prev, jugadorId: e.target.value }))}
+                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  >
+                    <option value="">Sin jugador</option>
+                    {jugadoresActa.map(j => (
+                      <option key={j.id} value={j.id}>
+                        #{j.dorsal} {j.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {editDraft.tipo === 'tarjeta' && (
@@ -1670,6 +1688,19 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                   />
                 </div>
                 <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Hora</label>
+                  <input
+                    type="text"
+                    value={addDraft.hora}
+                    onChange={e => setAddField('hora', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    placeholder="ej: 17:42"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tipo</label>
                   <select
                     value={addDraft.tipo}
@@ -1683,52 +1714,50 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                     <option value="nota">Nota</option>
                   </select>
                 </div>
+
+                {addDraft.tipo === 'gol_contra' ? (
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Dorsal rival</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={2}
+                      value={addDraft.dorsalRival}
+                      onChange={e => setAddField('dorsalRival', e.target.value.replace(/\D/g, ''))}
+                      placeholder="ej: 10"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-center focus:ring-2 focus:ring-red-500 focus:outline-none"
+                    />
+                  </div>
+                ) : (addDraft.tipo === 'gol' || addDraft.tipo === 'asistencia' || addDraft.tipo === 'tarjeta') ? (
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Jugador</label>
+                    <select
+                      value={addDraft.jugadorId}
+                      onChange={e => setAddField('jugadorId', e.target.value)}
+                      className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    >
+                      <option value="">Selecciona…</option>
+                      <optgroup label="Titulares">
+                        {titulares.map(j => (
+                          <option key={j.id} value={j.id}>
+                            #{j.dorsal} {j.nombre}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Suplentes">
+                        {suplentes.map(j => (
+                          <option key={j.id} value={j.id}>
+                            #{j.dorsal} {j.nombre}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  </div>
+                ) : (
+                  <div />
+                )}
               </div>
-
-              {addDraft.tipo === 'gol_contra' && (
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
-                    Dorsal del rival (solo número)
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={2}
-                    value={addDraft.dorsalRival}
-                    onChange={e => setAddField('dorsalRival', e.target.value.replace(/\D/g, ''))}
-                    placeholder="ej: 10"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-center focus:ring-2 focus:ring-red-500 focus:outline-none"
-                  />
-                </div>
-              )}
-
-              {(addDraft.tipo === 'gol' || addDraft.tipo === 'asistencia' || addDraft.tipo === 'tarjeta') && (
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Jugador</label>
-                  <select
-                    value={addDraft.jugadorId}
-                    onChange={e => setAddField('jugadorId', e.target.value)}
-                    className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                  >
-                    <option value="">Selecciona un jugador…</option>
-                    <optgroup label="Titulares">
-                      {titulares.map(j => (
-                        <option key={j.id} value={j.id}>
-                          #{j.dorsal} {j.nombre}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Suplentes">
-                      {suplentes.map(j => (
-                        <option key={j.id} value={j.id}>
-                          #{j.dorsal} {j.nombre}
-                        </option>
-                      ))}
-                    </optgroup>
-                  </select>
-                </div>
-              )}
 
               {addDraft.tipo === 'tarjeta' && (
                 <div>

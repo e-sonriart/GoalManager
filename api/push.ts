@@ -169,8 +169,20 @@ export default async function handler(req: any, res: any): Promise<void> {
   }
   try {
     const raw = req.body;
-    const body: PushBody =
-      typeof raw === 'string' ? (JSON.parse(raw) as PushBody) : ((raw || {}) as PushBody);
+    const body: PushBody & { events?: PushBody[] } =
+      typeof raw === 'string' ? (JSON.parse(raw) as PushBody & { events?: PushBody[] }) : ((raw || {}) as PushBody & { events?: PushBody[] });
+    // Lote (lo usa /api/cron): varios avisos en una sola llamada
+    if (Array.isArray(body.events)) {
+      let notified = 0;
+      let sent = 0;
+      for (const ev of body.events) {
+        const out = await dispatchNotification(ev);
+        notified += out.notified;
+        sent += out.sent;
+      }
+      res.status(200).json({ notified, sent, events: body.events.length });
+      return;
+    }
     const out = await dispatchNotification(body);
     res.status(200).json(out);
   } catch (e: any) {

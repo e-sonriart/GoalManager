@@ -58,15 +58,15 @@ const isFinalizado = (v: unknown): boolean =>
   v === true || v === 'true' || v === '1' || v === 1;
 
 export default async function handler(req: any, res: any): Promise<void> {
-  const q = req.query || {};
-  const secret = (Array.isArray(q.secret) ? q.secret[0] : q.secret) || '';
-  const auth = String(req.headers?.authorization || '');
-  if (secret !== CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
-    res.status(403).json({ error: 'forbidden' });
-    return;
-  }
-
   try {
+    const q = (req && req.query) || {};
+    const secret = (Array.isArray(q.secret) ? q.secret[0] : q.secret) || '';
+    const auth = String((req && req.headers && req.headers.authorization) || '');
+    if (secret !== CRON_SECRET && auth !== `Bearer ${CRON_SECRET}`) {
+      res.status(403).json({ error: 'forbidden' });
+      return;
+    }
+
     const [partidos, sesiones] = await Promise.all([
       restGet('partidos?select=id,equipo,fecha,hora,campo,local,visitante,convocados,finalizado'),
       restGet('sesiones?select=id,equipo,fecha,hora,lugar,titulo,objetivo')
@@ -154,6 +154,6 @@ export default async function handler(req: any, res: any): Promise<void> {
     res.status(200).json({ ok: true, jobs: jobs.length, results: results.length, errors });
   } catch (e: any) {
     console.error('api/cron:', e);
-    res.status(500).json({ error: String(e?.message || e) });
+    res.status(500).json({ error: String(e?.stack || e?.message || e) });
   }
 }

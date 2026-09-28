@@ -26,6 +26,7 @@ import {
   Play
 } from 'lucide-react';
 import { ActiveTab } from './Navbar';
+import { notifyTeam } from '../services/notifications';
 
 interface PartidosViewProps {
   onNavigateToConvocatoria?: (partidoId: string) => void;
@@ -140,6 +141,24 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
       jornada: formTipo === 'Liga' ? (formJornada !== '' ? formJornada : undefined) : undefined,
       horaConvocatoria: formHoraConvocatoria.trim() || undefined
     });
+
+    // Aviso push si cambió la fecha/hora, el campo o la hora de convocatoria
+    if (
+      editingPartido &&
+      (editingPartido.fecha !== formFecha ||
+        (editingPartido.campo || '') !== formCampo.trim() ||
+        (editingPartido.horaConvocatoria || '') !== formHoraConvocatoria.trim())
+    ) {
+      void notifyTeam({
+        tipo: 'horario',
+        equipo: formEquipo.trim(),
+        refId: `${editingPartido.id}_${Date.now()}`,
+        titulo: `🕒 Cambio en ${formEquipo.trim()}`,
+        cuerpo: `${local} vs ${visitante} · ${formFecha.replace('T', ' ').slice(0, 16)}${
+          formCampo.trim() ? ` · ${formCampo.trim()}` : ''
+        }`
+      });
+    }
 
     setIsModalOpen(false);
   };

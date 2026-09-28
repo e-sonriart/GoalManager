@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   XCircle
 } from 'lucide-react';
+import { notifyTeam } from '../services/notifications';
 
 const formatFecha = (fechaStr: string): string => {
   const dateObj = new Date(`${fechaStr}T12:00:00`);
@@ -148,6 +149,24 @@ export const EntrenamientosView: React.FC = () => {
     });
 
     setIsModalOpen(false);
+
+    // Aviso push si al editar cambió la fecha, la hora o el lugar
+    if (
+      ok &&
+      editingSesion &&
+      (editingSesion.fecha !== formFecha ||
+        editingSesion.hora !== formHora ||
+        (editingSesion.lugar || '') !== formLugar.trim() ||
+        editingSesion.equipo !== formEquipo.trim())
+    ) {
+      void notifyTeam({
+        tipo: 'horario',
+        equipo: formEquipo.trim(),
+        refId: `${editingSesion.id}_${Date.now()}`,
+        titulo: `🕒 Cambio de entrenamiento (${formEquipo.trim()})`,
+        cuerpo: `${formatFecha(formFecha)} · ${formHora}${formLugar.trim() ? ` · ${formLugar.trim()}` : ''}`
+      });
+    }
 
     // Al crear una sesión nueva: opción inmediata de pasar la asistencia
     if (ok && wasCreating && canAsist) {

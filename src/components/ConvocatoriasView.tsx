@@ -15,6 +15,7 @@ import {
   ListChecks
 } from 'lucide-react';
 import { compareTeams, getCategoryOrder } from '../utils/teamOrder';
+import { notifyTeam } from '../services/notifications';
 
 /** Mismos discos de color que la alineación (por posición). */
 const POS_DISK: Record<string, string> = {
@@ -203,6 +204,23 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
       ...selectedPartido,
       convocados: next
     });
+    // Aviso push a los convocados (+ staff del equipo); el ref cambia si cambia la lista
+    if (next.length > 0) {
+      const f = new Date(selectedPartido.fecha);
+      const fechaTxt = Number.isNaN(f.getTime())
+        ? selectedPartido.fecha
+        : f.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      void notifyTeam({
+        tipo: 'convocatoria',
+        equipo: selectedPartido.equipo,
+        refId: `${selectedPartido.id}_${[...next].sort().join('.')}`,
+        jugadorIds: next,
+        titulo: `📋 Convocatoria: ${selectedPartido.local} vs ${selectedPartido.visitante}`,
+        cuerpo: `📅 ${fechaTxt}${
+          selectedPartido.horaConvocatoria ? ` · recogida ${selectedPartido.horaConvocatoria}` : ''
+        }${selectedPartido.campo ? ` · ${selectedPartido.campo}` : ''}`
+      });
+    }
     onBack?.(selectedPartido.id);
   };
 

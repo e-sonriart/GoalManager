@@ -18,6 +18,7 @@ import { actaStatsDeltas, diffStatsDeltas } from '../utils/playerStatsFromEvents
 import { MatchHighlights } from './MatchHighlights';
 import { parseSummaryEvents } from '../utils/matchHighlights';
 import { saveClockRemote, loadClockRemote } from '../services/matchClocks';
+import { notifyTeam } from '../services/notifications';
 import {
   ClipboardList,
   Clock,
@@ -521,6 +522,15 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
       newEvents
     );
     await applyEventStats(deltas, 1);
+    // Aviso push: acta confirmada (resultado al equipo + staff)
+    void notifyTeam({
+      tipo: 'resultado',
+      equipo: selectedPartido.equipo,
+      refId: selectedPartido.id,
+      jugadorIds: asIds(selectedPartido.convocados).length ? asIds(selectedPartido.convocados) : undefined,
+      titulo: `✅ Acta confirmada: ${golLocal}-${golVisitante}`,
+      cuerpo: `${selectedPartido.local} vs ${selectedPartido.visitante}`
+    });
   };
 
   /** Reiniciar: borra reloj/eventos del tramo y reabre el partido (con confirmación) */

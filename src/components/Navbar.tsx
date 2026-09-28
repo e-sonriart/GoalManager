@@ -1,6 +1,7 @@
 import React from 'react';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
+import { PushBellButton } from './PushBellButton';
 import { AppTab } from '../types';
 import {
   BarChart3,
@@ -145,6 +146,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               {isOnlineConfigured ? 'Supabase Online' : 'Modo Local'}
             </span>
           </button>
+
+          {/* Avisos push (Web Push): convocatorias, cambios, resultados y recordatorios */}
+          <PushBellButton />
 
           {/* User Profile Chip (solo visual: la creación de usuarios es exclusiva del Admin) */}
           <div

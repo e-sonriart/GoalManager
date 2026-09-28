@@ -172,7 +172,7 @@ export const AdminPanel: React.FC = () => {
         condicion: cond,
         rival,
         fecha: p?.fecha || '',
-        categoria: p?.categoria || categorias[0]?.nombre || '',
+        categoria: p?.categoria || equipos.find(e => e.nombre === clubTeam)?.categoria || categorias[0]?.nombre || '',
         campo: p?.campo || '',
         tipo: p?.tipo || 'Liga',
         jornada: p?.jornada !== undefined && p?.jornada !== null ? String(p.jornada) : '',
@@ -2373,7 +2373,11 @@ export const AdminPanel: React.FC = () => {
                   <select
                     required
                     value={sf.equipo || ''}
-                    onChange={e => setSf({ ...sf, equipo: e.target.value })}
+                    onChange={e => {
+                      const nombre = e.target.value;
+                      const found = equipos.find(eq => eq.nombre === nombre);
+                      setSf({ ...sf, equipo: nombre, categoria: found?.categoria || sf.categoria || '' });
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
                   >
                     {equipos.map(eq => (

@@ -110,7 +110,9 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     setFormRival(rivalName);
     setFormRivalEscudo(p.escudoVisitante || '');
     setFormFecha(p.fecha);
-    setFormCategoria(p.categoria);
+    setFormCategoria(
+      p.categoria || equipos.find(e => e.nombre === clubTeam)?.categoria || categorias[0]?.nombre || ''
+    );
     setFormCampo(p.campo || '');
     setFormTipo(p.tipo || 'Liga');
     setFormJornada(p.jornada ?? '');

@@ -8,6 +8,7 @@ import { RolePermissionsMatrix } from './RolePermissionsMatrix';
 import { ROLE_ORDER, getRoleInfo, roleRequiresTeam, SCOPE_LABELS } from '../utils/roles';
 import { validateUserForm } from '../utils/validation';
 import { compareTeams } from '../utils/teamOrder';
+import { notifyTeam } from '../services/notifications';
 import { getJugadorUsuario } from '../utils/playerUsername';
 import {
   Settings,
@@ -241,7 +242,7 @@ export const AdminPanel: React.FC = () => {
       const isCasa = sf.condicion === 'casa';
       const local = isCasa ? sf.equipo.trim() : sf.rival.trim();
       const visitante = isCasa ? sf.rival.trim() : sf.equipo.trim();
-      await savePartido({
+      const ok = await savePartido({
         id: (editingSheetItem as Partido | null)?.id,
         local,
         visitante,
@@ -258,6 +259,17 @@ export const AdminPanel: React.FC = () => {
         finalizado: sf.finalizado === '1',
         horaConvocatoria: sf.horaConvocatoria.trim() || undefined
       });
+      if (ok && !editingSheetItem) {
+        void notifyTeam({
+          tipo: 'nuevo',
+          equipo: sf.equipo.trim(),
+          refId: `nuevo_p_${sf.fecha}_${local}_${visitante}`,
+          titulo: `⚽ Nuevo partido (${sf.equipo.trim()})`,
+          cuerpo: `${local} vs ${visitante} · ${sf.fecha.replace('T', ' ').slice(0, 16)}${
+            sf.campo.trim() ? ` · ${sf.campo.trim()}` : ''
+          }`
+        });
+      }
     } else if (sheetModalKind === 'asistencia') {
       if (!sf.jugadorId || !sf.fecha) return;
       await saveAsistencia({

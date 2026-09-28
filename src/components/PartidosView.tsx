@@ -128,7 +128,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     const local = isCasa ? formEquipo.trim() : formRival.trim();
     const visitante = isCasa ? formRival.trim() : formEquipo.trim();
 
-    await savePartido({
+    const ok = await savePartido({
       id: editingPartido?.id,
       local,
       visitante,
@@ -143,6 +143,18 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
       jornada: formTipo === 'Liga' ? (formJornada !== '' ? formJornada : undefined) : undefined,
       horaConvocatoria: formHoraConvocatoria.trim() || undefined
     });
+
+    if (ok && !editingPartido) {
+      void notifyTeam({
+        tipo: 'nuevo',
+        equipo: formEquipo.trim(),
+        refId: `nuevo_p_${formFecha}_${local}_${visitante}`,
+        titulo: `⚽ Nuevo partido (${formEquipo.trim()})`,
+        cuerpo: `${local} vs ${visitante} · ${formFecha.replace('T', ' ').slice(0, 16)}${
+          formCampo.trim() ? ` · ${formCampo.trim()}` : ''
+        }`
+      });
+    }
 
     // Aviso push si cambió la fecha/hora, el campo o la hora de convocatoria
     if (

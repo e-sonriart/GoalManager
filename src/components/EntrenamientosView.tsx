@@ -150,6 +150,16 @@ export const EntrenamientosView: React.FC = () => {
 
     setIsModalOpen(false);
 
+    if (ok && wasCreating) {
+      void notifyTeam({
+        tipo: 'nuevo',
+        equipo: formEquipo.trim(),
+        refId: `nuevo_s_${formFecha}_${formHora}_${formEquipo.trim()}`,
+        titulo: `🏋️ Nuevo entrenamiento (${formEquipo.trim()})`,
+        cuerpo: `${formatFecha(formFecha)} · ${formHora}${formLugar.trim() ? ` · ${formLugar.trim()}` : ''}`
+      });
+    }
+
     // Aviso push si al editar cambió la fecha, la hora o el lugar
     if (
       ok &&

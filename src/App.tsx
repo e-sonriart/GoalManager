@@ -6,6 +6,7 @@ import { GoogleScriptModal } from './components/GoogleScriptModal';
 import { ToastContainer } from './components/ToastContainer';
 import { PWABanner } from './components/PWABanner';
 import { SidePanel } from './components/SidePanel';
+import { LiveResultsModal } from './components/LiveResultsModal';
 import { MobileTabBar } from './components/MobileTabBar';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -60,6 +61,7 @@ const MainContent: React.FC = () => {
   const [selectedPartidoForAlineacion, setSelectedPartidoForAlineacion] = useState<string | undefined>(undefined);
   const [selectedPartidoForEventos, setSelectedPartidoForEventos] = useState<string | undefined>(undefined);
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
+  const [isLiveResultsOpen, setIsLiveResultsOpen] = useState(false);
   // Detección auto móvil/PC: >=1024px = Vista PC; se reajusta al redimensionar
   const isDesktop = useIsDesktop();
   const [vistaPC, setVistaPC] = useState<boolean>(isDesktop);
@@ -268,6 +270,7 @@ const MainContent: React.FC = () => {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onOpenGoogleConfig={() => setIsConfigModalOpen(true)}
+        onOpenLive={() => setIsLiveResultsOpen(true)}
         vistaPC={vistaPC}
         onToggleVistaPC={toggleVistaPC}
       />
@@ -288,6 +291,12 @@ const MainContent: React.FC = () => {
       <GoogleScriptModal
         isOpen={isConfigModalOpen}
         onClose={() => setIsConfigModalOpen(false)}
+      />
+
+      {/* Resultados en Directo (acceso desde el menú lateral) */}
+      <LiveResultsModal
+        isOpen={isLiveResultsOpen}
+        onClose={() => setIsLiveResultsOpen(false)}
       />
 
       {/* Notificaciones Toast */}

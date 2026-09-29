@@ -27,6 +27,7 @@ interface SidePanelProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   onOpenGoogleConfig: () => void;
+  onOpenLive?: () => void;
   vistaPC: boolean;
   onToggleVistaPC: () => void;
 }
@@ -37,6 +38,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   activeTab,
   setActiveTab,
   onOpenGoogleConfig,
+  onOpenLive,
   vistaPC,
   onToggleVistaPC
 }) => {
@@ -203,6 +205,25 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               </button>
             );
           })}
+
+          {/* Resultados en Directo (abre el modal de resultados en vivo) */}
+          <button
+            onClick={() => {
+              onOpenLive?.();
+              if (!vistaPC) onClose();
+            }}
+            className="w-full flex items-center justify-between gap-3 px-3 py-3 rounded-xl text-left transition-all group text-gray-200 hover:text-white hover:bg-gray-900 font-semibold"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 bg-red-950 text-red-400 border border-red-900/60 group-hover:bg-red-900/60">
+                <span className="relative flex items-center justify-center">
+                  <Radio className="w-6 h-6" />
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                </span>
+              </div>
+              <p className="text-base truncate leading-snug">Resultados en Directo</p>
+            </div>
+          </button>
 
           {/* Toggle Vista PC al final de la lista de navegación */}
           <button

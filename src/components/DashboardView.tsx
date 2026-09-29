@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
 import { TeamStatusModal } from './TeamStatusModal';
-import { LiveResultsModal } from './LiveResultsModal';
 import { resolveVisitorShield } from '../utils/shieldPresets';
 import {
   Calendar,
@@ -12,8 +11,9 @@ import {
   Clock,
   Sparkles,
   Award,
+  ChevronLeft,
   ChevronRight,
-  Radio
+  Dumbbell
 } from 'lucide-react';
 import { ActiveTab } from './Navbar';
 
@@ -21,10 +21,40 @@ interface DashboardViewProps {
   onNavigate: (tab: ActiveTab) => void;
 }
 
+const dayKeyFmt = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const parseEventTime = (fecha?: string, hora?: string): number | null => {
+  const f = (fecha || '').trim();
+  if (!f) return null;
+  if (f.includes('T') && f.length >= 16) {
+    const t = new Date(f).getTime();
+    return isNaN(t) ? null : t;
+  }
+  if (f.length === 10) {
+    const [y, m, d] = f.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    if (hora && hora.length >= 5) {
+      const t = new Date(y, m - 1, d, Number(hora.slice(0, 2)), Number(hora.slice(3, 5))).getTime();
+      return isNaN(t) ? null : t;
+    }
+    return new Date(y, m, d, 23, 59, 59).getTime();
+  }
+  const t = new Date(f).getTime();
+  return isNaN(t) ? null : t;
+};
+
+const fmtDay = (ms: number): string =>
+  new Date(ms).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+
+const fmtHour = (ms: number): string =>
+  new Date(ms).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const {
     jugadores,
     partidos,
+    sesiones,
     estadisticas,
     equipos,
     currentUser,
@@ -35,7 +65,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   } = useClub();
 
   const [isStatusOpen, setIsStatusOpen] = useState(false);
-  const [isLiveOpen, setIsLiveOpen] = useState(false);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   const canManagePartidos = can('manage:partidos');
 
@@ -80,6 +111,112 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       .slice(0, 3),
     [partidos]
   );
+
+  interface ProxEvento {
+    tipo: 'partido' | 'entrenamiento';
+    when: number;
+    equipo: string;
+    titulo: string;
+    detalle: string;
+    fechaLabel: string;
+    horaLabel: string;
+  }
+
+  // Próximo evento más cercano (partido o entrenamiento) del equipo del entrenador
+  const proximoEvento = useMemo<ProxEvento | null>(() => {
+    const now = Date.now();
+    const eq = (currentUser?.equipo || '').trim().toLowerCase();
+    const evs: ProxEvento[] = [];
+    for (const p of partidos) {
+      if (p.finalizado) continue;
+      if (eq && (p.equipo || '').trim().toLowerCase() !== eq) continue;
+      const when = parseEventTime(p.fecha, p.hora);
+      if (when === null || when < now) continue;
+      evs.push({
+        tipo: 'partido',
+        when,
+        equipo: p.equipo || (equipos.some(e => e.nombre === p.local) ? p.local : p.visitante),
+        titulo: `${p.local} vs ${p.visitante}`,
+        detalle: `${p.categoria}${p.campo ? ` · ${p.campo}` : ''}`,
+        fechaLabel: fmtDay(when),
+        horaLabel: fmtHour(when)
+      });
+    }
+    for (const s of sesiones) {
+      if (eq && (s.equipo || '').trim().toLowerCase() !== eq) continue;
+      const when = parseEventTime(s.fecha, s.hora);
+      if (when === null || when < now) continue;
+      evs.push({
+        tipo: 'entrenamiento',
+        when,
+        equipo: s.equipo,
+        titulo: s.titulo || s.objetivo,
+        detalle: `${s.equipo}${s.lugar ? ` · ${s.lugar}` : ''}`,
+        fechaLabel: fmtDay(when),
+        horaLabel: (s.hora && s.hora.length >= 5) ? s.hora : ((s.fecha || '').includes('T') ? fmtHour(when) : '')
+      });
+    }
+    evs.sort((a, b) => a.when - b.when);
+    return evs[0] || null;
+  }, [partidos, sesiones, currentUser?.equipo, equipos]);
+
+  // Calendario de la semana (lunes a domingo) con eventos E/P
+  const weekStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    const dow = (d.getDay() + 6) % 7;
+    d.setDate(d.getDate() - dow + weekOffset * 7);
+    return d;
+  }, [weekOffset]);
+
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(weekStart);
+      d.setDate(d.getDate() + i);
+      return d;
+    }),
+    [weekStart]
+  );
+
+  const weekLabel = useMemo(() => {
+    const end = new Date(weekStart);
+    end.setDate(end.getDate() + 6);
+    const opts = { month: 'short' } as const;
+    const m1 = weekStart.toLocaleDateString('es-ES', opts);
+    const m2 = end.toLocaleDateString('es-ES', opts);
+    return m1 === m2
+      ? `${weekStart.getDate()}–${end.getDate()} ${m1}`
+      : `${weekStart.getDate()} ${m1} – ${end.getDate()} ${m2}`;
+  }, [weekStart]);
+
+  const weekEventsByDay = useMemo(() => {
+    const map = new Map<string, { tipo: 'E' | 'P'; titulo: string; hora: string; detalle: string }[]>();
+    const push = (key: string, ev: { tipo: 'E' | 'P'; titulo: string; hora: string; detalle: string }) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return;
+      const list = map.get(key) || [];
+      list.push(ev);
+      map.set(key, list);
+    };
+    for (const s of sesiones) {
+      push((s.fecha || '').slice(0, 10), {
+        tipo: 'E',
+        titulo: s.titulo || s.objetivo,
+        hora: (s.hora && s.hora.length >= 5) ? s.hora : '',
+        detalle: `${s.equipo}${s.lugar ? ` · ${s.lugar}` : ''}`
+      });
+    }
+    for (const p of partidos) {
+      if (p.finalizado) continue;
+      const fecha = String(p.fecha || '');
+      push(fecha.slice(0, 10), {
+        tipo: 'P',
+        titulo: `${p.local} vs ${p.visitante}`,
+        hora: fecha.includes('T') ? fecha.slice(11, 16) : ((p.hora && p.hora.length >= 5) ? p.hora : ''),
+        detalle: `${p.equipo || ''}${p.campo ? ` · ${p.campo}` : ''}`
+      });
+    }
+    return map;
+  }, [sesiones, partidos]);
 
   // Datos para gráfico de máximos goleadores
   const topGoleadoresData = useMemo(
@@ -130,16 +267,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => setIsLiveOpen(true)}
-              className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-md shadow-red-600/20 flex items-center gap-2"
-            >
-              <span className="relative flex items-center justify-center">
-                <Radio className="w-4 h-4" />
-                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-white animate-pulse" />
-              </span>
-              Resultados en Directo
-            </button>
             {canGo('partidos') && (
               <button
                 onClick={() => onNavigate('partidos')}
@@ -161,6 +288,72 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
         </div>
       </div>
+
+      {/* Próximo evento (solo entrenadores): lo primero bajo el escudo y la temporada */}
+      {currentUser?.rol === 'entrenador' && (
+        <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-4 sm:p-5 space-y-3 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-orange-500" /> Próximo Evento
+            </p>
+            {proximoEvento && (
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                  proximoEvento.tipo === 'partido'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                }`}
+              >
+                {proximoEvento.tipo === 'partido' ? '⚽ Partido' : '🏋️ Entrenamiento'}
+              </span>
+            )}
+          </div>
+
+          {proximoEvento ? (
+            <>
+              <div className="flex items-start gap-3">
+                <div
+                  className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
+                    proximoEvento.tipo === 'partido'
+                      ? 'bg-blue-100 text-blue-600'
+                      : 'bg-emerald-100 text-emerald-600'
+                  }`}
+                >
+                  {proximoEvento.tipo === 'partido' ? (
+                    <Calendar className="w-6 h-6" />
+                  ) : (
+                    <Dumbbell className="w-6 h-6" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-lg font-black text-gray-900 font-athletic tracking-tight truncate">
+                    {proximoEvento.titulo}
+                  </h3>
+                  <p className="text-xs text-gray-500 truncate">{proximoEvento.equipo}</p>
+                  <p className="text-[11px] text-gray-400 truncate">{proximoEvento.detalle}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-2 border-t border-gray-100">
+                <span className="text-xs font-bold text-orange-600 capitalize flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  {proximoEvento.fechaLabel} {proximoEvento.horaLabel && `· ${proximoEvento.horaLabel}`}
+                </span>
+                {canGo(proximoEvento.tipo === 'partido' ? 'partidos' : 'entrenamientos') && (
+                  <button
+                    onClick={() => onNavigate(proximoEvento.tipo === 'partido' ? 'partidos' : 'entrenamientos')}
+                    className="px-3 py-1.5 bg-gray-900 hover:bg-black text-white rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1.5 shrink-0"
+                  >
+                    Ver <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-gray-400">No hay eventos programados próximamente para tu equipo.</p>
+          )}
+        </div>
+      )}
 
       {/* Tarjeta de Equipo Asignado (para entrenador y jugador) */}
       {currentUser?.equipo && (currentUser.rol === 'entrenador' || currentUser.rol === 'jugador') && (
@@ -231,38 +424,153 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
       {/* Metric Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-        <button
-          type="button"
-          onClick={() => onNavigate('partidos')}
-          disabled={!canGo('partidos')}
-          className="group text-left bg-white p-3.5 sm:p-5 rounded-2xl border border-gray-150 shadow-xs hover:border-orange-300 hover:shadow-md transition-all flex flex-col sm:flex-row items-center sm:items-start gap-2.5 sm:gap-4 disabled:cursor-default disabled:hover:border-gray-150 disabled:hover:shadow-xs"
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            if (canGo('partidos')) onNavigate('partidos');
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              if (canGo('partidos')) onNavigate('partidos');
+            }
+          }}
+          className="group text-left bg-white p-3.5 sm:p-5 rounded-2xl border border-gray-150 shadow-xs hover:border-orange-300 hover:shadow-md transition-all cursor-pointer"
         >
-          <div className="p-2 sm:p-3.5 rounded-xl sm:rounded-2xl bg-blue-100 text-blue-600 shrink-0 group-hover:bg-blue-200 transition-colors">
-            <Calendar className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-          <div className="text-center sm:text-left min-w-0 flex-1">
-            <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 truncate">Por Jugar</p>
-            <h3 className="text-xl sm:text-2xl font-black text-gray-900 font-athletic">{partidosPendientes}</h3>
-            <p className="hidden sm:block text-[11px] text-gray-400">{partidos.length} partidos totales</p>
-            <div className="mt-1.5 flex flex-wrap items-center justify-center sm:justify-start gap-1.5 text-[11px]">
-              <span
-                className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 font-semibold"
-                title="Partidos finalizados con fecha de hoy"
-              >
-                Hoy: {jugadosHoy} {jugadosHoy === 1 ? 'jugado' : 'jugados'}
-              </span>
-              <span
-                className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100 font-semibold"
-                title="Partidos programados para mañana"
-              >
-                Mañana: {partidosManana} {partidosManana === 1 ? 'partido' : 'partidos'}
-              </span>
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-2.5 sm:gap-4">
+            <div className="p-2 sm:p-3.5 rounded-xl sm:rounded-2xl bg-blue-100 text-blue-600 shrink-0 group-hover:bg-blue-200 transition-colors">
+              <Calendar className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
+            <div className="text-center sm:text-left min-w-0 flex-1">
+              <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 truncate">Por Jugar</p>
+              <h3 className="text-xl sm:text-2xl font-black text-gray-900 font-athletic">{partidosPendientes}</h3>
+              <p className="hidden sm:block text-[11px] text-gray-400">{partidos.length} partidos totales</p>
+              <div className="mt-1.5 flex flex-wrap items-center justify-center sm:justify-start gap-1.5 text-[11px]">
+                <span
+                  className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 font-semibold"
+                  title="Partidos finalizados con fecha de hoy"
+                >
+                  Hoy: {jugadosHoy} {jugadosHoy === 1 ? 'jugado' : 'jugados'}
+                </span>
+                <span
+                  className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100 font-semibold"
+                  title="Partidos programados para mañana"
+                >
+                  Mañana: {partidosManana} {partidosManana === 1 ? 'partido' : 'partidos'}
+                </span>
+              </div>
+            </div>
+            {canGo('partidos') && (
+              <ChevronRight className="hidden sm:block w-5 h-5 text-gray-300 group-hover:text-orange-500 transition-colors shrink-0 self-center" />
+            )}
           </div>
-          {canGo('partidos') && (
-            <ChevronRight className="hidden sm:block w-5 h-5 text-gray-300 group-hover:text-orange-500 transition-colors shrink-0 self-center" />
-          )}
-        </button>
+
+          {/* Calendario de la semana: E = entrenamiento, P = partido */}
+          <div className="mt-3 pt-3 border-t border-gray-100 space-y-2" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  setWeekOffset(o => o - 1);
+                  setSelectedDay(null);
+                }}
+                className="w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition-colors"
+                aria-label="Semana anterior"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{weekLabel}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setWeekOffset(o => o + 1);
+                  setSelectedDay(null);
+                }}
+                className="w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition-colors"
+                aria-label="Semana siguiente"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 gap-1">
+              {weekDays.map((d, i) => {
+                const key = dayKeyFmt(d);
+                const evs = weekEventsByDay.get(key) || [];
+                const hasE = evs.some(ev => ev.tipo === 'E');
+                const hasP = evs.some(ev => ev.tipo === 'P');
+                const isToday = key === dayKeyFmt(new Date());
+                const isSelected = selectedDay === key;
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    disabled={!evs.length}
+                    onClick={() => setSelectedDay(isSelected ? null : key)}
+                    className={`rounded-lg border py-1 flex flex-col items-center gap-0.5 transition-all ${
+                      isSelected
+                        ? 'bg-orange-500 border-orange-500 text-white shadow-sm'
+                        : evs.length
+                        ? `bg-white border-gray-200 hover:border-orange-400 ${isToday ? 'ring-1 ring-orange-400' : ''}`
+                        : 'bg-gray-50 border-transparent'
+                    }`}
+                  >
+                    <span className={`text-[9px] font-bold uppercase ${isSelected ? 'text-orange-100' : 'text-gray-400'}`}>
+                      {['L', 'M', 'X', 'J', 'V', 'S', 'D'][i]}
+                    </span>
+                    <span className={`text-xs font-black leading-none ${evs.length || isSelected ? '' : 'text-gray-400'}`}>
+                      {d.getDate()}
+                    </span>
+                    <span className="flex gap-0.5 justify-center min-h-[12px]">
+                      {hasE && (
+                        <span
+                          className={`px-1 rounded text-[9px] font-black leading-tight ${
+                            isSelected ? 'bg-white/25 text-white' : 'bg-emerald-100 text-emerald-700'
+                          }`}
+                        >
+                          E
+                        </span>
+                      )}
+                      {hasP && (
+                        <span
+                          className={`px-1 rounded text-[9px] font-black leading-tight ${
+                            isSelected ? 'bg-white/25 text-white' : 'bg-blue-100 text-blue-700'
+                          }`}
+                        >
+                          P
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedDay && (
+              <div className="space-y-1.5">
+                {(weekEventsByDay.get(selectedDay) || []).map((ev, idx) => (
+                  <div key={idx} className="flex items-start gap-2 p-2 rounded-xl bg-gray-50 border border-gray-100">
+                    <span
+                      className={`shrink-0 w-5 h-5 rounded-md text-[10px] font-black flex items-center justify-center ${
+                        ev.tipo === 'E' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                      }`}
+                    >
+                      {ev.tipo}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold text-gray-900 truncate">
+                        {ev.hora && <span className="text-orange-600 mr-1">{ev.hora}</span>}
+                        {ev.titulo}
+                      </p>
+                      <p className="text-[10px] text-gray-500 truncate">{ev.detalle}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
 
         <button
           onClick={() => setIsStatusOpen(true)}
@@ -475,9 +783,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
       {/* Modal de Estado y Clasificación de los Equipos (visible para visitantes) */}
       <TeamStatusModal isOpen={isStatusOpen} onClose={() => setIsStatusOpen(false)} />
-
-      {/* Modal de Resultados en Directo */}
-      <LiveResultsModal isOpen={isLiveOpen} onClose={() => setIsLiveOpen(false)} />
     </div>
   );
 };

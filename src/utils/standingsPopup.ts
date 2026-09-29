@@ -1,4 +1,5 @@
 import { CategoryStandings } from './standings';
+import { FfcvStandingsRow } from './ffcvClasificacion';
 
 const esc = (v: string): string =>
   String(v)
@@ -147,14 +148,14 @@ export function openStandingsPopup(
 export interface FfcvStandingsPopupOptions {
   title: string;
   subtitle?: string;
-  headers: string[];
-  rows: string[][];
-  teamNames: string[];
+  rows: FfcvStandingsRow[];
   /** Nombres de equipos del club a resaltar (coincidencia flexible) */
   highlightNames: string[];
   clubName?: string;
   temporada?: string;
 }
+
+const RACHA_COLORS: Record<string, string> = { G: '#04B431', E: '#d97706', P: '#dc2626' };
 
 export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void {
   const club = options.clubName || 'Club';
@@ -164,51 +165,53 @@ export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void
     if (!k) return false;
     return highlights.some(h => k === h || k.includes(h) || h.includes(k));
   };
-  const headers = options.headers;
-  const teamCol = Math.max(1, headers.findIndex(h => /equipo|club|team/i.test(h)));
-  const clsFor = (ci: number): string =>
-    ci === 0 ? 'pos' : ci === teamCol ? 'team' : ci === headers.length - 1 ? 'pts' : '';
-
-  const head = `<tr>${headers
-    .map((h, i) => `<th class="${clsFor(i)}">${esc(h)}</th>`)
-    .join('')}</tr>`;
 
   const body = options.rows
-    .map((cells, i) => {
-      const name = options.teamNames[i] || cells[teamCol] || '';
-      const ours = isOurs(name);
-      const tds = cells
-        .map((c, ci) => {
-          const cls = clsFor(ci);
-          const inner =
-            ci === 0 ? `<span class="${i === 0 ? 'first' : ''}">${esc(c)}</span>` : esc(c);
-          return `<td class="${cls}">${inner}</td>`;
-        })
+    .map((r, i) => {
+      const ours = isOurs(r.equipo);
+      const racha = r.racha
+        .map(t => `<span style="background-color:${RACHA_COLORS[t] || '#6b7280'}">${esc(t)}</span>`)
         .join('');
-      return `<tr class="${ours ? 'club' : ''}">${tds}</tr>`;
+      return `<tr class="${ours ? 'club' : ''}">
+        <td class="pos"><span class="${i === 0 ? 'first' : ''}">${esc(r.pos)}</span></td>
+        <td class="team">${esc(r.equipo)}</td>
+        <td class="pts">${esc(r.pts)}</td>
+        <td>${esc(r.pj)}</td>
+        <td>${esc(r.g)}</td>
+        <td>${esc(r.e)}</td>
+        <td>${esc(r.p)}</td>
+        <td>${esc(r.gf)}</td>
+        <td>${esc(r.gc)}</td>
+        <td>${racha ? `<span class="racha">${racha}</span>` : ''}</td>
+      </tr>`;
     })
     .join('');
 
-  const jornada = options.subtitle || '';
+  const sub = options.subtitle || '';
   const html = `<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${esc(options.title)} — ${esc(club)}</title>
-<style>${POPUP_CSS}</style>
+<style>${POPUP_CSS}
+  .racha { display: inline-flex; gap: 3px; justify-content: center; }
+  .racha span { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 700; }
+</style>
 </head>
 <body>
 <header>
   <h1>${esc(options.title)}</h1>
-  <div class="temp">${esc(jornada || club)}${jornada ? `<br />${esc(club)}` : ''}</div>
+  <div class="temp">${esc(sub || club)}${sub ? `<br />${esc(club)}` : ''}</div>
 </header>
 <main>
   <section>
-    <h2><span class="dot"></span>Clasificación oficial <small>${options.rows.length} equipos</small></h2>
+    <h2><span class="dot"></span>Clasificación oficial FFCV <small>${options.rows.length} equipos</small></h2>
     <div class="table-wrap">
       <table>
-        <thead>${head}</thead>
+        <thead>
+          <tr><th class="pos">Pos</th><th class="team">Equipo</th><th>Pts</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>GF</th><th>GC</th><th>Racha</th></tr>
+        </thead>
         <tbody>${body}</tbody>
       </table>
     </div>

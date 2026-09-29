@@ -451,13 +451,12 @@ export const EquiposClubView: React.FC = () => {
         title: [data.competicion, data.grupo].filter(Boolean).join(' · ') || 'Clasificación oficial',
         subtitle: [
           j ? (/jornada/i.test(j) ? j : `Jornada ${j}`) : '',
+          data.fecha.trim(),
           equipo.nombre
         ]
           .filter(Boolean)
           .join(' · '),
-        headers: data.table.headers,
-        rows: data.table.rows,
-        teamNames: data.table.teamNames,
+        rows: data.rows,
         highlightNames: equipos.map(e => e.nombre),
         clubName: clubConfig?.nombre,
         temporada: clubConfig?.temporada || equipo.temporada

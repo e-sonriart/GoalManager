@@ -1,5 +1,5 @@
 import { CategoryStandings } from './standings';
-import { FfcvStandingsRow } from './ffcvClasificacion';
+import { ClasifCategoriaResumen, FfcvStandingsRow } from './ffcvClasificacion';
 
 const esc = (v: string): string =>
   String(v)
@@ -145,6 +145,80 @@ export function openStandingsPopup(
   writePopup(`Clasificación${options.equipo ? ` · ${esc(options.equipo)}` : ''} — ${esc(club)}`, html);
 }
 
+const RACHA_COLORS: Record<string, string> = { G: '#04B431', E: '#D7DF01', P: '#F78181' };
+
+const ZONE_COLORS: Record<string, string> = { '#1dff46': 'Ascenso', '#ff1622': 'Descenso' };
+
+const FFCV_EXTRA_CSS = `
+  .racha { display: inline-flex; gap: 3px; justify-content: center; }
+  .racha span { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 700; }
+  .club-name { display: inline-flex; align-items: center; gap: 8px; }
+  .shield { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
+  .legend { margin-top: 12px; padding: 14px 16px; background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 12px; font-size: 12px; }
+  .legend strong { display: block; text-transform: uppercase; font-size: 11px; color: #6b7280; margin-bottom: 8px; }
+  .legend-item { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; font-weight: 500; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+  .team-block { margin-bottom: 14px; }
+  .team-title { font-size: 12px; font-weight: 700; margin-bottom: 6px; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+  .team-title .league { color: #9ca3af; font-weight: 500; font-size: 11px; }
+  .note { background: #fff; border: 1px dashed #e5e7eb; border-radius: 12px; padding: 12px; color: #6b7280; font-size: 12px; font-style: italic; }
+`;
+
+const FFCV_HEAD = `<tr><th class="pos">Pos</th><th class="team">Equipo</th><th>Pts</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>GF</th><th>GC</th><th>Racha</th></tr>`;
+
+function makeIsOurs(highlightNames: string[]): (name: string) => boolean {
+  const highlights = highlightNames.map(normKey).filter(k => k.length >= 4);
+  return (name: string): boolean => {
+    const k = normKey(name);
+    if (!k) return false;
+    return highlights.some(h => k === h || k.includes(h) || h.includes(k));
+  };
+}
+
+function ffcvRowHtml(r: FfcvStandingsRow, isClub: boolean): string {
+  const zone = (r.color || '').trim().toLowerCase();
+  const posStyle = ZONE_COLORS[zone] ? ` style="border-left:4px solid ${zone}"` : '';
+  const shield = r.img
+    ? `<img class="shield" src="https://appwebffcv.novanet.es${esc(r.img)}" alt="" onerror="this.style.display='none'" />`
+    : '';
+  const racha = r.racha
+    .map(t => `<span style="background-color:${RACHA_COLORS[t] || '#6b7280'}">${esc(t)}</span>`)
+    .join('');
+  const first = r.pos.trim() === '1' ? ' first' : '';
+  return `<tr class="${isClub ? 'club' : ''}">
+    <td class="pos"${posStyle}><span class="${first.trim()}">${esc(r.pos)}</span></td>
+    <td class="team"><span class="club-name">${shield}${esc(r.equipo)}</span></td>
+    <td class="pts">${esc(r.pts)}</td>
+    <td>${esc(r.pj)}</td>
+    <td>${esc(r.g)}</td>
+    <td>${esc(r.e)}</td>
+    <td>${esc(r.p)}</td>
+    <td>${esc(r.gf)}</td>
+    <td>${esc(r.gc)}</td>
+    <td>${racha ? `<span class="racha">${racha}</span>` : ''}</td>
+  </tr>`;
+}
+
+function ffcvTableHtml(rows: FfcvStandingsRow[], isClubRow: (r: FfcvStandingsRow) => boolean): string {
+  return `<div class="table-wrap">
+    <table>
+      <thead>${FFCV_HEAD}</thead>
+      <tbody>${rows.map(r => ffcvRowHtml(r, isClubRow(r))).join('')}</tbody>
+    </table>
+  </div>`;
+}
+
+function ffcvLegendHtml(rows: FfcvStandingsRow[]): string {
+  const items = Object.entries(ZONE_COLORS)
+    .filter(([hex]) => rows.some(r => (r.color || '').trim().toLowerCase() === hex))
+    .map(
+      ([hex, label]) =>
+        `<span class="legend-item"><span class="swatch" style="background:${hex}"></span>${label}</span>`
+    )
+    .join('');
+  return items ? `<div class="legend"><strong>Leyenda</strong><div>${items}</div></div>` : '';
+}
+
 export interface FfcvStandingsPopupOptions {
   title: string;
   subtitle?: string;
@@ -155,56 +229,9 @@ export interface FfcvStandingsPopupOptions {
   temporada?: string;
 }
 
-const RACHA_COLORS: Record<string, string> = { G: '#04B431', E: '#D7DF01', P: '#F78181' };
-
-const ZONE_COLORS: Record<string, string> = { '#1dff46': 'Ascenso', '#ff1622': 'Descenso' };
-
 export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void {
   const club = options.clubName || 'Club';
-  const highlights = options.highlightNames.map(normKey).filter(k => k.length >= 4);
-  const isOurs = (name: string): boolean => {
-    const k = normKey(name);
-    if (!k) return false;
-    return highlights.some(h => k === h || k.includes(h) || h.includes(k));
-  };
-
-  const body = options.rows
-    .map((r, i) => {
-      const ours = isOurs(r.equipo);
-      const zone = (r.color || '').trim().toLowerCase();
-      const posStyle = ZONE_COLORS[zone] ? ` style="border-left:4px solid ${zone}"` : '';
-      const shield = r.img
-        ? `<img class="shield" src="https://appwebffcv.novanet.es${esc(r.img)}" alt="" onerror="this.style.display='none'" />`
-        : '';
-      const racha = r.racha
-        .map(t => `<span style="background-color:${RACHA_COLORS[t] || '#6b7280'}">${esc(t)}</span>`)
-        .join('');
-      return `<tr class="${ours ? 'club' : ''}">
-        <td class="pos"${posStyle}><span class="${i === 0 ? 'first' : ''}">${esc(r.pos)}</span></td>
-        <td class="team"><span class="club-name">${shield}${esc(r.equipo)}</span></td>
-        <td class="pts">${esc(r.pts)}</td>
-        <td>${esc(r.pj)}</td>
-        <td>${esc(r.g)}</td>
-        <td>${esc(r.e)}</td>
-        <td>${esc(r.p)}</td>
-        <td>${esc(r.gf)}</td>
-        <td>${esc(r.gc)}</td>
-        <td>${racha ? `<span class="racha">${racha}</span>` : ''}</td>
-      </tr>`;
-    })
-    .join('');
-
-  const legendItems = Object.entries(ZONE_COLORS)
-    .filter(([hex]) => options.rows.some(r => (r.color || '').trim().toLowerCase() === hex))
-    .map(
-      ([hex, label]) =>
-        `<span class="legend-item"><span class="swatch" style="background:${hex}"></span>${label}</span>`
-    )
-    .join('');
-  const legend = legendItems
-    ? `<div class="legend"><strong>Leyenda</strong><div>${legendItems}</div></div>`
-    : '';
-
+  const isOurs = makeIsOurs(options.highlightNames);
   const sub = options.subtitle || '';
   const html = `<!doctype html>
 <html lang="es">
@@ -212,16 +239,7 @@ export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${esc(options.title)} — ${esc(club)}</title>
-<style>${POPUP_CSS}
-  .racha { display: inline-flex; gap: 3px; justify-content: center; }
-  .racha span { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 700; }
-  .club-name { display: inline-flex; align-items: center; gap: 8px; }
-  .shield { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
-  .legend { margin-top: 12px; padding: 14px 16px; background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 12px; font-size: 12px; }
-  .legend strong { display: block; text-transform: uppercase; font-size: 11px; color: #6b7280; margin-bottom: 8px; }
-  .legend-item { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; font-weight: 500; }
-  .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
-</style>
+<style>${POPUP_CSS}${FFCV_EXTRA_CSS}</style>
 </head>
 <body>
 <header>
@@ -231,15 +249,8 @@ export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void
 <main>
   <section>
     <h2><span class="dot"></span>Clasificación oficial FFCV <small>${options.rows.length} equipos</small></h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th class="pos">Pos</th><th class="team">Equipo</th><th>Pts</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>GF</th><th>GC</th><th>Racha</th></tr>
-        </thead>
-        <tbody>${body}</tbody>
-      </table>
-    </div>
-    ${legend}
+    ${ffcvTableHtml(options.rows, r => isOurs(r.equipo))}
+    ${ffcvLegendHtml(options.rows)}
   </section>
 </main>
 <footer>Fuente: FFCV · extraído el ${new Date().toLocaleDateString('es-ES', {
@@ -251,4 +262,76 @@ export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void
 </html>`;
 
   writePopup(`${options.title} — ${club}`, html);
+}
+
+export interface ResumenClasificacionesOptions {
+  sections: ClasifCategoriaResumen[];
+  highlightNames: string[];
+  clubName?: string;
+  temporada?: string;
+}
+
+export function openResumenClasificacionesPopup(options: ResumenClasificacionesOptions): void {
+  const club = options.clubName || 'Club';
+  const temporada = options.temporada || '';
+  const isOurs = makeIsOurs(options.highlightNames);
+
+  const sections = options.sections
+    .map(({ categoria, equipos }) => {
+      const blocks = equipos
+        .map(t => {
+          const meta = t.meta ? ` <span class="league">${esc(t.meta)}</span>` : '';
+          if (t.estado === 'sin-link') {
+            return `<div class="team-block">
+              <div class="team-title">${esc(t.nombre)}${meta}</div>
+              <div class="note">Sin link de clasificación.</div>
+            </div>`;
+          }
+          if (t.estado === 'error') {
+            return `<div class="team-block">
+              <div class="team-title">${esc(t.nombre)}${meta}</div>
+              <div class="note">No se pudo extraer la clasificación de la FFCV.</div>
+            </div>`;
+          }
+          const idx = t.rows.findIndex(r => isOurs(r.equipo));
+          const slice = idx >= 0 ? t.rows.slice(Math.max(0, idx - 1), idx + 2) : t.rows;
+          const league = t.title ? ` <span class="league">${esc(t.title)}</span>` : '';
+          const sub = t.sub ? ` <span class="league">${esc(t.sub)}</span>` : '';
+          return `<div class="team-block">
+            <div class="team-title">${esc(t.nombre)}${meta}${league}${sub}</div>
+            ${ffcvTableHtml(slice, r => isOurs(r.equipo))}
+          </div>`;
+        })
+        .join('');
+      return `<section>
+        <h2><span class="dot"></span>${esc(categoria)} <small>${equipos.length} ${
+        equipos.length === 1 ? 'equipo' : 'equipos'
+      }</small></h2>
+        ${blocks}
+      </section>`;
+    })
+    .join('');
+
+  const html = `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Clasificaciones — ${esc(club)}</title>
+<style>${POPUP_CSS}${FFCV_EXTRA_CSS}</style>
+</head>
+<body>
+<header>
+  <h1>Clasificaciones del Club</h1>
+  <div class="temp">${esc(club)}${temporada ? `<br />${esc(temporada)}` : ''}</div>
+</header>
+<main>${sections}</main>
+<footer>Fuente: FFCV · tu equipo con sus vecinos de clasificación · extraído el ${new Date().toLocaleDateString(
+    'es-ES',
+    { day: '2-digit', month: 'long', year: 'numeric' }
+  )} · ${esc(club)}</footer>
+</body>
+</html>`;
+
+  writePopup(`Clasificaciones — ${club}`, html);
 }

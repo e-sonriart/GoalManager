@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
-import { TeamStatusModal } from './TeamStatusModal';
 import { resolveVisitorShield } from '../utils/shieldPresets';
+import { fetchResumenClasificaciones } from '../utils/ffcvClasificacion';
+import { openResumenClasificacionesPopup } from '../utils/standingsPopup';
 import {
   Calendar,
   Trophy,
@@ -56,6 +57,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     sesiones,
     estadisticas,
     equipos,
+    categorias,
     currentUser,
     clubConfig,
     getTeamEscudo,
@@ -63,11 +65,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     allowedTabs
   } = useClub();
 
-  const [isStatusOpen, setIsStatusOpen] = useState(false);
+  const [isFetchingClasif, setIsFetchingClasif] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   const canManagePartidos = can('manage:partidos');
+
+  const handleVerClasificaciones = async () => {
+    setIsFetchingClasif(true);
+    try {
+      const sections = await fetchResumenClasificaciones(equipos, categorias);
+      openResumenClasificacionesPopup({
+        sections,
+        highlightNames: [clubConfig?.nombre, ...equipos.map(e => e.nombre)].filter(
+          (n): n is string => Boolean(n && n.trim())
+        ),
+        clubName: clubConfig?.nombre,
+        temporada: clubConfig?.temporada
+      });
+    } finally {
+      setIsFetchingClasif(false);
+    }
+  };
 
   // Métricas calculadas (memorizadas para evitar recálculo en cada render)
   const metrics = useMemo(() => {
@@ -572,17 +591,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </div>
 
         <button
-          onClick={() => setIsStatusOpen(true)}
-          className="group text-left bg-white p-3.5 sm:p-5 rounded-2xl border border-gray-150 shadow-xs hover:border-orange-300 hover:shadow-md transition-all flex flex-col sm:flex-row items-center sm:items-start gap-2.5 sm:gap-4 cursor-pointer"
+          onClick={handleVerClasificaciones}
+          disabled={isFetchingClasif}
+          className="group text-left bg-white p-3.5 sm:p-5 rounded-2xl border border-gray-150 shadow-xs hover:border-orange-300 hover:shadow-md transition-all flex flex-col sm:flex-row items-center sm:items-start gap-2.5 sm:gap-4 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
         >
           <div className="p-2 sm:p-3.5 rounded-xl sm:rounded-2xl bg-orange-100 text-orange-600 shrink-0">
             <Trophy className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div className="text-center sm:text-left min-w-0 flex-1">
             <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 truncate">Estado de los Equipos</p>
-            <h3 className="text-xl sm:text-2xl font-black text-gray-900 font-athletic">Ver Clasificación</h3>
+            <h3 className="text-xl sm:text-2xl font-black text-gray-900 font-athletic">
+              {isFetchingClasif ? 'Extrayendo…' : 'Ver Clasificación'}
+            </h3>
             <p className="hidden sm:block text-[11px] text-gray-400">
-              Jugados, ganados, empatados, perdidos, goles y clasificación
+              Por categoría: tu equipo con el anterior y el posterior
             </p>
           </div>
           <ChevronRight className="hidden sm:block w-5 h-5 text-gray-300 group-hover:text-orange-500 transition-colors shrink-0 self-center" />
@@ -779,9 +801,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
         </div>
       </div>
-
-      {/* Modal de Estado y Clasificación de los Equipos (visible para visitantes) */}
-      <TeamStatusModal isOpen={isStatusOpen} onClose={() => setIsStatusOpen(false)} />
     </div>
   );
 };

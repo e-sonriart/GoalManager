@@ -5,7 +5,8 @@ import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import { SHIELD_PRESETS } from '../utils/shieldPresets';
 import { computeStandings, TeamStanding } from '../utils/standings';
-import { openStandingsPopup } from '../utils/standingsPopup';
+import { openStandingsPopup, openFfcvStandingsPopup } from '../utils/standingsPopup';
+import { fetchFfcvClasificacion } from '../utils/ffcvClasificacion';
 
 type PosJugador = PosicionJugador;
 
@@ -326,6 +327,7 @@ export const EquiposClubView: React.FC = () => {
   const [eqDivision, setEqDivision] = useState('');
   const [eqGrupo, setEqGrupo] = useState('');
   const [eqLinkClasificacion, setEqLinkClasificacion] = useState('');
+  const [isFetchingClasif, setIsFetchingClasif] = useState(false);
 
   // Estados formulario Entrenador
   const [entNombre, setEntNombre] = useState('');
@@ -418,6 +420,53 @@ export const EquiposClubView: React.FC = () => {
       telefono: entTelefono.trim()
     });
     setModalType(null);
+  };
+
+  const openOwnStandingsPopup = (equipo: Equipo) => {
+    openStandingsPopup(
+      computeStandings(partidos),
+      new Set(equipos.map(e => e.nombre.toLowerCase().trim())),
+      {
+        categoria: equipo.categoria,
+        equipo: equipo.nombre,
+        clubName: clubConfig?.nombre,
+        temporada: clubConfig?.temporada || equipo.temporada
+      }
+    );
+  };
+
+  const handleOpenClasificacion = async () => {
+    const equipo = selectedEquipoForSquad;
+    if (!equipo) return;
+    const link = equipo.linkClasificacion?.trim();
+    if (!link) {
+      openOwnStandingsPopup(equipo);
+      return;
+    }
+    setIsFetchingClasif(true);
+    try {
+      const data = await fetchFfcvClasificacion(link);
+      const j = data.jornada.trim();
+      openFfcvStandingsPopup({
+        title: [data.competicion, data.grupo].filter(Boolean).join(' · ') || 'Clasificación oficial',
+        subtitle: [
+          j ? (/jornada/i.test(j) ? j : `Jornada ${j}`) : '',
+          equipo.nombre
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        headers: data.table.headers,
+        rows: data.table.rows,
+        teamNames: data.table.teamNames,
+        highlightNames: equipos.map(e => e.nombre),
+        clubName: clubConfig?.nombre,
+        temporada: clubConfig?.temporada || equipo.temporada
+      });
+    } catch {
+      openOwnStandingsPopup(equipo);
+    } finally {
+      setIsFetchingClasif(false);
+    }
   };
 
   return (
@@ -1171,18 +1220,12 @@ export const EquiposClubView: React.FC = () => {
               )}
               <button
                 type="button"
-                onClick={() =>
-                  openStandingsPopup(computeStandings(partidos), new Set(equipos.map(e => e.nombre.toLowerCase().trim())), {
-                    categoria: selectedEquipoForSquad.categoria,
-                    equipo: selectedEquipoForSquad.nombre,
-                    clubName: clubConfig?.nombre,
-                    temporada: clubConfig?.temporada || selectedEquipoForSquad.temporada
-                  })
-                }
-                className="px-2.5 py-1 bg-gray-900 text-white border border-gray-800 rounded-lg text-xs font-bold hover:bg-black transition-colors inline-flex items-center gap-1"
+                onClick={handleOpenClasificacion}
+                disabled={isFetchingClasif}
+                className="px-2.5 py-1 bg-gray-900 text-white border border-gray-800 rounded-lg text-xs font-bold hover:bg-black transition-colors inline-flex items-center gap-1 disabled:opacity-60"
               >
                 <ExternalLink className="w-3 h-3 text-orange-400" />
-                Clasificación
+                {isFetchingClasif ? 'Extrayendo…' : 'Clasificación'}
               </button>
               {selectedEquipoForSquad.linkClasificacion && (
                 <a

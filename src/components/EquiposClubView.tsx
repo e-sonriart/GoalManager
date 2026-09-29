@@ -457,7 +457,9 @@ export const EquiposClubView: React.FC = () => {
           .filter(Boolean)
           .join(' · '),
         rows: data.rows,
-        highlightNames: equipos.map(e => e.nombre),
+        highlightNames: [clubConfig?.nombre, ...equipos.map(e => e.nombre)].filter(
+          (n): n is string => Boolean(n && n.trim())
+        ),
         clubName: clubConfig?.nombre,
         temporada: clubConfig?.temporada || equipo.temporada
       });

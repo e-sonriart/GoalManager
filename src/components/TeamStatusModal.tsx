@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import { Modal } from './Modal';
 import { useClub } from '../context/ClubContext';
 import { computeStandings } from '../utils/standings';
-import { Trophy, Shield } from 'lucide-react';
+import { openStandingsPopup } from '../utils/standingsPopup';
+import { Trophy, Shield, ExternalLink } from 'lucide-react';
 
 interface TeamStatusModalProps {
   isOpen: boolean;
@@ -12,7 +13,7 @@ interface TeamStatusModalProps {
 const formatDif = (dif: number) => (dif > 0 ? `+${dif}` : `${dif}`);
 
 export const TeamStatusModal: React.FC<TeamStatusModalProps> = ({ isOpen, onClose }) => {
-  const { partidos, equipos } = useClub();
+  const { partidos, equipos, clubConfig } = useClub();
 
   const standings = useMemo(() => computeStandings(partidos), [partidos]);
   const clubTeams = useMemo(
@@ -40,6 +41,20 @@ export const TeamStatusModal: React.FC<TeamStatusModalProps> = ({ isOpen, onClos
         </div>
       ) : (
         <div className="space-y-6">
+          <div className="flex justify-end -mt-1">
+            <button
+              onClick={() =>
+                openStandingsPopup(standings, clubTeams, {
+                  clubName: clubConfig?.nombre,
+                  temporada: clubConfig?.temporada
+                })
+              }
+              className="px-3 py-1.5 bg-gray-900 hover:bg-black text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-orange-400" />
+              Abrir en ventana
+            </button>
+          </div>
           {standings.map(({ categoria, rows }) => (
             <section key={categoria}>
               <div className="flex items-center gap-2 mb-2">

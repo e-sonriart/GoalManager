@@ -5,6 +5,7 @@ import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import { SHIELD_PRESETS } from '../utils/shieldPresets';
 import { computeStandings, TeamStanding } from '../utils/standings';
+import { openStandingsPopup } from '../utils/standingsPopup';
 
 type PosJugador = PosicionJugador;
 
@@ -1157,31 +1158,44 @@ export const EquiposClubView: React.FC = () => {
         >
           <div className="space-y-4">
             {/* Datos de liga junto al nombre del equipo */}
-            {(selectedEquipoForSquad.division || selectedEquipoForSquad.grupo || selectedEquipoForSquad.linkClasificacion) && (
-              <div className="flex flex-wrap items-center gap-2">
-                {selectedEquipoForSquad.division && (
-                  <span className="px-2.5 py-1 bg-blue-50 text-blue-800 border border-blue-200 rounded-lg text-xs font-bold">
-                    {selectedEquipoForSquad.division}
-                  </span>
-                )}
-                {selectedEquipoForSquad.grupo && (
-                  <span className="px-2.5 py-1 bg-purple-50 text-purple-800 border border-purple-200 rounded-lg text-xs font-bold">
-                    {selectedEquipoForSquad.grupo}
-                  </span>
-                )}
-                {selectedEquipoForSquad.linkClasificacion && (
-                  <a
-                    href={selectedEquipoForSquad.linkClasificacion}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg text-xs font-bold hover:bg-orange-100 transition-colors inline-flex items-center gap-1"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    Ver clasificación
-                  </a>
-                )}
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedEquipoForSquad.division && (
+                <span className="px-2.5 py-1 bg-blue-50 text-blue-800 border border-blue-200 rounded-lg text-xs font-bold">
+                  {selectedEquipoForSquad.division}
+                </span>
+              )}
+              {selectedEquipoForSquad.grupo && (
+                <span className="px-2.5 py-1 bg-purple-50 text-purple-800 border border-purple-200 rounded-lg text-xs font-bold">
+                  {selectedEquipoForSquad.grupo}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() =>
+                  openStandingsPopup(computeStandings(partidos), new Set(equipos.map(e => e.nombre.toLowerCase().trim())), {
+                    categoria: selectedEquipoForSquad.categoria,
+                    equipo: selectedEquipoForSquad.nombre,
+                    clubName: clubConfig?.nombre,
+                    temporada: clubConfig?.temporada || selectedEquipoForSquad.temporada
+                  })
+                }
+                className="px-2.5 py-1 bg-gray-900 text-white border border-gray-800 rounded-lg text-xs font-bold hover:bg-black transition-colors inline-flex items-center gap-1"
+              >
+                <ExternalLink className="w-3 h-3 text-orange-400" />
+                Clasificación
+              </button>
+              {selectedEquipoForSquad.linkClasificacion && (
+                <a
+                  href={selectedEquipoForSquad.linkClasificacion}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200 rounded-lg text-xs font-bold hover:bg-orange-100 transition-colors inline-flex items-center gap-1"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Web de la liga
+                </a>
+              )}
+            </div>
             {/* 1º: datos de partidos de esta temporada */}
             <div className="bg-gradient-to-r from-gray-950 via-gray-900 to-black text-white rounded-2xl p-4 sm:p-5 border border-gray-800 shadow-lg min-w-0">
               <div className="flex items-center gap-2 mb-3">

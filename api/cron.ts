@@ -2,8 +2,7 @@
  * GET /api/cron?secret=... — recordatorios automáticos de partidos y entrenamientos.
  *
  * Disparado cada 5 minutos desde Supabase (pg_cron + pg_net, ver notificaciones-push.sql).
- * Ventanas: 24 h antes (ref ..._r24), 5 h antes (ref ..._r5) y 2 h antes (ref ..._r2),
- * con tolerancia de ±14 min.
+ * Ventanas: 24 h antes (ref ..._r24) y 2 h antes (ref ..._r2), con tolerancia de ±14 min.
  * Los refs estables + índice único de `notificaciones` garantizan que no se repiten.
  *
  * NOTA: llama a /api/push por HTTP en lugar de importarlo (los imports cruzados
@@ -18,7 +17,6 @@ const SUPABASE_ANON_KEY =
 const TZ = 'Europe/Madrid';
 const GRACE_MS = 14 * 60 * 1000;
 const D24 = 24 * 3600 * 1000;
-const D5 = 5 * 3600 * 1000;
 const D2 = 2 * 3600 * 1000;
 
 interface PushEvent {
@@ -125,17 +123,6 @@ export default async function handler(req: any, res: any): Promise<void> {
           }`
         });
       }
-      if (near(diff, D5)) {
-        events.push({
-          ...base,
-          tipo: 'recordatorio5',
-          refId: `${p.id}_r5`,
-          titulo: `⏱ ${p.equipo} juega en 5 horas`,
-          cuerpo: `${p.local} vs ${p.visitante} · ${legible(p.fecha, p.hora)}${
-            p.campo ? ` · ${p.campo}` : ''
-          }`
-        });
-      }
       if (near(diff, D2)) {
         events.push({
           ...base,
@@ -161,15 +148,6 @@ export default async function handler(req: any, res: any): Promise<void> {
           tipo: 'recordatorio24',
           refId: `${s.id}_r24`,
           titulo: `⏰ Mañana: entrenamiento de ${s.equipo}`,
-          cuerpo: detalle
-        });
-      }
-      if (near(diff, D5)) {
-        events.push({
-          ...base,
-          tipo: 'recordatorio5',
-          refId: `${s.id}_r5`,
-          titulo: `⏰ Entrenamiento de ${s.equipo} en 5 horas`,
           cuerpo: detalle
         });
       }

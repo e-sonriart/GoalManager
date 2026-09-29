@@ -7,7 +7,6 @@ import {
   Calendar,
   Trophy,
   ArrowRight,
-  Shield,
   Clock,
   Sparkles,
   Award,
@@ -276,13 +275,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 {canManagePartidos ? 'Gestionar Partidos' : 'Ver Calendario'}
               </button>
             )}
-            {canGo('equipos') && (
+            {canGo('entrenamientos') && (
               <button
-                onClick={() => onNavigate('equipos')}
+                onClick={() => onNavigate('entrenamientos')}
                 className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2"
               >
-                <Shield className="w-4 h-4 text-orange-400" />
-                Ver Equipos
+                <Dumbbell className="w-4 h-4 text-orange-400" />
+                Entrenamientos
               </button>
             )}
           </div>

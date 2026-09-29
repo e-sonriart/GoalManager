@@ -155,7 +155,9 @@ export interface FfcvStandingsPopupOptions {
   temporada?: string;
 }
 
-const RACHA_COLORS: Record<string, string> = { G: '#04B431', E: '#d97706', P: '#dc2626' };
+const RACHA_COLORS: Record<string, string> = { G: '#04B431', E: '#D7DF01', P: '#F78181' };
+
+const ZONE_COLORS: Record<string, string> = { '#1dff46': 'Ascenso', '#ff1622': 'Descenso' };
 
 export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void {
   const club = options.clubName || 'Club';
@@ -169,12 +171,17 @@ export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void
   const body = options.rows
     .map((r, i) => {
       const ours = isOurs(r.equipo);
+      const zone = (r.color || '').trim().toLowerCase();
+      const posStyle = ZONE_COLORS[zone] ? ` style="border-left:4px solid ${zone}"` : '';
+      const shield = r.img
+        ? `<img class="shield" src="https://appwebffcv.novanet.es${esc(r.img)}" alt="" onerror="this.style.display='none'" />`
+        : '';
       const racha = r.racha
         .map(t => `<span style="background-color:${RACHA_COLORS[t] || '#6b7280'}">${esc(t)}</span>`)
         .join('');
       return `<tr class="${ours ? 'club' : ''}">
-        <td class="pos"><span class="${i === 0 ? 'first' : ''}">${esc(r.pos)}</span></td>
-        <td class="team">${esc(r.equipo)}</td>
+        <td class="pos"${posStyle}><span class="${i === 0 ? 'first' : ''}">${esc(r.pos)}</span></td>
+        <td class="team"><span class="club-name">${shield}${esc(r.equipo)}</span></td>
         <td class="pts">${esc(r.pts)}</td>
         <td>${esc(r.pj)}</td>
         <td>${esc(r.g)}</td>
@@ -187,6 +194,17 @@ export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void
     })
     .join('');
 
+  const legendItems = Object.entries(ZONE_COLORS)
+    .filter(([hex]) => options.rows.some(r => (r.color || '').trim().toLowerCase() === hex))
+    .map(
+      ([hex, label]) =>
+        `<span class="legend-item"><span class="swatch" style="background:${hex}"></span>${label}</span>`
+    )
+    .join('');
+  const legend = legendItems
+    ? `<div class="legend"><strong>Leyenda</strong><div>${legendItems}</div></div>`
+    : '';
+
   const sub = options.subtitle || '';
   const html = `<!doctype html>
 <html lang="es">
@@ -197,6 +215,12 @@ export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void
 <style>${POPUP_CSS}
   .racha { display: inline-flex; gap: 3px; justify-content: center; }
   .racha span { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 700; }
+  .club-name { display: inline-flex; align-items: center; gap: 8px; }
+  .shield { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
+  .legend { margin-top: 12px; padding: 14px 16px; background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 12px; font-size: 12px; }
+  .legend strong { display: block; text-transform: uppercase; font-size: 11px; color: #6b7280; margin-bottom: 8px; }
+  .legend-item { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; font-weight: 500; }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
 </style>
 </head>
 <body>
@@ -215,6 +239,7 @@ export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void
         <tbody>${body}</tbody>
       </table>
     </div>
+    ${legend}
   </section>
 </main>
 <footer>Fuente: FFCV · extraído el ${new Date().toLocaleDateString('es-ES', {

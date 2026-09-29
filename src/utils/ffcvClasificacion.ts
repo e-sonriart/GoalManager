@@ -13,6 +13,8 @@ export interface FfcvStandingsRow {
   gf: string;
   gc: string;
   pts: string;
+  color: string;
+  img: string;
   racha: string[];
 }
 

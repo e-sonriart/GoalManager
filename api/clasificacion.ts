@@ -142,6 +142,8 @@ export default async function handler(req: any, res: any): Promise<void> {
       gf: String(r?.goles_a_favor ?? r?.gf ?? 0),
       gc: String(r?.goles_en_contra ?? r?.gc ?? 0),
       pts: String(r?.puntos ?? r?.pts ?? 0),
+      color: String(r?.color ?? ''),
+      img: String(r?.url_img ?? ''),
       racha: Array.isArray(r?.racha_partidos)
         ? r.racha_partidos
             .map((x: any) => String(x?.tipo || '').toUpperCase())

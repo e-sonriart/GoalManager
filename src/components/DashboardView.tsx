@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
 import { resolveVisitorShield } from '../utils/shieldPresets';
+import { isPartidoSuspendido } from '../utils/partidoEstado';
 import { fetchResumenClasificaciones } from '../utils/ffcvClasificacion';
 import { openResumenClasificacionesPopup } from '../utils/standingsPopup';
 import {
@@ -140,6 +141,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     () =>
       partidos
         .filter(p => !p.finalizado)
+        .filter(p => !isPartidoSuspendido(p))
         .filter(p => {
           const when = parseEventTime(p.fecha, p.hora);
           return when !== null && when >= Date.now();

@@ -12,10 +12,12 @@ import {
   Share2,
   ArrowLeft,
   Users,
-  ListChecks
+  ListChecks,
+  Ban
 } from 'lucide-react';
 import { compareTeams, getCategoryOrder } from '../utils/teamOrder';
 import { notifyTeam } from '../services/notifications';
+import { isPartidoSuspendido } from '../utils/partidoEstado';
 
 /** Mismos discos de color que la alineación (por posición). */
 const POS_DISK: Record<string, string> = {
@@ -94,6 +96,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
   }, [partidos, selectedPartidoId]);
 
   const selectedId = selectedPartido?.id;
+  const suspendidoSelected = isPartidoSuspendido(selectedPartido);
 
   // Cargar la convocatoria guardada al entrar o cambiar de partido (descarta cambios pendientes)
   useEffect(() => {
@@ -230,6 +233,27 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
       setLocalConvocados(new Set(selectedPartido.convocados || []));
     }
     onBack?.(selectedPartido.id);
+  };
+
+  // Marcar / desmarcar el partido como suspendido (antes de montar la alineación)
+  const handleToggleSuspendido = async () => {
+    if (!selectedPartido || !canManage) return;
+    const next = !isPartidoSuspendido(selectedPartido);
+    await savePartido({ ...selectedPartido, suspendido: next });
+    if (next) {
+      const f = new Date(selectedPartido.fecha);
+      const fechaTxt = Number.isNaN(f.getTime())
+        ? selectedPartido.fecha
+        : f.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      void notifyTeam({
+        tipo: 'partido_suspendido',
+        equipo: selectedPartido.equipo,
+        refId: `susp_${selectedPartido.id}`,
+        titulo: `⛔ Partido suspendido: ${selectedPartido.local} vs ${selectedPartido.visitante}`,
+        cuerpo: `📅 ${fechaTxt}${selectedPartido.campo ? ` · ${selectedPartido.campo}` : ''} · El equipo será avisado si se reprograma`,
+        url: '/?tab=partidos'
+      });
+    }
   };
 
   const handleShareSquad = async () => {
@@ -379,6 +403,19 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
 
         <div className="flex flex-wrap items-center gap-2">
           <button
+            onClick={handleToggleSuspendido}
+            disabled={!canManage}
+            title={canManage ? 'Marca el partido como suspendido (avisa al equipo)' : 'Solo lectura'}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 border disabled:opacity-40 disabled:cursor-not-allowed ${
+              suspendidoSelected
+                ? 'bg-red-600 hover:bg-red-700 text-white border-red-700'
+                : 'bg-white hover:bg-red-50 text-red-600 border-red-200'
+            }`}
+          >
+            <Ban className="w-4 h-4" />
+            {suspendidoSelected ? 'Suspendido ✓' : 'Partido Suspendido'}
+          </button>
+          <button
             onClick={handleShareSquad}
             className="px-4 py-2 bg-gray-900 hover:bg-black text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
           >
@@ -453,9 +490,16 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
               </div>
             </div>
             <div className="truncate">
-              <h3 className="font-bold text-sm sm:text-base font-athletic tracking-wide truncate">
-                {selectedPartido.local} <span className="text-orange-400">vs</span> {selectedPartido.visitante}
-              </h3>
+              <div className="flex items-center gap-2 min-w-0">
+                <h3 className="font-bold text-sm sm:text-base font-athletic tracking-wide truncate">
+                  {selectedPartido.local} <span className="text-orange-400">vs</span> {selectedPartido.visitante}
+                </h3>
+                {suspendidoSelected && (
+                  <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black uppercase tracking-wider shrink-0 flex items-center gap-1">
+                    <Ban className="w-3 h-3" /> Suspendido
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-gray-400 flex items-center gap-2 mt-0.5 truncate">
                 <span className="font-medium text-orange-300">{selectedPartido.categoria}</span>
                 <span>•</span>

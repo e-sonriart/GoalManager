@@ -8,8 +8,10 @@ import {
   Clock,
   ClipboardList,
   GripVertical,
-  LayoutGrid
+  LayoutGrid,
+  Ban
 } from 'lucide-react';
+import { isPartidoSuspendido } from '../utils/partidoEstado';
 
 interface AlineacionViewProps {
   initialPartidoId?: string;
@@ -139,6 +141,7 @@ export const AlineacionView: React.FC<AlineacionViewProps> = ({
     [partidos, selectedPartidoId]
   );
   const selectedId = selectedPartido?.id;
+  const partidoSuspendido = isPartidoSuspendido(selectedPartido);
 
   const tipoFutbol = useMemo(() => {
     if (!selectedPartido) return 'F11' as const;
@@ -307,7 +310,7 @@ export const AlineacionView: React.FC<AlineacionViewProps> = ({
   };
 
   const handleStart = async () => {
-    if (!selectedPartido || !isComplete || !canManage) return;
+    if (!selectedPartido || !isComplete || !canManage || partidoSuspendido) return;
     await persistLineup(selectedPartido, serializeTitulares(placement));
     onStartMatch?.(selectedPartido.id);
   };
@@ -341,6 +344,11 @@ export const AlineacionView: React.FC<AlineacionViewProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {partidoSuspendido && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-red-600 text-white flex items-center gap-1">
+              <Ban className="w-3 h-3" /> SUSPENDIDO
+            </span>
+          )}
           <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-gray-900 text-orange-400 font-athletic">
             {tipoFutbol}
           </span>
@@ -694,12 +702,22 @@ export const AlineacionView: React.FC<AlineacionViewProps> = ({
         {isComplete && (
           <button
             onClick={handleStart}
-            disabled={!canManage}
-            title={canManage ? 'Empezar: ir a eventos del partido' : 'Solo lectura'}
-            className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-emerald-600/30 flex items-center justify-center gap-2 disabled:opacity-40"
+            disabled={!canManage || partidoSuspendido}
+            title={
+              partidoSuspendido
+                ? 'Partido suspendido: no se puede empezar'
+                : canManage
+                ? 'Empezar: ir a eventos del partido'
+                : 'Solo lectura'
+            }
+            className={`flex-1 py-3 text-white rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-40 ${
+              partidoSuspendido
+                ? 'bg-red-500 hover:bg-red-600 shadow-md shadow-red-500/30'
+                : 'bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/30'
+            }`}
           >
-            <Play className="w-4 h-4 fill-current" />
-            Empezar partido
+            {partidoSuspendido ? <Ban className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
+            {partidoSuspendido ? 'Partido suspendido' : 'Empezar partido'}
           </button>
         )}
       </div>

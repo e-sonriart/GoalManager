@@ -23,10 +23,12 @@ import {
   Plane,
   MapPin,
   Star,
-  Play
+  Play,
+  Ban
 } from 'lucide-react';
 import { ActiveTab } from './Navbar';
 import { notifyTeam } from '../services/notifications';
+import { isPartidoSuspendido } from '../utils/partidoEstado';
 
 interface PartidosViewProps {
   onNavigateToConvocatoria?: (partidoId: string) => void;
@@ -251,6 +253,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
   const puedeResponderPartido = (p: Partido): boolean => {
     if (!jugadorActual) return false;
     if (p.finalizado) return false;
+    if (isPartidoSuspendido(p)) return false;
     const when = new Date(p.fecha).getTime();
     if (isNaN(when) || when < Date.now()) return false;
     const clubTeam = p.equipo || (equipos.some(e => e.nombre === p.local) ? p.local : p.visitante);
@@ -275,6 +278,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     const isLocal = partido.local === clubTeam;
     const condicion: CondicionPartido = partido.condicion || (isLocal ? 'casa' : 'fuera');
     const esCasa = condicion === 'casa';
+    const partidoSuspendido = isPartidoSuspendido(partido);
 
     return (
       <div
@@ -314,11 +318,15 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
           <div className="flex items-center gap-1 shrink-0">
             {partido.finalizado ? (
               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
-                <CheckCircle2 className="w-3 h-3 shrink-0" /> Finalizado
+                <CheckCircle2 className="w-3 h-3" /> Finalizado
+              </span>
+            ) : partidoSuspendido ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 shrink-0">
+                <Ban className="w-3 h-3" /> Suspendido
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 shrink-0">
-                <Clock className="w-3 h-3 shrink-0" /> Programado
+                <Clock className="w-3 h-3" /> Programado
               </span>
             )}
 

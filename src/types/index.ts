@@ -79,6 +79,7 @@ export interface Partido {
   golesVisitante?: number | string;
   eventos?: string;
   finalizado?: boolean | string;
+  suspendido?: boolean | string; // El entrenador marca el partido como suspendido antes de la alineación
   convocados?: string[]; // IDs de jugadores convocados directamente en el partido
   titulares?: string[]; // IDs de la alineación inicial (11 o 8 según modalidad)
   formacion?: string; // Táctica elegida, p. ej. '1-4-3-3' o '1-2-3-2'

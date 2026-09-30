@@ -78,6 +78,7 @@ create table if not exists partidos (
   "golesVisitante" text,
   eventos text,
   finalizado text,
+  suspendido boolean default false,
   convocados jsonb,
   titulares jsonb,
   formacion text,

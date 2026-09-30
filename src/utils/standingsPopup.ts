@@ -227,7 +227,22 @@ export interface FfcvStandingsPopupOptions {
   highlightNames: string[];
   clubName?: string;
   temporada?: string;
+  /** ISO de la última actualización de los datos (caché serverless) */
+  updatedAt?: string;
 }
+
+const fmtUpdatedAt = (iso?: string): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('es-ES', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
 
 export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void {
   const club = options.clubName || 'Club';
@@ -253,11 +268,15 @@ export function openFfcvStandingsPopup(options: FfcvStandingsPopupOptions): void
     ${ffcvLegendHtml(options.rows)}
   </section>
 </main>
-<footer>Fuente: FFCV · extraído el ${new Date().toLocaleDateString('es-ES', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric'
-  })} · ${esc(club)}</footer>
+<footer>Fuente: FFCV · ${
+    fmtUpdatedAt(options.updatedAt)
+      ? `datos actualizados el ${fmtUpdatedAt(options.updatedAt)}`
+      : `extraído el ${new Date().toLocaleDateString('es-ES', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric'
+        })}`
+  } · ${esc(club)}</footer>
 </body>
 </html>`;
 
@@ -297,8 +316,11 @@ export function openResumenClasificacionesPopup(options: ResumenClasificacionesO
           const slice = idx >= 0 ? t.rows.slice(Math.max(0, idx - 1), idx + 2) : t.rows;
           const league = t.title ? ` <span class="league">${esc(t.title)}</span>` : '';
           const sub = t.sub ? ` <span class="league">${esc(t.sub)}</span>` : '';
+          const act = fmtUpdatedAt(t.updatedAt)
+            ? ` <span class="league">Actualizado: ${esc(fmtUpdatedAt(t.updatedAt))}</span>`
+            : '';
           return `<div class="team-block">
-            <div class="team-title">${esc(t.nombre)}${meta}${league}${sub}</div>
+            <div class="team-title">${esc(t.nombre)}${meta}${league}${sub}${act}</div>
             ${ffcvTableHtml(slice, r => isOurs(r.equipo))}
           </div>`;
         })
@@ -326,10 +348,9 @@ export function openResumenClasificacionesPopup(options: ResumenClasificacionesO
   <div class="temp">${esc(club)}${temporada ? `<br />${esc(temporada)}` : ''}</div>
 </header>
 <main>${sections}</main>
-<footer>Fuente: FFCV · tu equipo con sus vecinos de clasificación · extraído el ${new Date().toLocaleDateString(
-    'es-ES',
-    { day: '2-digit', month: 'long', year: 'numeric' }
-  )} · ${esc(club)}</footer>
+<footer>Fuente: FFCV · tu equipo con sus vecinos de clasificación · actualización automática cada lunes · ${esc(
+    club
+  )}</footer>
 </body>
 </html>`;
 

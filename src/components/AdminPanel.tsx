@@ -10,6 +10,7 @@ import { validateUserForm } from '../utils/validation';
 import { compareTeams } from '../utils/teamOrder';
 import { notifyTeam } from '../services/notifications';
 import { getJugadorUsuario } from '../utils/playerUsername';
+import { clearFfcvClasificacionCache } from '../utils/ffcvClasificacion';
 import {
   Settings,
   Users,
@@ -83,6 +84,75 @@ export const AdminPanel: React.FC = () => {
   const canIdentidad = can('manage:identidad');
 
   const [activeTab, setActiveTab] = useState<'identity' | 'database' | 'users' | 'appsScript'>('identity');
+
+  // Actualización manual de clasificaciones FFCV (caché Supabase)
+  const [isRefreshingClasif, setIsRefreshingClasif] = useState(false);
+  const [clasifFecha, setClasifFecha] = useState('');
+
+  const formatFechaClasif = (iso: string): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const cargarFechaClasif = async () => {
+    try {
+      const r = await fetch('/api/actualizar-clasificaciones?fecha=1');
+      const j = await r.json().catch(() => ({}));
+      setClasifFecha(String(j?.fecha || ''));
+    } catch {
+      /* sin fecha */
+    }
+  };
+
+  useEffect(() => {
+    cargarFechaClasif();
+  }, []);
+
+  const handleActualizarClasificaciones = async () => {
+    setIsRefreshingClasif(true);
+    try {
+      const res = await fetch('/api/actualizar-clasificaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      const data: any = await res.json().catch(() => ({}));
+      if (res.status === 429) {
+        addToast({
+          type: 'info',
+          title: 'Ya actualizado',
+          message: `Última actualización: ${formatFechaClasif(String(data.updated_at || ''))}`
+        });
+        return;
+      }
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      clearFfcvClasificacionCache();
+      setClasifFecha(String(data.fecha || ''));
+      addToast({
+        type: data.errores ? 'info' : 'success',
+        title: 'Clasificaciones actualizadas',
+        message: `${data.actualizados} de ${data.total} equipos · ${formatFechaClasif(String(data.fecha || ''))}${
+          data.errores ? ` · ${data.errores} con error` : ''
+        }`
+      });
+    } catch {
+      addToast({
+        type: 'error',
+        title: 'Error',
+        message: 'No se pudieron actualizar las clasificaciones.'
+      });
+    } finally {
+      setIsRefreshingClasif(false);
+    }
+  };
 
   // Estados de Personalización e Identidad del Club
   const [clubNombre, setClubNombre] = useState(clubConfig?.nombre || '');
@@ -821,13 +891,38 @@ export const AdminPanel: React.FC = () => {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => syncAllData()}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs shrink-0"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Sincronizar Todo
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="hidden md:block text-[10px] font-bold text-orange-700 text-right leading-tight">
+                {clasifFecha ? (
+                  <>
+                    Última act. clasif.
+                    <br />
+                    {formatFechaClasif(clasifFecha)}
+                  </>
+                ) : (
+                  <>
+                    Clasif. FFCV
+                    <br />
+                    sin actualizar aún
+                  </>
+                )}
+              </span>
+              <button
+                onClick={handleActualizarClasificaciones}
+                disabled={isRefreshingClasif}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-orange-100 text-orange-700 border border-orange-300 rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-60 disabled:cursor-wait"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingClasif ? 'animate-spin' : ''}`} />
+                {isRefreshingClasif ? 'Actualizando…' : 'Actualizar Clasif.'}
+              </button>
+              <button
+                onClick={() => syncAllData()}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs shrink-0"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Sincronizar Todo
+              </button>
+            </div>
           </div>
 
           {/* Selector Horizontal de Hojas */}

@@ -461,7 +461,8 @@ export const EquiposClubView: React.FC = () => {
           (n): n is string => Boolean(n && n.trim())
         ),
         clubName: clubConfig?.nombre,
-        temporada: clubConfig?.temporada || equipo.temporada
+        temporada: clubConfig?.temporada || equipo.temporada,
+        updatedAt: data.updatedAt
       });
     } catch {
       openOwnStandingsPopup(equipo);

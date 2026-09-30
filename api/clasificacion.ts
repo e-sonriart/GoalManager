@@ -10,6 +10,44 @@
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
+const SUPABASE_URL = 'https://fycfljwckpflderfddgy.supabase.co';
+const SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5Y2Zsandja3BmbGRlcmZkZGd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAxNzE0MzMsImV4cCI6MjEwNTc0NzQzM30.PW75GFSrD7v0KgKWyhjaL6k_Po_OyJ5TTY-ABXXZdtM';
+
+const snapHeaders = {
+  apikey: SUPABASE_ANON_KEY,
+  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+  'Content-Type': 'application/json'
+};
+
+/** Lee la última clasificación guardada en Supabase (caché persistente anti-FFCV) */
+async function getSnapshot(url: string): Promise<any | null> {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/clasificaciones?url=eq.${encodeURIComponent(url)}&select=*`,
+      { headers: snapHeaders }
+    );
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Guarda/actualiza la clasificación extraída (upsert por url) */
+async function saveSnapshot(url: string, payload: Record<string, any>): Promise<void> {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/clasificaciones`, {
+      method: 'POST',
+      headers: { ...snapHeaders, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify([{ url, ...payload, updated_at: new Date().toISOString() }])
+    });
+  } catch (e) {
+    console.error('api/clasificacion saveSnapshot:', e);
+  }
+}
+
 const pick = (obj: any, keys: string[]): string => {
   for (const k of keys) {
     const v = obj?.[k];
@@ -63,6 +101,24 @@ export default async function handler(req: any, res: any): Promise<void> {
     if (!codPartido) {
       res.status(400).json({ error: 'sin_cod_partido' });
       return;
+    }
+
+    const force = req.query.force === '1' || req.query.force === 'true';
+    if (!force) {
+      const snap = await getSnapshot(raw);
+      if (snap && Array.isArray(snap.rows) && snap.rows.length) {
+        res.status(200).json({
+          ok: true,
+          competicion: snap.competicion || '',
+          grupo: snap.grupo || '',
+          jornada: snap.jornada || '',
+          fecha: snap.fecha_jornada || '',
+          rows: snap.rows,
+          updatedAt: snap.updated_at || '',
+          cached: true
+        });
+        return;
+      }
     }
 
     const ficha = await getJson(
@@ -151,6 +207,15 @@ export default async function handler(req: any, res: any): Promise<void> {
         : []
     }));
 
+    const updatedAt = new Date().toISOString();
+    await saveSnapshot(raw, {
+      competicion: competicion || pick(data, ['competicion']),
+      grupo: grupo || pick(data, ['grupo']),
+      jornada: String(data?.jornada || jornadaTxt),
+      fecha_jornada: pick(data, ['fecha_jornada']),
+      rows
+    });
+
     res.status(200).json({
       ok: true,
       competicion: competicion || pick(data, ['competicion']),
@@ -159,7 +224,8 @@ export default async function handler(req: any, res: any): Promise<void> {
       fecha: pick(data, ['fecha_jornada']),
       codGrupo,
       codJornada,
-      rows
+      rows,
+      updatedAt
     });
   } catch (e: any) {
     console.error('api/clasificacion:', e);

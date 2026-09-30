@@ -24,6 +24,7 @@ export interface FfcvClasificacion {
   jornada: string;
   fecha: string;
   rows: FfcvStandingsRow[];
+  updatedAt: string;
 }
 
 export async function fetchFfcvClasificacion(url: string): Promise<FfcvClasificacion> {
@@ -37,7 +38,8 @@ export async function fetchFfcvClasificacion(url: string): Promise<FfcvClasifica
     grupo: String(data.grupo || ''),
     jornada: String(data.jornada || ''),
     fecha: String(data.fecha || ''),
-    rows: data.rows as FfcvStandingsRow[]
+    rows: data.rows as FfcvStandingsRow[],
+    updatedAt: String(data.updatedAt || '')
   };
 }
 
@@ -58,6 +60,11 @@ async function fetchFfcvClasificacionCached(url: string): Promise<FfcvClasificac
     cache.set(url, { ts: Date.now(), data: null });
     throw e;
   }
+}
+
+/** Vacia la caché local (tras una actualización manual del admin) */
+export function clearFfcvClasificacionCache(): void {
+  cache.clear();
 }
 
 async function runPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -82,6 +89,7 @@ export interface ClasifTeamResumen {
   title: string;
   sub: string;
   rows: FfcvStandingsRow[];
+  updatedAt: string;
 }
 
 export interface ClasifCategoriaResumen {
@@ -125,7 +133,14 @@ export async function fetchResumenClasificaciones(
     const meta = [equipo.division, equipo.grupo].filter(Boolean).join(' · ');
     const link = equipo.linkClasificacion?.trim();
     if (!link) {
-      return { estado: 'sin-link' as EstadoClasif, meta, title: '', sub: '', rows: [] as FfcvStandingsRow[] };
+      return {
+        estado: 'sin-link' as EstadoClasif,
+        meta,
+        title: '',
+        sub: '',
+        rows: [] as FfcvStandingsRow[],
+        updatedAt: ''
+      };
     }
     try {
       const data = await fetchFfcvClasificacionCached(link);
@@ -137,10 +152,18 @@ export async function fetchResumenClasificaciones(
         sub: [j ? (/jornada/i.test(j) ? j : `Jornada ${j}`) : '', data.fecha.trim()]
           .filter(Boolean)
           .join(' · '),
-        rows: data.rows
+        rows: data.rows,
+        updatedAt: data.updatedAt
       };
     } catch {
-      return { estado: 'error' as EstadoClasif, meta, title: '', sub: '', rows: [] as FfcvStandingsRow[] };
+      return {
+        estado: 'error' as EstadoClasif,
+        meta,
+        title: '',
+        sub: '',
+        rows: [] as FfcvStandingsRow[],
+        updatedAt: ''
+      };
     }
   });
 
@@ -148,7 +171,15 @@ export async function fetchResumenClasificaciones(
   pairs.forEach((p, i) => {
     const r = results[i];
     const list = byCat.get(p.categoria) || [];
-    list.push({ nombre: p.equipo.nombre, meta: r.meta, estado: r.estado, title: r.title, sub: r.sub, rows: r.rows });
+    list.push({
+      nombre: p.equipo.nombre,
+      meta: r.meta,
+      estado: r.estado,
+      title: r.title,
+      sub: r.sub,
+      rows: r.rows,
+      updatedAt: r.updatedAt
+    });
     byCat.set(p.categoria, list);
   });
   return groups.map(g => ({ categoria: g.categoria, equipos: byCat.get(g.categoria) || [] }));

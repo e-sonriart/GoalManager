@@ -88,28 +88,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     }
   };
 
-  // Métricas calculadas (memorizadas para evitar recálculo en cada render)
-  const metrics = useMemo(() => {
-    const partidosPendientes = partidos.filter(p => !p.finalizado).length;
-    const now = new Date();
-    const dayKey = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    const hoy = dayKey(now);
-    const manana = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
-    let jugadosHoy = 0;
-    let partidosManana = 0;
-    for (const p of partidos) {
-      const raw = String(p.fecha || '');
-      const d = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T00:00:00`) : new Date(raw);
-      if (isNaN(d.getTime())) continue;
-      const key = dayKey(d);
-      if (key === hoy && Boolean(p.finalizado)) jugadosHoy += 1;
-      else if (key === manana) partidosManana += 1;
-    }
-    return { partidosPendientes, jugadosHoy, partidosManana };
-  }, [partidos]);
-
-  const { partidosPendientes, jugadosHoy, partidosManana } = metrics;
-
   // Pichichi (Máximo Goleador)
   const estadisticasOrdenadas = useMemo(
     () => [...estadisticas].sort((a, b) => (Number(b.goles) || 0) - (Number(a.goles) || 0)),
@@ -262,8 +240,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       <div className="relative overflow-hidden bg-gradient-to-r from-gray-950 via-gray-900 to-black text-white p-6 sm:p-8 rounded-3xl border border-gray-800 shadow-xl">
         <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-start sm:items-center gap-4">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/10 p-2 flex items-center justify-center border border-white/20 shadow-inner shrink-0 ring-2 ring-orange-500/30">
+          <div className="flex items-start sm:items-center gap-4 sm:gap-5">
+            <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl bg-white/10 p-2 flex items-center justify-center border border-white/20 shadow-inner shrink-0 ring-2 ring-orange-500/30">
               <TeamShield
                 escudoUrl={clubConfig?.escudo}
                 teamName={clubConfig?.nombre || 'Club'}
@@ -283,28 +261,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </p>
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            {canGo('partidos') && (
-              <button
-                onClick={() => onNavigate('partidos')}
-                className="px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-md shadow-orange-500/20 flex items-center gap-2"
-              >
-                <Calendar className="w-4 h-4" />
-                {canManagePartidos ? 'Gestionar Partidos' : 'Ver Calendario'}
-              </button>
-            )}
-            {canGo('entrenamientos') && (
-              <button
-                onClick={() => onNavigate('entrenamientos')}
-                className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2"
-              >
-                <Dumbbell className="w-4 h-4 text-orange-400" />
-                Entrenamientos
-              </button>
-            )}
-          </div>
         </div>
+      </div>
+
+      {/* Acciones rápidas (fuera de la tarjeta del club) */}
+      <div className="flex flex-wrap items-center gap-3">
+        {canGo('partidos') && (
+          <button
+            onClick={() => onNavigate('partidos')}
+            className="px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-md shadow-orange-500/20 flex items-center gap-2"
+          >
+            <Calendar className="w-4 h-4" />
+            {canManagePartidos ? 'Gestionar Partidos' : 'Ver Calendario'}
+          </button>
+        )}
+        {canGo('entrenamientos') && (
+          <button
+            onClick={() => onNavigate('entrenamientos')}
+            className="px-4 py-2.5 bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2 shadow-xs"
+          >
+            <Dumbbell className="w-4 h-4 text-orange-500" />
+            Entrenamientos
+          </button>
+        )}
       </div>
 
       {/* Próximo evento (solo entrenadores): lo primero bajo el escudo y la temporada */}
@@ -441,7 +420,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       )}
 
       {/* Metric Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
         <div
           role="button"
           tabIndex={0}
@@ -454,30 +433,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               if (canGo('partidos')) onNavigate('partidos');
             }
           }}
-          className="group text-left bg-white p-3.5 sm:p-5 rounded-2xl border border-gray-150 shadow-xs hover:border-orange-300 hover:shadow-md transition-all cursor-pointer"
+          className="group text-left bg-white p-3.5 sm:p-5 rounded-2xl border border-gray-150 shadow-xs hover:border-orange-300 hover:shadow-md transition-all cursor-pointer lg:col-span-2"
         >
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-2.5 sm:gap-4">
             <div className="p-2 sm:p-3.5 rounded-xl sm:rounded-2xl bg-blue-100 text-blue-600 shrink-0 group-hover:bg-blue-200 transition-colors">
               <Calendar className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div className="text-center sm:text-left min-w-0 flex-1">
-              <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 truncate">Por Jugar</p>
-              <h3 className="text-xl sm:text-2xl font-black text-gray-900 font-athletic">{partidosPendientes}</h3>
-              <p className="hidden sm:block text-[11px] text-gray-400">{partidos.length} partidos totales</p>
-              <div className="mt-1.5 flex flex-wrap items-center justify-center sm:justify-start gap-1.5 text-[11px]">
-                <span
-                  className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 font-semibold"
-                  title="Partidos finalizados con fecha de hoy"
-                >
-                  Hoy: {jugadosHoy} {jugadosHoy === 1 ? 'jugado' : 'jugados'}
-                </span>
-                <span
-                  className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100 font-semibold"
-                  title="Partidos programados para mañana"
-                >
-                  Mañana: {partidosManana} {partidosManana === 1 ? 'partido' : 'partidos'}
-                </span>
-              </div>
+              <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 truncate">Calendario semanal</p>
             </div>
             {canGo('partidos') && (
               <ChevronRight className="hidden sm:block w-5 h-5 text-gray-300 group-hover:text-orange-500 transition-colors shrink-0 self-center" />

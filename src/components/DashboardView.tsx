@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
 import { resolveVisitorShield } from '../utils/shieldPresets';
@@ -10,7 +10,6 @@ import {
   ArrowRight,
   Clock,
   Sparkles,
-  Award,
   ChevronLeft,
   ChevronRight,
   Dumbbell
@@ -88,16 +87,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     }
   };
 
-  // Pichichi (Máximo Goleador)
-  const estadisticasOrdenadas = useMemo(
-    () => [...estadisticas].sort((a, b) => (Number(b.goles) || 0) - (Number(a.goles) || 0)),
-    [estadisticas]
-  );
-  const topScorerStat = estadisticasOrdenadas[0];
-  const topScorerPlayer = useMemo(
-    () => (topScorerStat ? jugadores.find(j => j.id === topScorerStat.jugadorId) : null),
-    [jugadores, topScorerStat]
-  );
+  // Top goleadores/asistencias (del equipo asignado; selector si hay varios)
+  const misEquipos = useMemo(() => {
+    const asignados = (currentUser?.equipo || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (asignados.length) return asignados;
+    return ['Todos', ...equipos.map(e => e.nombre)];
+  }, [currentUser?.equipo, equipos]);
+
+  const [statsTeam, setStatsTeam] = useState('');
+  const [statsMetric, setStatsMetric] = useState<'goles' | 'asistencias'>('goles');
+
+  useEffect(() => {
+    if (!statsTeam || !misEquipos.includes(statsTeam)) setStatsTeam(misEquipos[0] || '');
+  }, [misEquipos, statsTeam]);
 
   // Próximos partidos ordenados por fecha
   const proximosPartidos = useMemo(
@@ -214,23 +219,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     return map;
   }, [sesiones, partidos]);
 
-  // Datos para gráfico de máximos goleadores
-  const topGoleadoresData = useMemo(
-    () => estadisticasOrdenadas
-      .slice(0, 5)
-      .map(st => {
-        const player = jugadores.find(j => j.id === st.jugadorId);
-        return {
-          nombre: player ? player.nombre : 'Desconocido',
-          dorsal: player ? player.dorsal : '-',
-          goles: Number(st.goles) || 0,
-          asistencias: Number(st.asistencias) || 0
-        };
-      }),
-    [estadisticasOrdenadas, jugadores]
-  );
+  // Ranking de goles/asistencias filtrado por equipo y métrica
+  const topJugadoresData = useMemo(() => {
+    const list = estadisticas.map(st => {
+      const player = jugadores.find(j => j.id === st.jugadorId);
+      return {
+        nombre: player ? player.nombre : 'Desconocido',
+        dorsal: player ? player.dorsal : '-',
+        equipo: (player?.equipo || '').trim(),
+        goles: Number(st.goles) || 0,
+        asistencias: Number(st.asistencias) || 0
+      };
+    });
+    const filtered =
+      statsTeam && statsTeam !== 'Todos'
+        ? list.filter(d => d.equipo.toLowerCase() === statsTeam.toLowerCase())
+        : list;
+    const metricVal = (d: { goles: number; asistencias: number }) =>
+      statsMetric === 'goles' ? d.goles : d.asistencias;
+    return filtered.sort((a, b) => metricVal(b) - metricVal(a)).slice(0, 5);
+  }, [estadisticas, jugadores, statsTeam, statsMetric]);
 
-  const maxGoles = Math.max(...topGoleadoresData.map(d => d.goles), 1);
+  const maxVal = Math.max(
+    ...topJugadoresData.map(d => (statsMetric === 'goles' ? d.goles : d.asistencias)),
+    1
+  );
 
   const canGo = (tab: ActiveTab) => allowedTabs.includes(tab);
 
@@ -265,7 +278,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       </div>
 
       {/* Acciones rápidas (fuera de la tarjeta del club) */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center justify-center gap-3">
         {canGo('partidos') && (
           <button
             onClick={() => onNavigate('partidos')}
@@ -574,69 +587,59 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </button>
       </div>
 
-      {/* Main Grid: Pichichi Banner + Upcoming Matches */}
+      {/* Main Grid: Ranking de Jugadores + Upcoming Matches */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Pichichi & Chart */}
+        {/* Left 2 Cols: Ranking */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Pichichi Spotlight */}
-          {topScorerPlayer && (
-            <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-3xl p-5 sm:p-6 text-white shadow-lg relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-5 sm:gap-6">
-              <div className="flex items-center gap-4 z-10">
-                <div className="w-16 h-16 rounded-2xl bg-black/20 backdrop-blur border border-white/20 flex items-center justify-center text-3xl font-black font-athletic shadow-inner">
-                  #{topScorerPlayer.dorsal}
-                </div>
-                <div>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider bg-black/25 px-2.5 py-0.5 rounded-full text-orange-100">
-                    <Award className="w-3.5 h-3.5 text-amber-300" /> Pichichi del Club
-                  </span>
-                  <h3 className="text-2xl font-bold font-athletic tracking-tight mt-1">{topScorerPlayer.nombre}</h3>
-                  <p className="text-xs text-orange-100">
-                    {topScorerPlayer.posicion} • {topScorerPlayer.equipo}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 sm:flex items-center gap-1 sm:gap-6 z-10 bg-black/20 backdrop-blur px-3 sm:px-6 py-3 rounded-2xl border border-white/10 w-full sm:w-auto">
-                <div className="text-center">
-                  <p className="text-[9px] sm:text-[10px] uppercase font-bold text-orange-200">Goles</p>
-                  <p className="text-2xl sm:text-3xl font-black font-athletic">{topScorerStat.goles}</p>
-                </div>
-                <div className="hidden sm:block w-px h-8 bg-white/20" />
-                <div className="text-center">
-                  <p className="text-[9px] sm:text-[10px] uppercase font-bold text-orange-200">Asistencias</p>
-                  <p className="text-xl sm:text-2xl font-bold font-athletic">{topScorerStat.asistencias}</p>
-                </div>
-                <div className="hidden sm:block w-px h-8 bg-white/20" />
-                <div className="text-center">
-                  <p className="text-[9px] sm:text-[10px] uppercase font-bold text-orange-200">Partidos</p>
-                  <p className="text-xl sm:text-2xl font-bold font-athletic">{topScorerStat.partidosJugados}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Gráfico Máximos Goleadores */}
+          {/* Ranking goles/asistencias por equipo asignado */}
           <div className="bg-white p-6 rounded-3xl border border-gray-150 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-bold text-gray-900 font-athletic tracking-wide">
-                  Top Goleadores del Club
+                  {statsMetric === 'goles' ? 'Top Goleadores' : 'Top Asistencias'}
                 </h3>
-                <p className="text-xs text-gray-500">Distribución de goles y asistencias</p>
+                <p className="text-xs text-gray-500">
+                  {statsTeam && statsTeam !== 'Todos' ? statsTeam : 'Todos los equipos'} · goles y asistencias
+                </p>
               </div>
-              {canGo('estadisticas') && (
-                <button
-                  onClick={() => onNavigate('estadisticas')}
-                  className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1"
-                >
-                  Ver Ranking Completo <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {misEquipos.length > 1 && (
+                  <select
+                    value={statsTeam}
+                    onChange={e => setStatsTeam(e.target.value)}
+                    className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-bold text-gray-700 bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none max-w-[160px]"
+                  >
+                    {misEquipos.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                )}
+                <div className="flex bg-gray-100 rounded-lg p-0.5">
+                  {(['goles', 'asistencias'] as const).map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setStatsMetric(m)}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-colors ${
+                        statsMetric === m
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {m === 'goles' ? 'Goles' : 'Asist.'}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="space-y-3 pt-2">
-              {topGoleadoresData.map((jug, idx) => {
-                const pct = Math.round((jug.goles / maxGoles) * 100);
+              {topJugadoresData.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-6">Sin datos de este equipo.</p>
+              )}
+              {topJugadoresData.map((jug, idx) => {
+                const metricVal = statsMetric === 'goles' ? jug.goles : jug.asistencias;
+                const pct = Math.round((metricVal / maxVal) * 100);
                 return (
                   <div key={idx} className="space-y-1">
                     <div className="flex items-center justify-between gap-2 text-xs">
@@ -648,8 +651,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                         <span className="text-gray-400 text-[11px] shrink-0">(#{jug.dorsal})</span>
                       </span>
                       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                        <span className="font-bold text-orange-600 font-athletic text-sm whitespace-nowrap">{jug.goles} Goles</span>
-                        <span className="hidden sm:inline text-gray-400 text-[11px] whitespace-nowrap">{jug.asistencias} Asist.</span>
+                        <span className="font-bold text-orange-600 font-athletic text-sm whitespace-nowrap">
+                          {metricVal} {statsMetric === 'goles' ? 'Goles' : 'Asist.'}
+                        </span>
+                        <span className="hidden sm:inline text-gray-400 text-[11px] whitespace-nowrap">
+                          {statsMetric === 'goles' ? `${jug.asistencias} Asist.` : `${jug.goles} Goles`}
+                        </span>
                       </div>
                     </div>
                     <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
@@ -662,6 +669,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 );
               })}
             </div>
+
+            {canGo('estadisticas') && (
+              <button
+                onClick={() => onNavigate('estadisticas')}
+                className="w-full text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center justify-center gap-1 pt-2 border-t border-gray-100"
+              >
+                Ver Ranking Completo <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
 

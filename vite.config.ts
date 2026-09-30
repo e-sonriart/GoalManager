@@ -11,7 +11,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+        includeAssets: ['icons/app-192.png', 'icons/app-512.png', 'icons/app-maskable.png', 'icons/apple-touch-icon.png'],
         manifest: {
           id: '/',
           name: 'Club Fútbol Manager',
@@ -28,19 +28,19 @@ export default defineConfig(() => {
           scope: '/',
           icons: [
             {
-              src: '/pwa-192x192.png',
+              src: '/icons/app-192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-512x512.png',
+              src: '/icons/app-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-maskable-512x512.png',
+              src: '/icons/app-maskable.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',

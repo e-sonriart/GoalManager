@@ -306,7 +306,7 @@ const prepareRow = <T>(sheet: string, item: Partial<T>): Record<string, unknown>
 const SHEETS = [
   'categorias', 'entrenadores', 'equipos', 'jugadores',
   'estadisticas', 'partidos', 'asistencias', 'sesiones', 'usuarios',
-  'club_config'
+  'club_config', 'sesion_respuestas'
 ] as const;
 
 const SEEDS: Record<string, unknown[]> = {

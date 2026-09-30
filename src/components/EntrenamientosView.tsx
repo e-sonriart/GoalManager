@@ -40,6 +40,9 @@ export const EntrenamientosView: React.FC = () => {
     asistencias,
     saveSesion,
     deleteSesion,
+    sesionRespuestas,
+    responderSesion,
+    jugadorActual,
     toggleAsistencia,
     batchMarkAsistencia,
     exportSheet,
@@ -132,7 +135,7 @@ export const EntrenamientosView: React.FC = () => {
 
     const categoria = formCategoria.trim() || categorias[0]?.nombre || formEquipo.trim();
     const wasCreating = !editingSesion;
-    const ok = await saveSesion({
+    const guardada = await saveSesion({
       ...(editingSesion
         ? { id: editingSesion.id, temporada: editingSesion.temporada, creadoPor: editingSesion.creadoPor, creadoEn: editingSesion.creadoEn }
         : { temporada: clubConfig?.temporada, creadoPor: currentUser?.nombre, creadoEn: new Date().toISOString() }),
@@ -150,19 +153,21 @@ export const EntrenamientosView: React.FC = () => {
 
     setIsModalOpen(false);
 
-    if (ok && wasCreating) {
+    // Al crear: se avisa al equipo para que responda si va o no va
+    if (guardada && wasCreating) {
       void notifyTeam({
-        tipo: 'nuevo',
+        tipo: 'sesion_rsvp',
         equipo: formEquipo.trim(),
-        refId: `nuevo_s_${formFecha}_${formHora}_${formEquipo.trim()}`,
-        titulo: `🏋️ Nuevo entrenamiento (${formEquipo.trim()})`,
-        cuerpo: `${formatFecha(formFecha)} · ${formHora}${formLugar.trim() ? ` · ${formLugar.trim()}` : ''}`
+        refId: `rsvp_${guardada.id}`,
+        titulo: `🏋️ ¿Vas al entrenamiento? (${formEquipo.trim()})`,
+        cuerpo: `📅 ${formatFecha(formFecha)} · ${formHora}${formLugar.trim() ? ` · ${formLugar.trim()}` : ''}. Confirma si asistes ✅❌`,
+        url: '/?tab=entrenamientos'
       });
     }
 
     // Aviso push si al editar cambió la fecha, la hora o el lugar
     if (
-      ok &&
+      guardada &&
       editingSesion &&
       (editingSesion.fecha !== formFecha ||
         editingSesion.hora !== formHora ||
@@ -174,14 +179,15 @@ export const EntrenamientosView: React.FC = () => {
         equipo: formEquipo.trim(),
         refId: `${editingSesion.id}_${Date.now()}`,
         titulo: `🕒 Cambio de entrenamiento (${formEquipo.trim()})`,
-        cuerpo: `${formatFecha(formFecha)} · ${formHora}${formLugar.trim() ? ` · ${formLugar.trim()}` : ''}`
+        cuerpo: `📅 ${formatFecha(formFecha)} · ${formHora}${formLugar.trim() ? ` · ${formLugar.trim()}` : ''}. Reconfirma tu asistencia ✅❌`,
+        url: '/?tab=entrenamientos'
       });
     }
 
     // Al crear una sesión nueva: opción inmediata de pasar la asistencia
-    if (ok && wasCreating && canAsist) {
+    if (guardada && wasCreating && canAsist) {
       const draft: SesionEntrenamiento = {
-        id: editingSesion?.id || '',
+        id: guardada.id,
         equipo: formEquipo.trim(),
         categoria,
         tipo: formTipo,
@@ -274,6 +280,20 @@ export const EntrenamientosView: React.FC = () => {
     const cat = eq ? categorias.find(c => c.nombre === eq.categoria) : undefined;
     return cat?.tipo === 'F8' ? 'F8' : 'F11';
   };
+
+  // Respuesta del jugador (¿voy / no voy?) a sesiones de su equipo
+  const equipoUsuario = (jugadorActual?.equipo || currentUser?.equipo || '').trim().toLowerCase();
+  const hoyStr = new Date().toISOString().slice(0, 10);
+  const sesionAbierta = (s: SesionEntrenamiento): boolean => !s.fecha || s.fecha.slice(0, 10) >= hoyStr;
+  const puedeResponder = (s: SesionEntrenamiento): boolean =>
+    Boolean(
+      jugadorActual &&
+        equipoUsuario &&
+        sesionAbierta(s) &&
+        (s.equipo || '').trim().toLowerCase() === equipoUsuario
+    );
+  const miRespuestaDe = (s: SesionEntrenamiento) =>
+    sesionRespuestas.find(r => r.sesionId === s.id && jugadorActual && r.jugadorId === jugadorActual.id);
 
   const renderSesionCard = (sesion: SesionEntrenamiento) => (
     <div
@@ -374,6 +394,44 @@ export const EntrenamientosView: React.FC = () => {
           {sesion.descripcion}
         </p>
       )}
+
+      {/* Respuesta del jugador: ¿voy o no voy? */}
+      {puedeResponder(sesion) && (() => {
+        const resp = miRespuestaDe(sesion);
+        const btnBase =
+          'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-colors';
+        return (
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
+            <span className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">
+              ¿Vas al entreno?
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => void responderSesion(sesion, 'si')}
+                className={`${btnBase} ${
+                  resp?.estado === 'si'
+                    ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                    : 'bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-50'
+                }`}
+              >
+                ✅ Voy
+              </button>
+              <button
+                type="button"
+                onClick={() => void responderSesion(sesion, 'no')}
+                className={`${btnBase} ${
+                  resp?.estado === 'no'
+                    ? 'bg-red-500 border-red-500 text-white shadow-sm'
+                    : 'bg-white border-red-200 text-red-600 hover:bg-red-50'
+                }`}
+              >
+                ❌ No voy
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Acción + resumen de asistencia de esta sesión */}
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">

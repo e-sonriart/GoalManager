@@ -96,6 +96,18 @@ export interface Asistencia {
   temporada?: string;
 }
 
+/** Respuesta del jugador a una sesión de entrenamiento: ¿voy o no voy? */
+export type EstadoRespuestaSesion = 'si' | 'no';
+
+export interface RespuestaSesion {
+  id: string;
+  sesionId: string;
+  jugadorId: string;
+  equipo: string;
+  estado: EstadoRespuestaSesion;
+  actualizadoEn?: string;
+}
+
 export type TipoEntrenamiento =
   | 'tecnico'
   | 'tactico'

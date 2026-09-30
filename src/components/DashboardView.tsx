@@ -12,7 +12,9 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
-  Dumbbell
+  Dumbbell,
+  RefreshCw,
+  Users
 } from 'lucide-react';
 import { ActiveTab } from './Navbar';
 
@@ -22,6 +24,17 @@ interface DashboardViewProps {
 
 const dayKeyFmt = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const fmtFechaCorta = (fecha?: string): string => {
+  if (!fecha) return '';
+  const [y, m, d] = fecha.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return fecha;
+  return new Date(y, m - 1, d).toLocaleDateString('es-ES', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short'
+  });
+};
 
 const parseEventTime = (fecha?: string, hora?: string): number | null => {
   const f = (fecha || '').trim();
@@ -61,12 +74,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     clubConfig,
     getTeamEscudo,
     can,
-    allowedTabs
+    allowedTabs,
+    sesionRespuestas,
+    responderSesion,
+    jugadorActual,
+    refreshRespuestas
   } = useClub();
 
   const [isFetchingClasif, setIsFetchingClasif] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [equipoRsvp, setEquipoRsvp] = useState('');
 
   const canManagePartidos = can('manage:partidos');
 
@@ -103,6 +121,79 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   useEffect(() => {
     if (!statsTeam || !misEquipos.includes(statsTeam)) setStatsTeam(misEquipos[0] || '');
   }, [misEquipos, statsTeam]);
+
+  // ===== Respuestas a entrenamientos (¿voy / no voy?) =====
+  const hoyStr = new Date().toISOString().slice(0, 10);
+
+  const sesionesFuturas = useMemo(
+    () =>
+      sesiones
+        .filter(s => !s.fecha || s.fecha.slice(0, 10) >= hoyStr)
+        .sort((a, b) => `${a.fecha} ${a.hora || ''}`.localeCompare(`${b.fecha} ${b.hora || ''}`)),
+    [sesiones]
+  );
+
+  // Jugador: su próxima sesión para responder
+  const equipoJugador = (jugadorActual?.equipo || currentUser?.equipo || '').trim();
+  const proximaSesionJugador = useMemo(
+    () =>
+      equipoJugador
+        ? sesionesFuturas.find(s => (s.equipo || '').trim().toLowerCase() === equipoJugador.toLowerCase()) || null
+        : null,
+    [sesionesFuturas, equipoJugador]
+  );
+
+  // Entrenador/admin: selector de equipo y sesión de referencia
+  const equiposRsvp = useMemo(() => {
+    const asignados = misEquipos.filter(e => e !== 'Todos');
+    if (asignados.length) return asignados;
+    return Array.from(new Set(sesionesFuturas.map(s => s.equipo).filter(Boolean)));
+  }, [misEquipos, sesionesFuturas]);
+
+  useEffect(() => {
+    if (!equipoRsvp || !equiposRsvp.includes(equipoRsvp)) setEquipoRsvp(equiposRsvp[0] || '');
+  }, [equiposRsvp, equipoRsvp]);
+
+  const sesionRsvp = useMemo(
+    () =>
+      equipoRsvp
+        ? sesionesFuturas.find(s => (s.equipo || '').trim().toLowerCase() === equipoRsvp.toLowerCase()) || null
+        : null,
+    [sesionesFuturas, equipoRsvp]
+  );
+
+  const plantillaRsvp = useMemo(
+    () =>
+      jugadores
+        .filter(j => equipoRsvp && (j.equipo || '').trim().toLowerCase() === equipoRsvp.toLowerCase())
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+    [jugadores, equipoRsvp]
+  );
+
+  const estadoRespuestaDe = (jugadorId: string): string => {
+    if (!sesionRsvp) return '';
+    return sesionRespuestas.find(r => r.sesionId === sesionRsvp.id && r.jugadorId === jugadorId)?.estado || '';
+  };
+
+  const cuentasRsvp = useMemo(() => {
+    let si = 0;
+    let no = 0;
+    for (const j of plantillaRsvp) {
+      const e = sesionRespuestas.find(r => sesionRsvp && r.sesionId === sesionRsvp.id && r.jugadorId === j.id)?.estado;
+      if (e === 'si') si++;
+      else if (e === 'no') no++;
+    }
+    return { si, no, pend: plantillaRsvp.length - si - no };
+  }, [plantillaRsvp, sesionRespuestas, sesionRsvp]);
+
+  // El entrenador/admin ve las respuestas "en vivo" (refresco periódico)
+  useEffect(() => {
+    if (currentUser?.rol !== 'entrenador' && currentUser?.rol !== 'admin') return;
+    const t = window.setInterval(() => {
+      void refreshRespuestas();
+    }, 60000);
+    return () => window.clearInterval(t);
+  }, [currentUser?.rol, refreshRespuestas]);
 
   // Próximos partidos ordenados por fecha
   const proximosPartidos = useMemo(
@@ -299,6 +390,73 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         )}
       </div>
 
+      {/* Jugador: responde si va al próximo entrenamiento */}
+      {currentUser?.rol === 'jugador' && proximaSesionJugador && (
+        <div className="bg-white rounded-2xl border border-emerald-200 shadow-xs p-4 sm:p-5 space-y-3 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+              <Dumbbell className="w-3.5 h-3.5 text-emerald-600" /> ¿Vas al próximo entrenamiento?
+            </p>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+              {proximaSesionJugador.equipo}
+            </span>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+              <Dumbbell className="w-6 h-6" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-lg font-black text-gray-900 font-athletic tracking-tight truncate">
+                {proximaSesionJugador.titulo || proximaSesionJugador.objetivo}
+              </h3>
+              <p className="text-xs text-gray-500 truncate">
+                {fmtFechaCorta(proximaSesionJugador.fecha)} · {proximaSesionJugador.hora}
+                {proximaSesionJugador.lugar ? ` · ${proximaSesionJugador.lugar}` : ''}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
+            {(['si', 'no'] as const).map(op => {
+              const yaResponde = sesionRespuestas.find(
+                r => r.sesionId === proximaSesionJugador.id && r.jugadorId === (jugadorActual?.id || '')
+              )?.estado;
+              const activo = yaResponde === op;
+              return (
+                <button
+                  key={op}
+                  type="button"
+                  onClick={() => void responderSesion(proximaSesionJugador, op)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                    op === 'si'
+                      ? activo
+                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-500/20'
+                        : 'bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-50'
+                      : activo
+                      ? 'bg-red-500 border-red-500 text-white shadow-md shadow-red-500/20'
+                      : 'bg-white border-red-200 text-red-600 hover:bg-red-50'
+                  }`}
+                >
+                  {op === 'si' ? '✅ Voy' : '❌ No voy'}
+                </button>
+              );
+            })}
+            <span className="text-[11px] text-gray-400 font-semibold ml-auto">
+              {sesionRespuestas.find(
+                r => r.sesionId === proximaSesionJugador.id && r.jugadorId === (jugadorActual?.id || '')
+              )?.estado === 'si'
+                ? 'Has confirmado que vas ✅'
+                : sesionRespuestas.find(
+                    r => r.sesionId === proximaSesionJugador.id && r.jugadorId === (jugadorActual?.id || '')
+                  )?.estado === 'no'
+                ? 'Has indicado que no vas ❌'
+                : 'Sin responder aún'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Próximo evento (solo entrenadores): lo primero bajo el escudo y la temporada */}
       {currentUser?.rol === 'entrenador' && (
         <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-4 sm:p-5 space-y-3 animate-in fade-in duration-300">
@@ -361,6 +519,100 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             </>
           ) : (
             <p className="text-xs text-gray-400">No hay eventos programados próximamente para tu equipo.</p>
+          )}
+        </div>
+      )}
+
+      {/* Entrenador/admin: lista de quiénes van respondiendo al próximo entrenamiento */}
+      {(currentUser?.rol === 'entrenador' || currentUser?.rol === 'admin') && (
+        <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-4 sm:p-5 space-y-3 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-orange-500" /> Respuestas del entrenamiento
+            </p>
+            <div className="flex items-center gap-1.5">
+              {equiposRsvp.length > 1 && (
+                <select
+                  value={equipoRsvp}
+                  onChange={e => setEquipoRsvp(e.target.value)}
+                  className="px-2 py-1 border border-gray-200 rounded-lg text-[11px] font-bold text-gray-700 bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none max-w-[150px]"
+                >
+                  {equiposRsvp.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                onClick={() => void refreshRespuestas()}
+                title="Actualizar respuestas"
+                className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-500 flex items-center justify-center transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {sesionRsvp ? (
+            <>
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-bold text-gray-900 truncate">
+                  {fmtFechaCorta(sesionRsvp.fecha)} · {sesionRsvp.hora}
+                  {sesionRsvp.lugar ? ` · ${sesionRsvp.lugar}` : ''}
+                </span>
+                <span className="text-[11px] text-gray-400 shrink-0">{sesionRsvp.equipo}</span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  ✅ Van {cuentasRsvp.si}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200">
+                  ❌ No van {cuentasRsvp.no}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">
+                  ⏳ Sin responder {cuentasRsvp.pend}
+                </span>
+              </div>
+
+              <div className="max-h-56 overflow-y-auto divide-y divide-gray-100 border border-gray-100 rounded-xl">
+                {plantillaRsvp.length === 0 && (
+                  <p className="text-xs text-gray-400 p-3">No hay jugadores en este equipo.</p>
+                )}
+                {plantillaRsvp.length > 0 &&
+                  [...plantillaRsvp]
+                    .sort((a, b) => {
+                      const orden = (e: string) => (e === 'si' ? 0 : e === 'no' ? 1 : 2);
+                      return orden(estadoRespuestaDe(a.id)) - orden(estadoRespuestaDe(b.id)) || a.nombre.localeCompare(b.nombre, 'es');
+                    })
+                    .map(j => {
+                      const e = estadoRespuestaDe(j.id);
+                      return (
+                        <div key={j.id} className="flex items-center justify-between gap-2 px-3 py-2">
+                          <span className="flex items-center gap-2 min-w-0 text-xs font-semibold text-gray-800">
+                            <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-600 text-[10px] font-black flex items-center justify-center shrink-0">
+                              {j.dorsal || '-'}
+                            </span>
+                            <span className="truncate">{j.nombre}</span>
+                          </span>
+                          <span
+                            className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              e === 'si'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : e === 'no'
+                                ? 'bg-red-50 text-red-600 border-red-200'
+                                : 'bg-gray-50 text-gray-400 border-gray-200'
+                            }`}
+                          >
+                            {e === 'si' ? '✅ Va' : e === 'no' ? '❌ No va' : '⏳ Sin respuesta'}
+                          </span>
+                        </div>
+                      );
+                    })}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-gray-400">No hay entrenamientos programados próximamente.</p>
           )}
         </div>
       )}

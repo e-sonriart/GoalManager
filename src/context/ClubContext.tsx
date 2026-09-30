@@ -14,6 +14,8 @@ import {
   EstadoAsistencia,
   ClubConfig,
   SesionEntrenamiento,
+  RespuestaSesion,
+  EstadoRespuestaSesion,
   AppTab
 } from '../types';
 import { DEFAULT_CLUB_SHIELD } from '../utils/shieldPresets';
@@ -23,6 +25,7 @@ import { categoriasService } from '../services/categorias';
 import { entrenadoresService } from '../services/entrenadores';
 import { partidosService } from '../services/partidos';
 import { sesionesService } from '../services/sesiones';
+import { sesionRespuestasService } from '../services/sesionRespuestas';
 import { asistenciasService } from '../services/asistencias';
 import { estadisticasService } from '../services/estadisticas';
 import { usuariosService } from '../services/usuarios';
@@ -113,8 +116,14 @@ interface ClubContextType {
   deletePartido: (id: string) => Promise<boolean>;
 
   // Operaciones Sesiones de Entrenamiento
-  saveSesion: (sesion: Partial<SesionEntrenamiento>) => Promise<boolean>;
+  saveSesion: (sesion: Partial<SesionEntrenamiento>) => Promise<SesionEntrenamiento | null>;
   deleteSesion: (id: string) => Promise<boolean>;
+
+  // Respuestas de jugadores a sesiones (¿voy / no voy?)
+  sesionRespuestas: RespuestaSesion[];
+  jugadorActual: Jugador | null;
+  refreshRespuestas: () => Promise<void>;
+  responderSesion: (sesion: SesionEntrenamiento, estado: EstadoRespuestaSesion) => Promise<boolean>;
 
   // Convocatorias
   toggleConvocatoria: (partidoId: string, jugadorId: string) => Promise<void>;
@@ -194,6 +203,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [asistencias, setAsistencias] = useState<Asistencia[]>([]);
   const [estadisticas, setEstadisticas] = useState<Estadistica[]>([]);
   const [sesiones, setSesiones] = useState<SesionEntrenamiento[]>([]);
+  const [sesionRespuestas, setSesionRespuestas] = useState<RespuestaSesion[]>([]);
   const [users, setUsers] = useState<Usuario[]>([]);
 
   // Configuración e Identidad del Club
@@ -362,6 +372,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         asists,
         stats,
         sesses,
+        sessResps,
         usrs,
         remoteConfig
       ] = await Promise.all([
@@ -373,6 +384,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         asistenciasService.getAll(),
         estadisticasService.getAll(),
         sesionesService.getAll(),
+        sesionRespuestasService.getAll(),
         usuariosService.getAll(),
         clubConfigService.get()
       ]);
@@ -385,6 +397,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setAsistencias(asists);
       setEstadisticas(stats);
       setSesiones(sesses);
+      setSesionRespuestas(sessResps);
       // Asegurar que jugadores y entrenadores tengan un equipo asignado de los registrados
       const defaultTeam = eqs[0]?.nombre || 'Club Naranja Principal';
       const sanitizedUsrs = usrs.map(u => {
@@ -723,23 +736,83 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [addToast]);
 
   // CRUD Sesiones de Entrenamiento
-  const saveSesion = useCallback(async (sesion: Partial<SesionEntrenamiento>): Promise<boolean> => {
+  const saveSesion = useCallback(async (sesion: Partial<SesionEntrenamiento>): Promise<SesionEntrenamiento | null> => {
     try {
       if (sesion.id) {
         const updated = await sesionesService.update(sesion as SesionEntrenamiento);
         setSesiones(prev => prev.map(s => s.id === updated.id ? updated : s));
         addToast({ type: 'success', title: 'Sesión actualizada', message: `${updated.equipo || ''} · ${updated.fecha}` });
-      } else {
-        const created = await sesionesService.create(sesion as Omit<SesionEntrenamiento, 'id'>);
-        setSesiones(prev => [...prev, created]);
-        addToast({ type: 'success', title: 'Sesión programada', message: `${created.equipo || ''} · ${created.fecha}` });
+        return updated;
       }
-      return true;
+      const created = await sesionesService.create(sesion as Omit<SesionEntrenamiento, 'id'>);
+      setSesiones(prev => [...prev, created]);
+      addToast({ type: 'success', title: 'Sesión programada', message: `${created.equipo || ''} · ${created.fecha}` });
+      return created;
     } catch (err) {
       addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar la sesión.' });
-      return false;
+      return null;
     }
   }, [addToast]);
+
+  // Jugador correspondiente a la sesión activa (id directo o usuario nombre.dorsal)
+  const jugadorActual = useMemo<Jugador | null>(() => {
+    if (!currentUser) return null;
+    return (
+      jugadores.find(j => j.id === currentUser.id) ||
+      jugadores.find(j => currentUser.email && getJugadorUsuario(j, jugadores) === currentUser.email) ||
+      null
+    );
+  }, [currentUser, jugadores]);
+
+  const refreshRespuestas = useCallback(async () => {
+    try {
+      const rows = await sesionRespuestasService.getAll();
+      setSesionRespuestas(rows);
+    } catch {
+      /* se mantiene la última carga */
+    }
+  }, []);
+
+  const responderSesion = useCallback(
+    async (sesion: SesionEntrenamiento, estado: EstadoRespuestaSesion): Promise<boolean> => {
+      try {
+        if (!jugadorActual) {
+          addToast({ type: 'error', title: 'Sin ficha de jugador', message: 'No se encontró tu ficha de jugador para responder.' });
+          return false;
+        }
+        const row = {
+          sesionId: sesion.id,
+          jugadorId: jugadorActual.id,
+          equipo: sesion.equipo || '',
+          estado,
+          actualizadoEn: new Date().toISOString()
+        };
+        const existente = sesionRespuestas.find(
+          r => r.sesionId === row.sesionId && r.jugadorId === row.jugadorId
+        );
+        if (existente) {
+          const updated = await sesionRespuestasService.update({ ...existente, ...row });
+          setSesionRespuestas(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+        } else {
+          const created = await sesionRespuestasService.create(row);
+          setSesionRespuestas(prev => [...prev, created]);
+        }
+        addToast({
+          type: 'success',
+          title: estado === 'si' ? '¡Confirmado!' : 'Respuesta registrada',
+          message:
+            estado === 'si'
+              ? `Asistirás al entrenamiento del ${sesion.fecha}.`
+              : `Has indicado que no vas al entrenamiento del ${sesion.fecha}.`
+        });
+        return true;
+      } catch (err) {
+        addToast({ type: 'error', title: 'Error', message: 'No se pudo registrar tu respuesta.' });
+        return false;
+      }
+    },
+    [jugadorActual, sesionRespuestas, addToast]
+  );
 
   const deleteSesion = useCallback(async (id: string): Promise<boolean> => {
     try {
@@ -1250,6 +1323,11 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     saveSesion,
     deleteSesion,
 
+    sesionRespuestas,
+    jugadorActual,
+    refreshRespuestas,
+    responderSesion,
+
     toggleConvocatoria,
     setConvocatoriaEstado,
     batchSetConvocatoriaEstado,
@@ -1287,6 +1365,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     toasts, addToast, removeToast,
     saveJugador, deleteJugador, saveEquipo, deleteEquipo, saveCategoria, deleteCategoria,
     saveEntrenador, deleteEntrenador, savePartido, deletePartido, saveSesion, deleteSesion,
+    sesionRespuestas, jugadorActual, refreshRespuestas, responderSesion,
     toggleConvocatoria, setConvocatoriaEstado, batchSetConvocatoriaEstado,
     saveAsistencia, deleteAsistencia, toggleAsistencia, batchMarkAsistencia, saveEstadistica, applyEventStats,
     recalcularEstadisticas,

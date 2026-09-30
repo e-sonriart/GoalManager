@@ -56,7 +56,12 @@ const VIEW_FALLBACK: React.FC<{ label?: string }> = ({ label }) => (
 const MainContent: React.FC = () => {
   const { isConfigModalOpen, setIsConfigModalOpen, googleScriptUrl, currentUser, clubConfig, isOnlineConfigured, refreshAll, loading, allowedTabs, isTeamScoped, assignedTeams } = useClub();
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  // Tab inicial: permite deep-link desde notificaciones (?tab=entrenamientos)
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    const TABS: ActiveTab[] = ['dashboard', 'equipos', 'partidos', 'convocatorias', 'alineacion', 'eventos', 'estadisticas', 'entrenamientos', 'admin'];
+    const t = new URLSearchParams(window.location.search).get('tab') as ActiveTab | null;
+    return t && TABS.includes(t) ? t : 'dashboard';
+  });
   const [selectedPartidoForConvocatoria, setSelectedPartidoForConvocatoria] = useState<string | undefined>(undefined);
   const [selectedPartidoForAlineacion, setSelectedPartidoForAlineacion] = useState<string | undefined>(undefined);
   const [selectedPartidoForEventos, setSelectedPartidoForEventos] = useState<string | undefined>(undefined);

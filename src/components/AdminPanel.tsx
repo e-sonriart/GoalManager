@@ -312,7 +312,7 @@ export const AdminPanel: React.FC = () => {
       const isCasa = sf.condicion === 'casa';
       const local = isCasa ? sf.equipo.trim() : sf.rival.trim();
       const visitante = isCasa ? sf.rival.trim() : sf.equipo.trim();
-      const ok = await savePartido({
+      const guardada = await savePartido({
         id: (editingSheetItem as Partido | null)?.id,
         local,
         visitante,
@@ -329,15 +329,16 @@ export const AdminPanel: React.FC = () => {
         finalizado: sf.finalizado === '1',
         horaConvocatoria: sf.horaConvocatoria.trim() || undefined
       });
-      if (ok && !editingSheetItem) {
+      if (guardada && !editingSheetItem) {
         void notifyTeam({
-          tipo: 'nuevo',
+          tipo: 'partido_rsvp',
           equipo: sf.equipo.trim(),
-          refId: `nuevo_p_${sf.fecha}_${local}_${visitante}`,
-          titulo: `⚽ Nuevo partido (${sf.equipo.trim()})`,
+          refId: `rsvp_${guardada.id}`,
+          titulo: `⚽ ¿Vas al partido? (${sf.equipo.trim()})`,
           cuerpo: `${local} vs ${visitante} · ${sf.fecha.replace('T', ' ').slice(0, 16)}${
             sf.campo.trim() ? ` · ${sf.campo.trim()}` : ''
-          }`
+          } · Confirma si asistes ✅❌`,
+          url: '/?tab=partidos'
         });
       }
     } else if (sheetModalKind === 'asistencia') {

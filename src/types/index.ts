@@ -108,6 +108,16 @@ export interface RespuestaSesion {
   actualizadoEn?: string;
 }
 
+/** Respuesta del jugador a un partido: ¿voy o no voy? */
+export interface RespuestaPartido {
+  id: string;
+  partidoId: string;
+  jugadorId: string;
+  equipo: string;
+  estado: EstadoRespuestaSesion;
+  actualizadoEn?: string;
+}
+
 export type TipoEntrenamiento =
   | 'tecnico'
   | 'tactico'

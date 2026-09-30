@@ -15,6 +15,7 @@ import {
   ClubConfig,
   SesionEntrenamiento,
   RespuestaSesion,
+  RespuestaPartido,
   EstadoRespuestaSesion,
   AppTab
 } from '../types';
@@ -26,6 +27,7 @@ import { entrenadoresService } from '../services/entrenadores';
 import { partidosService } from '../services/partidos';
 import { sesionesService } from '../services/sesiones';
 import { sesionRespuestasService } from '../services/sesionRespuestas';
+import { partidoRespuestasService } from '../services/partidoRespuestas';
 import { asistenciasService } from '../services/asistencias';
 import { estadisticasService } from '../services/estadisticas';
 import { usuariosService } from '../services/usuarios';
@@ -112,7 +114,7 @@ interface ClubContextType {
   deleteEntrenador: (id: string) => Promise<boolean>;
 
   // Operaciones Partidos
-  savePartido: (partido: Partial<Partido>) => Promise<boolean>;
+  savePartido: (partido: Partial<Partido>) => Promise<Partido | null>;
   deletePartido: (id: string) => Promise<boolean>;
 
   // Operaciones Sesiones de Entrenamiento
@@ -124,6 +126,10 @@ interface ClubContextType {
   jugadorActual: Jugador | null;
   refreshRespuestas: () => Promise<void>;
   responderSesion: (sesion: SesionEntrenamiento, estado: EstadoRespuestaSesion) => Promise<boolean>;
+
+  // Respuestas de jugadores a partidos (¿voy / no voy?)
+  partidoRespuestas: RespuestaPartido[];
+  responderPartido: (partido: Partido, estado: EstadoRespuestaSesion) => Promise<boolean>;
 
   // Convocatorias
   toggleConvocatoria: (partidoId: string, jugadorId: string) => Promise<void>;
@@ -204,6 +210,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [estadisticas, setEstadisticas] = useState<Estadistica[]>([]);
   const [sesiones, setSesiones] = useState<SesionEntrenamiento[]>([]);
   const [sesionRespuestas, setSesionRespuestas] = useState<RespuestaSesion[]>([]);
+  const [partidoRespuestas, setPartidoRespuestas] = useState<RespuestaPartido[]>([]);
   const [users, setUsers] = useState<Usuario[]>([]);
 
   // Configuración e Identidad del Club
@@ -373,6 +380,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         stats,
         sesses,
         sessResps,
+        partResps,
         usrs,
         remoteConfig
       ] = await Promise.all([
@@ -385,6 +393,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         estadisticasService.getAll(),
         sesionesService.getAll(),
         sesionRespuestasService.getAll(),
+        partidoRespuestasService.getAll(),
         usuariosService.getAll(),
         clubConfigService.get()
       ]);
@@ -398,6 +407,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setEstadisticas(stats);
       setSesiones(sesses);
       setSesionRespuestas(sessResps);
+      setPartidoRespuestas(partResps);
       // Asegurar que jugadores y entrenadores tengan un equipo asignado de los registrados
       const defaultTeam = eqs[0]?.nombre || 'Club Naranja Principal';
       const sanitizedUsrs = usrs.map(u => {
@@ -708,19 +718,19 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [addToast]);
 
   // CRUD Partidos
-  const savePartido = useCallback(async (partido: Partial<Partido>): Promise<boolean> => {
+  const savePartido = useCallback(async (partido: Partial<Partido>): Promise<Partido | null> => {
     try {
       if (partido.id) {
         const updated = await partidosService.update(partido as Partido);
         setPartidos(prev => prev.map(p => p.id === updated.id ? updated : p));
-      } else {
-        const created = await partidosService.create(partido as Omit<Partido, 'id'>);
-        setPartidos(prev => [...prev, created]);
+        return updated;
       }
-      return true;
+      const created = await partidosService.create(partido as Omit<Partido, 'id'>);
+      setPartidos(prev => [...prev, created]);
+      return created;
     } catch (err) {
       addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar el partido.' });
-      return false;
+      return null;
     }
   }, [addToast]);
 
@@ -766,12 +776,59 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const refreshRespuestas = useCallback(async () => {
     try {
-      const rows = await sesionRespuestasService.getAll();
-      setSesionRespuestas(rows);
+      const [ses, par] = await Promise.all([
+        sesionRespuestasService.getAll(),
+        partidoRespuestasService.getAll()
+      ]);
+      setSesionRespuestas(ses);
+      setPartidoRespuestas(par);
     } catch {
       /* se mantiene la última carga */
     }
   }, []);
+
+  const responderPartido = useCallback(
+    async (partido: Partido, estado: EstadoRespuestaSesion): Promise<boolean> => {
+      try {
+        if (!jugadorActual) {
+          addToast({ type: 'error', title: 'Sin ficha de jugador', message: 'No se encontró tu ficha de jugador para responder.' });
+          return false;
+        }
+        const equipo = (partido.equipo || '').trim();
+        const row = {
+          partidoId: partido.id,
+          jugadorId: jugadorActual.id,
+          equipo,
+          estado,
+          actualizadoEn: new Date().toISOString()
+        };
+        const existente = partidoRespuestas.find(
+          r => r.partidoId === row.partidoId && r.jugadorId === row.jugadorId
+        );
+        if (existente) {
+          const updated = await partidoRespuestasService.update({ ...existente, ...row });
+          setPartidoRespuestas(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+        } else {
+          const created = await partidoRespuestasService.create(row);
+          setPartidoRespuestas(prev => [...prev, created]);
+        }
+        const enfrentamiento = `${partido.local} vs ${partido.visitante}`;
+        addToast({
+          type: 'success',
+          title: estado === 'si' ? '¡Confirmado!' : 'Respuesta registrada',
+          message:
+            estado === 'si'
+              ? `Asistirás a ${enfrentamiento}.`
+              : `Has indicado que no vas a ${enfrentamiento}.`
+        });
+        return true;
+      } catch (err) {
+        addToast({ type: 'error', title: 'Error', message: 'No se pudo registrar tu respuesta.' });
+        return false;
+      }
+    },
+    [jugadorActual, partidoRespuestas, addToast]
+  );
 
   const responderSesion = useCallback(
     async (sesion: SesionEntrenamiento, estado: EstadoRespuestaSesion): Promise<boolean> => {
@@ -1327,6 +1384,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     jugadorActual,
     refreshRespuestas,
     responderSesion,
+    partidoRespuestas,
+    responderPartido,
 
     toggleConvocatoria,
     setConvocatoriaEstado,
@@ -1366,6 +1425,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     saveJugador, deleteJugador, saveEquipo, deleteEquipo, saveCategoria, deleteCategoria,
     saveEntrenador, deleteEntrenador, savePartido, deletePartido, saveSesion, deleteSesion,
     sesionRespuestas, jugadorActual, refreshRespuestas, responderSesion,
+    partidoRespuestas, responderPartido,
     toggleConvocatoria, setConvocatoriaEstado, batchSetConvocatoriaEstado,
     saveAsistencia, deleteAsistencia, toggleAsistencia, batchMarkAsistencia, saveEstadistica, applyEventStats,
     recalcularEstadisticas,

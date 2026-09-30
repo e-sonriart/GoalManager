@@ -78,13 +78,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     sesionRespuestas,
     responderSesion,
     jugadorActual,
-    refreshRespuestas
+    refreshRespuestas,
+    partidoRespuestas,
+    responderPartido
   } = useClub();
 
   const [isFetchingClasif, setIsFetchingClasif] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [equipoRsvp, setEquipoRsvp] = useState('');
+  const [tipoRsvp, setTipoRsvp] = useState<'entrenamiento' | 'partido'>('entrenamiento');
 
   const canManagePartidos = can('manage:partidos');
 
@@ -122,7 +125,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     if (!statsTeam || !misEquipos.includes(statsTeam)) setStatsTeam(misEquipos[0] || '');
   }, [misEquipos, statsTeam]);
 
-  // ===== Respuestas a entrenamientos (¿voy / no voy?) =====
+  // ===== Respuestas a entrenamientos y partidos (¿voy / no voy?) =====
   const hoyStr = new Date().toISOString().slice(0, 10);
 
   const sesionesFuturas = useMemo(
@@ -133,7 +136,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     [sesiones]
   );
 
-  // Jugador: su próxima sesión para responder
+  const partidosFuturos = useMemo(
+    () =>
+      partidos
+        .filter(p => !p.finalizado)
+        .filter(p => {
+          const when = parseEventTime(p.fecha, p.hora);
+          return when !== null && when >= Date.now();
+        })
+        .sort((a, b) => (parseEventTime(a.fecha, a.hora) || 0) - (parseEventTime(b.fecha, b.hora) || 0)),
+    [partidos]
+  );
+
+  // Jugador: su próxima sesión / partido para responder
   const equipoJugador = (jugadorActual?.equipo || currentUser?.equipo || '').trim();
   const proximaSesionJugador = useMemo(
     () =>
@@ -143,12 +158,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     [sesionesFuturas, equipoJugador]
   );
 
-  // Entrenador/admin: selector de equipo y sesión de referencia
+  // Jugador: su próximo partido para responder
+  const proximoPartidoJugador = useMemo(
+    () =>
+      equipoJugador
+        ? partidosFuturos.find(p => (p.equipo || '').trim().toLowerCase() === equipoJugador.toLowerCase()) || null
+        : null,
+    [partidosFuturos, equipoJugador]
+  );
+
+  // Entrenador/admin: selector de equipo y evento de referencia
   const equiposRsvp = useMemo(() => {
     const asignados = misEquipos.filter(e => e !== 'Todos');
     if (asignados.length) return asignados;
-    return Array.from(new Set(sesionesFuturas.map(s => s.equipo).filter(Boolean)));
-  }, [misEquipos, sesionesFuturas]);
+    return Array.from(
+      new Set([...sesionesFuturas.map(s => s.equipo), ...partidosFuturos.map(p => p.equipo)].filter(Boolean))
+    );
+  }, [misEquipos, sesionesFuturas, partidosFuturos]);
 
   useEffect(() => {
     if (!equipoRsvp || !equiposRsvp.includes(equipoRsvp)) setEquipoRsvp(equiposRsvp[0] || '');
@@ -162,6 +188,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     [sesionesFuturas, equipoRsvp]
   );
 
+  const proximoPartidoRsvp = useMemo(
+    () =>
+      equipoRsvp
+        ? partidosFuturos.find(p => (p.equipo || '').trim().toLowerCase() === equipoRsvp.toLowerCase()) || null
+        : null,
+    [partidosFuturos, equipoRsvp]
+  );
+
   const plantillaRsvp = useMemo(
     () =>
       jugadores
@@ -170,21 +204,51 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     [jugadores, equipoRsvp]
   );
 
+  // Evento sobre el que se cuentan respuestas (entrenamiento o partido, según selector)
+  const eventoRsvp = useMemo(() => {
+    if (tipoRsvp === 'partido') {
+      if (!proximoPartidoRsvp) return null;
+      const p = proximoPartidoRsvp;
+      return {
+        id: p.id,
+        equipo: (p.equipo || '').trim(),
+        fecha: p.fecha.slice(0, 10),
+        hora: p.fecha.length >= 16 ? p.fecha.slice(11, 16) : p.hora || '',
+        titulo: `${p.local} vs ${p.visitante}`,
+        detalle: p.campo || ''
+      };
+    }
+    if (!sesionRsvp) return null;
+    return {
+      id: sesionRsvp.id,
+      equipo: sesionRsvp.equipo,
+      fecha: sesionRsvp.fecha,
+      hora: sesionRsvp.hora || '',
+      titulo: sesionRsvp.titulo || sesionRsvp.objetivo || 'Entrenamiento',
+      detalle: sesionRsvp.lugar || ''
+    };
+  }, [tipoRsvp, proximoPartidoRsvp, sesionRsvp]);
+
   const estadoRespuestaDe = (jugadorId: string): string => {
-    if (!sesionRsvp) return '';
-    return sesionRespuestas.find(r => r.sesionId === sesionRsvp.id && r.jugadorId === jugadorId)?.estado || '';
+    if (!eventoRsvp) return '';
+    if (tipoRsvp === 'partido') {
+      return (
+        partidoRespuestas.find(r => r.partidoId === eventoRsvp.id && r.jugadorId === jugadorId)?.estado || ''
+      );
+    }
+    return sesionRespuestas.find(r => r.sesionId === eventoRsvp.id && r.jugadorId === jugadorId)?.estado || '';
   };
 
   const cuentasRsvp = useMemo(() => {
     let si = 0;
     let no = 0;
     for (const j of plantillaRsvp) {
-      const e = sesionRespuestas.find(r => sesionRsvp && r.sesionId === sesionRsvp.id && r.jugadorId === j.id)?.estado;
+      const e = estadoRespuestaDe(j.id);
       if (e === 'si') si++;
       else if (e === 'no') no++;
     }
     return { si, no, pend: plantillaRsvp.length - si - no };
-  }, [plantillaRsvp, sesionRespuestas, sesionRsvp]);
+  }, [plantillaRsvp, eventoRsvp, tipoRsvp, sesionRespuestas, partidoRespuestas]);
 
   // El entrenador/admin ve las respuestas "en vivo" (refresco periódico)
   useEffect(() => {
@@ -457,6 +521,73 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </div>
       )}
 
+      {/* Jugador: responde si va al próximo partido */}
+      {currentUser?.rol === 'jugador' && proximoPartidoJugador && (
+        <div className="bg-white rounded-2xl border border-blue-200 shadow-xs p-4 sm:p-5 space-y-3 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+              <Trophy className="w-3.5 h-3.5 text-blue-600" /> ¿Vas al próximo partido?
+            </p>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+              {proximoPartidoJugador.equipo}
+            </span>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <div className="w-11 h-11 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+              <Trophy className="w-6 h-6" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-lg font-black text-gray-900 font-athletic tracking-tight truncate">
+                {proximoPartidoJugador.local} vs {proximoPartidoJugador.visitante}
+              </h3>
+              <p className="text-xs text-gray-500 truncate">
+                {fmtFechaCorta(proximoPartidoJugador.fecha)}
+                {proximoPartidoJugador.campo ? ` · ${proximoPartidoJugador.campo}` : ''}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
+            {(['si', 'no'] as const).map(op => {
+              const yaResponde = partidoRespuestas.find(
+                r => r.partidoId === proximoPartidoJugador.id && r.jugadorId === (jugadorActual?.id || '')
+              )?.estado;
+              const activo = yaResponde === op;
+              return (
+                <button
+                  key={op}
+                  type="button"
+                  onClick={() => void responderPartido(proximoPartidoJugador, op)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${
+                    op === 'si'
+                      ? activo
+                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-500/20'
+                        : 'bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-50'
+                      : activo
+                      ? 'bg-red-500 border-red-500 text-white shadow-md shadow-red-500/20'
+                      : 'bg-white border-red-200 text-red-600 hover:bg-red-50'
+                  }`}
+                >
+                  {op === 'si' ? '✅ Voy' : '❌ No voy'}
+                </button>
+              );
+            })}
+            <span className="text-[11px] text-gray-400 font-semibold ml-auto">
+              {partidoRespuestas.find(
+                r => r.partidoId === proximoPartidoJugador.id && r.jugadorId === (jugadorActual?.id || '')
+              )?.estado === 'si'
+                ? 'Has confirmado que vas ✅'
+                : partidoRespuestas.find(
+                    r => r.partidoId === proximoPartidoJugador.id && r.jugadorId === (jugadorActual?.id || '')
+                  )?.estado === 'no'
+                ? 'Has indicado que no vas ❌'
+                : 'Sin responder aún'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Próximo evento (solo entrenadores): lo primero bajo el escudo y la temporada */}
       {currentUser?.rol === 'entrenador' && (
         <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-4 sm:p-5 space-y-3 animate-in fade-in duration-300">
@@ -523,14 +654,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* Entrenador/admin: lista de quiénes van respondiendo al próximo entrenamiento */}
+      {/* Entrenador/admin: lista de quiénes van respondiendo al próximo entrenamiento o partido */}
       {(currentUser?.rol === 'entrenador' || currentUser?.rol === 'admin') && (
         <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-4 sm:p-5 space-y-3 animate-in fade-in duration-300">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-orange-500" /> Respuestas del entrenamiento
+              <Users className="w-3.5 h-3.5 text-orange-500" /> Respuestas del{' '}
+              {tipoRsvp === 'partido' ? 'partido' : 'entrenamiento'}
             </p>
             <div className="flex items-center gap-1.5">
+              <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                {(['entrenamiento', 'partido'] as const).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTipoRsvp(t)}
+                    className={`px-2 py-1 text-[11px] font-bold transition-colors ${
+                      tipoRsvp === t ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    {t === 'entrenamiento' ? '🏋️ Entreno' : '⚽ Partido'}
+                  </button>
+                ))}
+              </div>
               {equiposRsvp.length > 1 && (
                 <select
                   value={equipoRsvp}
@@ -553,14 +699,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             </div>
           </div>
 
-          {sesionRsvp ? (
+          {eventoRsvp ? (
             <>
               <div className="flex items-center justify-between gap-2 text-xs">
                 <span className="font-bold text-gray-900 truncate">
-                  {fmtFechaCorta(sesionRsvp.fecha)} · {sesionRsvp.hora}
-                  {sesionRsvp.lugar ? ` · ${sesionRsvp.lugar}` : ''}
+                  {tipoRsvp === 'partido' ? `${eventoRsvp.titulo} · ` : ''}
+                  {fmtFechaCorta(eventoRsvp.fecha)} · {eventoRsvp.hora}
+                  {eventoRsvp.detalle ? ` · ${eventoRsvp.detalle}` : ''}
                 </span>
-                <span className="text-[11px] text-gray-400 shrink-0">{sesionRsvp.equipo}</span>
+                <span className="text-[11px] text-gray-400 shrink-0">{eventoRsvp.equipo}</span>
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
@@ -612,7 +759,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </div>
             </>
           ) : (
-            <p className="text-xs text-gray-400">No hay entrenamientos programados próximamente.</p>
+            <p className="text-xs text-gray-400">
+              {tipoRsvp === 'partido'
+                ? 'No hay partidos programados próximamente.'
+                : 'No hay entrenamientos programados próximamente.'}
+            </p>
           )}
         </div>
       )}

@@ -47,7 +47,10 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     getTeamEscudo,
     currentUser,
     can,
-    allowedTabs
+    allowedTabs,
+    partidoRespuestas,
+    responderPartido,
+    jugadorActual
   } = useClub();
 
   const canManage = can('manage:partidos');
@@ -128,7 +131,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     const local = isCasa ? formEquipo.trim() : formRival.trim();
     const visitante = isCasa ? formRival.trim() : formEquipo.trim();
 
-    const ok = await savePartido({
+    const guardada = await savePartido({
       id: editingPartido?.id,
       local,
       visitante,
@@ -144,15 +147,16 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
       horaConvocatoria: formHoraConvocatoria.trim() || undefined
     });
 
-    if (ok && !editingPartido) {
+    if (guardada && !editingPartido) {
       void notifyTeam({
-        tipo: 'nuevo',
+        tipo: 'partido_rsvp',
         equipo: formEquipo.trim(),
-        refId: `nuevo_p_${formFecha}_${local}_${visitante}`,
-        titulo: `⚽ Nuevo partido (${formEquipo.trim()})`,
+        refId: `rsvp_${guardada.id}`,
+        titulo: `⚽ ¿Vas al partido? (${formEquipo.trim()})`,
         cuerpo: `${local} vs ${visitante} · ${formFecha.replace('T', ' ').slice(0, 16)}${
           formCampo.trim() ? ` · ${formCampo.trim()}` : ''
-        }`
+        } · Confirma si asistes ✅❌`,
+        url: '/?tab=partidos'
       });
     }
 
@@ -170,7 +174,8 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
         titulo: `🕒 Cambio en ${formEquipo.trim()}`,
         cuerpo: `${local} vs ${visitante} · ${formFecha.replace('T', ' ').slice(0, 16)}${
           formCampo.trim() ? ` · ${formCampo.trim()}` : ''
-        }`
+        } · Reconfirma tu asistencia ✅❌`,
+        url: '/?tab=partidos'
       });
     }
 
@@ -237,6 +242,23 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
 
   const equiposF8 = useMemo(() => agruparPorEquipos('F8', filteredPartidos), [equipos, categorias, filteredPartidos]);
   const equiposF11 = useMemo(() => agruparPorEquipos('F11', filteredPartidos), [equipos, categorias, filteredPartidos]);
+
+  const equiposDelJugador = (jugadorActual?.equipo || '')
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  const puedeResponderPartido = (p: Partido): boolean => {
+    if (!jugadorActual) return false;
+    if (p.finalizado) return false;
+    const when = new Date(p.fecha).getTime();
+    if (isNaN(when) || when < Date.now()) return false;
+    const clubTeam = p.equipo || (equipos.some(e => e.nombre === p.local) ? p.local : p.visitante);
+    return equiposDelJugador.includes(clubTeam.trim().toLowerCase());
+  };
+
+  const miRespuestaPartido = (partidoId: string): string =>
+    partidoRespuestas.find(r => r.partidoId === partidoId && r.jugadorId === jugadorActual?.id)?.estado || '';
 
   const renderPartidoCard = (partido: Partido) => {
     const dateObj = new Date(partido.fecha);
@@ -387,6 +409,35 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
 
         {/* Resumen del partido bajo el resultado (solo goles y tarjetas por bando) */}
         <MatchHighlights events={eventsForPartido(partido, remoteClocks)} partido={partido} tone="dark" standalone />
+
+        {/* RSVP: ¿Vas al partido? (jugador de este equipo, partido aún no jugado) */}
+        {puedeResponderPartido(partido) && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-bold text-emerald-800">¿Vas al partido?</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => void responderPartido(partido, 'si')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                  miRespuestaPartido(partido.id) === 'si'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-white text-emerald-700 border border-emerald-300 hover:bg-emerald-100'
+                }`}
+              >
+                ✅ Voy
+              </button>
+              <button
+                onClick={() => void responderPartido(partido, 'no')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                  miRespuestaPartido(partido.id) === 'no'
+                    ? 'bg-red-600 text-white shadow-sm'
+                    : 'bg-white text-red-700 border border-red-300 hover:bg-red-100'
+                }`}
+              >
+                ❌ No voy
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Action Buttons: Convocar / Convocados + Comenzar */}
         {canGoConvocatoria && (

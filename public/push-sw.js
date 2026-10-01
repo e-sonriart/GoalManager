@@ -38,9 +38,14 @@ self.addEventListener('notificationclick', function (event) {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
       for (var i = 0; i < list.length; i++) {
         var client = list[i];
-        if ('focus' in client) {
-          return client.focus();
+        if (!('focus' in client)) continue;
+        // App abierta: enfoca y navega al deep-link (?tab=...&partido=...)
+        if ('navigate' in client) {
+          return client.focus().then(function (focused) {
+            return focused.navigate ? focused.navigate(url) : focused;
+          });
         }
+        return client.focus();
       }
       return self.clients.openWindow(url);
     })

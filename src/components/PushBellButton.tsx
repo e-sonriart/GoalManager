@@ -13,7 +13,7 @@ type BellState = 'cargando' | 'off' | 'on' | 'bloqueado' | 'no-soportado';
 
 /**
  * Campana de avisos push: activa/desactiva Web Push para el usuario actual
- * (convocatorias, cambios de horario, resultados y recordatorios).
+ * (convocatorias, cambios de horario, resultados, goles y recordatorios).
  */
 export const PushBellButton: React.FC = () => {
   const { currentUser, addToast } = useClub();
@@ -81,7 +81,7 @@ export const PushBellButton: React.FC = () => {
       addToast({
         type: 'success',
         title: 'Avisos activados',
-        message: 'Recibirás convocatorias, cambios y recordatorios en este dispositivo.'
+        message: 'Recibirás convocatorias, goles, cambios y recordatorios en este dispositivo.'
       });
     } else if (r.reason === 'denied') {
       setState('bloqueado');
@@ -113,7 +113,7 @@ export const PushBellButton: React.FC = () => {
     ? 'Avisos push activos (clic para desactivar)'
     : blocked
       ? 'Notificaciones bloqueadas en el navegador'
-      : 'Activar avisos push (convocatorias, cambios y recordatorios)';
+      : 'Activar avisos push (convocatorias, goles, cambios y recordatorios)';
 
   return (
     <button

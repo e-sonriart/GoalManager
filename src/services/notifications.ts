@@ -8,7 +8,7 @@ const VAPID_PUBLIC_KEY = 'BNcInaGqfcatxS3COU0Cw2g1XqcX1yOPwdBBPfVVnHkLydD0wPkaXK
 import { getSupabase } from './supabaseClient';
 
 export interface NotifyPayload {
-  /** nuevo | convocatoria | horario | resultado | recordatorio24 | recordatorio2 */
+  /** nuevo | convocatoria | horario | resultado | recordatorio24 | recordatorio2 | gol | partido_rsvp | sesion_rsvp */
   tipo: string;
   equipo?: string;
   /** Clave de dedupe en notificaciones (mismo ref = no se repite) */

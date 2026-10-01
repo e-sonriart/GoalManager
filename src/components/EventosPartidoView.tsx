@@ -390,11 +390,45 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     setTickNow(Date.now());
   };
 
+  /**
+   * Aviso push al equipo del partido (jugadores de ese equipo + staff) cuando
+   * entra/cambia/borra un gol. Dedupe por (evento, acción): cada aviso se inserta
+   * una sola vez en `notificaciones`.
+   */
+  const notifyGol = (
+    ev: MatchEvent,
+    prevEvents: MatchEvent[],
+    accion: 'nuevo' | 'corregido' | 'borrado'
+  ) => {
+    if (!selectedPartido || !clubTeamName) return;
+    const nextEvents =
+      accion === 'borrado'
+        ? prevEvents.filter(e => e.id !== ev.id)
+        : sortEvents([...prevEvents.filter(e => e.id !== ev.id), ev]);
+    const { gl, gv } = scoreFromEvents(nextEvents, esClubLocal, baseLocal, baseVisit);
+    const ref =
+      accion === 'nuevo'
+        ? `gol_${selectedPartido.id}_${ev.id}`
+        : `gol_${selectedPartido.id}_${ev.id}_${accion === 'corregido' ? 'mod' : 'del'}_${Date.now()}`;
+    const prefijo =
+      accion === 'nuevo' ? '⚽ ¡GOL!' : accion === 'corregido' ? '⚽ Gol corregido:' : '⚽ Gol anulado:';
+    void notifyTeam({
+      tipo: 'gol',
+      equipo: clubTeamName,
+      refId: ref,
+      titulo: `${prefijo} ${ev.texto}`,
+      cuerpo: `${ev.minuto}' · ${selectedPartido.local} ${gl}-${gv} ${selectedPartido.visitante}`,
+      url: `/?tab=eventos&partido=${selectedPartido.id}`
+    });
+  };
+
   const pushEvent = (ev: MatchEvent) => {
+    const prevEvents = clockRef.current.events;
     setClock(prev => ({
       ...prev,
       events: sortEvents([...prev.events, ev])
     }));
+    if (ev.tipo === 'gol' || ev.tipo === 'gol_contra') notifyGol(ev, prevEvents, 'nuevo');
   };
 
   const buildEvent = (
@@ -707,6 +741,12 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     );
     setClock(prev => ({ ...prev, events: nextEvents }));
     void aplicarCambioEventos(prevEvents, nextEvents);
+    // Correcciones: avisa si el evento editado es un gol, o si dejan de serlo
+    const prevEv = prevEvents.find(e => e.id === editId);
+    const nextEv = nextEvents.find(e => e.id === editId);
+    const isGol = (e?: MatchEvent) => Boolean(e && (e.tipo === 'gol' || e.tipo === 'gol_contra'));
+    if (nextEv && isGol(nextEv)) notifyGol(nextEv, prevEvents, 'corregido');
+    else if (prevEv && isGol(prevEv)) notifyGol(prevEv, prevEvents, 'borrado');
     setEditId(null);
   };
 
@@ -716,6 +756,10 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     const nextEvents = prevEvents.filter(e => e.id !== editId);
     setClock(prev => ({ ...prev, events: nextEvents }));
     void aplicarCambioEventos(prevEvents, nextEvents);
+    const prevEv = prevEvents.find(e => e.id === editId);
+    if (prevEv && (prevEv.tipo === 'gol' || prevEv.tipo === 'gol_contra')) {
+      notifyGol(prevEv, prevEvents, 'borrado');
+    }
     setEditId(null);
   };
 
@@ -780,6 +824,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     const nextEvents = sortEvents([...prevEvents, ev]);
     setClock(prev => ({ ...prev, events: nextEvents }));
     void aplicarCambioEventos(prevEvents, nextEvents);
+    if (ev.tipo === 'gol' || ev.tipo === 'gol_contra') notifyGol(ev, prevEvents, 'nuevo');
     setAddOpen(false);
   };
 

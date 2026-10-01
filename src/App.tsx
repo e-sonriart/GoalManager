@@ -56,7 +56,7 @@ const VIEW_FALLBACK: React.FC<{ label?: string }> = ({ label }) => (
 const MainContent: React.FC = () => {
   const { isConfigModalOpen, setIsConfigModalOpen, googleScriptUrl, currentUser, clubConfig, isOnlineConfigured, refreshAll, loading, allowedTabs, isTeamScoped, assignedTeams } = useClub();
 
-  // Tab inicial: permite deep-link desde notificaciones (?tab=entrenamientos)
+  // Tab inicial: permite deep-link desde notificaciones (?tab=eventos&partido=123)
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const TABS: ActiveTab[] = ['dashboard', 'equipos', 'partidos', 'convocatorias', 'alineacion', 'eventos', 'estadisticas', 'entrenamientos', 'admin'];
     const t = new URLSearchParams(window.location.search).get('tab') as ActiveTab | null;
@@ -64,7 +64,9 @@ const MainContent: React.FC = () => {
   });
   const [selectedPartidoForConvocatoria, setSelectedPartidoForConvocatoria] = useState<string | undefined>(undefined);
   const [selectedPartidoForAlineacion, setSelectedPartidoForAlineacion] = useState<string | undefined>(undefined);
-  const [selectedPartidoForEventos, setSelectedPartidoForEventos] = useState<string | undefined>(undefined);
+  const [selectedPartidoForEventos, setSelectedPartidoForEventos] = useState<string | undefined>(
+    () => new URLSearchParams(window.location.search).get('partido') || undefined
+  );
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false);
   const [isLiveResultsOpen, setIsLiveResultsOpen] = useState(false);
   // Detección auto móvil/PC: >=1024px = Vista PC; se reajusta al redimensionar

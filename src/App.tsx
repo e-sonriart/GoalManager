@@ -49,7 +49,7 @@ const AdminPanel = lazyView(() => import('./components/AdminPanel').then(m => ({
 const VIEW_FALLBACK: React.FC<{ label?: string }> = ({ label }) => (
   <div className="flex flex-col items-center justify-center py-20 text-gray-400">
     <Loader2 className="w-8 h-8 animate-spin text-orange-500 mb-3" />
-    <p className="text-sm font-semibold">{label || 'Cargando mÃ³dulo...'}</p>
+    <p className="text-sm font-semibold">{label || 'Cargando módulo...'}</p>
   </div>
 );
 
@@ -79,21 +79,21 @@ const MainContent: React.FC = () => {
 
   const mainScrollRef = useRef<HTMLElement>(null);
 
-  // Sincronizar tÃ­tulo de pestaÃ±a con la personalizaciÃ³n del club
+  // Sincronizar título de pestaña con la personalización del club
   useEffect(() => {
     if (clubConfig?.nombre) {
-      document.title = `${clubConfig.nombre} | GestiÃ³n Oficial`;
+      document.title = `${clubConfig.nombre} | Gestión Oficial`;
     }
   }, [clubConfig?.nombre]);
 
-  // Guardia de acceso: si el rol no puede ver la pestaÃ±a actual, ir al Dashboard (o a la primera permitida)
+  // Guardia de acceso: si el rol no puede ver la pestaña actual, ir al Dashboard (o a la primera permitida)
   useEffect(() => {
     if (allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
       setActiveTab(allowedTabs.includes('dashboard') ? 'dashboard' : allowedTabs[0]);
     }
   }, [activeTab, allowedTabs]);
 
-  // Al cambiar de pestaÃ±a, resetear scroll suavemente
+  // Al cambiar de pestaña, resetear scroll suavemente
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
     mainScrollRef.current?.scrollTo({ top: 0, behavior: 'instant' });
@@ -131,7 +131,7 @@ const MainContent: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-950 flex justify-center font-sans text-gray-900 antialiased selection:bg-orange-500 selection:text-white overflow-x-hidden w-full">
       <div className={`${vistaPC ? 'w-full max-w-[1400px] mx-auto' : 'w-full max-w-[430px] min-h-screen bg-[#F8FAFC] flex flex-col shadow-2xl relative mx-auto'}`}>
-      {/* Barra de NavegaciÃ³n Principal */}
+      {/* Barra de Navegación Principal */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -140,7 +140,7 @@ const MainContent: React.FC = () => {
         offsetForSidePanel={vistaPC}
       />
 
-      {/* Contenedor Principal Expandido al MÃ¡ximo y Contenido sin Scroll Horizontal */}
+      {/* Contenedor Principal Expandido al Máximo y Contenido sin Scroll Horizontal */}
       <main
         ref={mainScrollRef}
         id="main-app-content"
@@ -148,7 +148,7 @@ const MainContent: React.FC = () => {
           vistaPC ? 'lg:ml-80' : ''
         }`}
       >
-        {/* Banner PWA para instalaciÃ³n */}
+        {/* Banner PWA para instalación */}
         <PWABanner />
 
         {/* Aviso: rol con acceso limitado por equipo pero sin equipo asignado */}
@@ -156,16 +156,16 @@ const MainContent: React.FC = () => {
           <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
             <TriangleAlert className="w-5 h-5 shrink-0 mt-0.5 text-amber-500" />
             <div className="text-sm">
-              <p className="font-semibold">No tienes ningÃºn equipo asignado</p>
+              <p className="font-semibold">No tienes ningún equipo asignado</p>
               <p className="text-amber-700">
-                Tu rol solo puede ver la informaciÃ³n de los equipos que tenga asignados. Contacta con
-                administraciÃ³n para que te asigne uno, mientras tanto las secciones aparecerÃ¡n vacÃ­as.
+                Tu rol solo puede ver la información de los equipos que tenga asignados. Contacta con
+                administración para que te asigne uno, mientras tanto las secciones aparecerán vacías.
               </p>
             </div>
           </div>
         )}
 
-        {/* Vistas DinÃ¡micas (con carga diferida y transiciÃ³n suave) */}
+        {/* Vistas Dinámicas (con carga diferida y transición suave) */}
         <div key={activeTab} className="animate-in fade-in duration-300">
           <ErrorBoundary label={activeTab}>
           <Suspense fallback={<VIEW_FALLBACK />}>
@@ -236,10 +236,10 @@ const MainContent: React.FC = () => {
             </div>
             <div>
               <p className="font-athletic font-bold uppercase tracking-wider text-white text-sm">
-                {clubConfig?.nombre || 'CLUB FÃšTBOL PRO'} â€¢ {clubConfig?.temporada || '2025/2026'}
+                {clubConfig?.nombre || 'CLUB FÚTBOL PRO'} • {clubConfig?.temporada || '2025/2026'}
               </p>
               <p className="text-xs text-gray-400">
-                {clubConfig?.lema || 'Software integral para la gestiÃ³n y seguimiento deportivo de clubes.'}
+                {clubConfig?.lema || 'Software integral para la gestión y seguimiento deportivo de clubes.'}
               </p>
             </div>
           </div>
@@ -280,7 +280,7 @@ const MainContent: React.FC = () => {
         onToggleVistaPC={toggleVistaPC}
       />
 
-      {/* Barra de NavegaciÃ³n Inferior para MÃ³vil (oculta en Vista PC) */}
+      {/* Barra de Navegación Inferior para Móvil (oculta en Vista PC) */}
       {!vistaPC && (
         <MobileTabBar
           activeTab={activeTab}
@@ -289,7 +289,7 @@ const MainContent: React.FC = () => {
         />
       )}
 
-      {/* Indicador de ConexiÃ³n Offline PWA */}
+      {/* Indicador de Conexión Offline PWA */}
       <OfflineIndicator />
 
       {/* Modales Globales */}

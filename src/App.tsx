@@ -147,8 +147,8 @@ const MainContent: React.FC = () => {
         ref={mainScrollRef}
         id="main-app-content"
         className={`flex-1 w-full max-w-7xl 2xl:max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 py-6 sm:py-8 pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-12 overflow-x-hidden space-y-6 ${
-          vistaPC ? 'lg:ml-80' : ''
-        }`}
+          activeTab === 'eventos' ? 'bg-gray-950' : ''
+        } ${vistaPC ? 'lg:ml-80' : ''}`}
       >
         {/* Banner PWA para instalación */}
         <PWABanner />

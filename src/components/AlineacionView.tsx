@@ -44,7 +44,8 @@ const FORMACIONES_F8 = [
   '1-2-2-3',
   '1-3-2-2',
   '1-4-2-1',
-  '1-1-4-2'
+  '1-1-4-2',
+  '1-2-4-1'
 ] as const;
 
 const ROLE_META: Record<Role, { label: string; disk: string; text: string; border: string }> = {
@@ -98,7 +99,7 @@ function buildSlots(formacion: string): PitchSlot[] {
     // línea 0 (más abajo) → yBottom; última → yTop
     const y = yBottom - t * (yBottom - yTop);
     const role = roleForLine(lineIdx);
-    const margin = 14;
+    const margin = count === 2 ? 30 : 14;
     const span = 100 - margin * 2;
     for (let i = 0; i < count; i++) {
       const x = count === 1 ? 50 : margin + (span * i) / (count - 1);

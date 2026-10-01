@@ -835,8 +835,8 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
 
   if (!selectedPartido) {
     return (
-      <div className="bg-white p-8 rounded-2xl border text-center text-gray-400">
-        <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+      <div className="bg-gray-900 p-8 rounded-2xl border border-gray-800 text-center text-gray-400">
+        <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-600" />
         <p className="font-semibold text-sm">No hay partidos con eventos pendientes.</p>
       </div>
     );
@@ -849,29 +849,29 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 font-athletic tracking-tight">
-            EVENTOS <span className="text-orange-600">DEL PARTIDO</span>
+          <h1 className="text-xl sm:text-2xl font-bold text-white font-athletic tracking-tight">
+            EVENTOS <span className="text-orange-500">DEL PARTIDO</span>
           </h1>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <p className="text-xs text-gray-400 mt-0.5">
             {titulares.length} titulares · {events.length} evento{events.length !== 1 ? 's' : ''}
             {expelledIds.size > 0 && (
-              <span className="text-red-600 font-bold"> · {expelledIds.size} expulsado{expelledIds.size !== 1 ? 's' : ''}</span>
+              <span className="text-red-400 font-bold"> · {expelledIds.size} expulsado{expelledIds.size !== 1 ? 's' : ''}</span>
             )}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {finalizado ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-gray-900 text-emerald-400 border border-gray-700">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-gray-900 text-emerald-400 border border-emerald-900">
               <FileCheck className="w-3 h-3" />
               ACTA CERRADA
             </span>
           ) : enJuego ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-red-100 text-red-700 border border-red-300">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-red-950 text-red-300 border border-red-900">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
               EN JUEGO
             </span>
           ) : (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-600 border border-gray-200">
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-gray-800 text-gray-300 border border-gray-700">
               {FASE_LABEL[fase]}
             </span>
           )}
@@ -879,7 +879,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
       </div>
 
       {/* Marcador + cronómetro de pared */}
-      <div className="bg-gray-950 text-white p-4 rounded-2xl border border-gray-800 shadow-inner">
+      <div className="bg-gray-900 text-white p-4 rounded-2xl border border-gray-800 shadow-inner">
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col items-center flex-1 min-w-0 gap-1">
             <div className="w-10 h-10 rounded-xl bg-white/10 p-1 flex items-center justify-center border border-white/20 overflow-hidden">
@@ -968,9 +968,9 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
       </div>
 
       {/* Control de fases */}
-      <div className="bg-white p-3 rounded-2xl border border-gray-150 shadow-sm space-y-2">
+      <div className="bg-gray-900 p-3 rounded-2xl border border-gray-800 space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1">
             <Clock className="w-3 h-3 text-orange-500" />
             Control del partido
           </span>
@@ -981,11 +981,11 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
               return (
                 <React.Fragment key={f}>
                   <span
-                    className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-orange-500' : 'bg-gray-200'}`}
+                    className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-orange-500' : 'bg-gray-700'}`}
                     title={FASE_LABEL[f]}
                   />
                   {i < arr.length - 1 && (
-                    <span className={`w-3 h-0.5 ${i < cur ? 'bg-orange-500' : 'bg-gray-200'}`} />
+                    <span className={`w-3 h-0.5 ${i < cur ? 'bg-orange-500' : 'bg-gray-700'}`} />
                   )}
                 </React.Fragment>
               );
@@ -1000,7 +1000,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
             className={`flex-1 min-w-0 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
               fase === 'fin'
                 ? finalizado
-                  ? 'bg-gray-200 text-gray-500'
+                  ? 'bg-gray-800 text-gray-400'
                   : 'bg-purple-600 hover:bg-purple-700 text-white shadow-md shadow-purple-500/30'
                 : fase === 'p1' || fase === 'p2' || fase === 'medio'
                   ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/30'
@@ -1024,26 +1024,26 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
             onClick={() => setConfirmReset(true)}
             disabled={fase === 'pre' && events.length === 0 && !finalizado}
             title="Reiniciar partido (no para el cronómetro)"
-            className="py-2 px-2.5 bg-white hover:bg-red-50 text-red-700 border border-red-200 rounded-xl text-[11px] font-bold flex items-center gap-1 shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="py-2 px-2.5 bg-gray-800 hover:bg-red-950 text-red-400 border border-red-900 rounded-xl text-[11px] font-bold flex items-center gap-1 shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <RotateCcw className="w-3.5 h-3.5 shrink-0" />
             Reiniciar
           </button>
         </div>
         {timerRunning && (
-          <p className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 font-semibold">
+          <p className="text-[10px] text-emerald-300 bg-emerald-950 border border-emerald-900 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 font-semibold">
             <Timer className="w-3.5 h-3.5 shrink-0" />
             Cronómetro de pared: sigue aunque cierres la app. Cada parte arranca a 00:00.
           </p>
         )}
         {isOverReglamentario && timerRunning && (
-          <p className="text-[11px] font-bold text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
+          <p className="text-[11px] font-bold text-red-300 bg-red-950 border border-red-900 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
             <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
             Reglamentario de la parte ({porParteMin}′) superado — tiempo extra +{overMin}′.
           </p>
         )}
         {fase === 'fin' && !finalizado && (
-          <p className="text-[11px] font-bold text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
+          <p className="text-[11px] font-bold text-purple-300 bg-purple-950 border border-purple-900 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
             <Save className="w-3.5 h-3.5 shrink-0" />
             Partido terminado. El entrenador debe «Confirmar acta» para que figure como finalizado.
           </p>
@@ -1051,19 +1051,19 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
       </div>
 
       {/* Registro rápido */}
-      <div className="bg-white p-3 rounded-2xl border border-gray-150 shadow-sm space-y-2">
+      <div className="bg-gray-900 p-3.5 rounded-2xl border border-gray-800 space-y-2.5">
         <div className="flex items-center justify-between">
-          <h3 className="font-bold text-xs uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-orange-500" />
+          <h3 className="font-bold text-xs uppercase tracking-wider text-gray-300 flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-orange-400" />
             Registro rápido
           </h3>
-          <span className="text-[10px] text-gray-500">
+          <span className="text-[10px] text-gray-400">
             Minuto {fase === 'pre' ? '—' : `${minuteLabel}′`}
           </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-2">
-          <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2.5">
+          <div className="grid grid-cols-2 gap-2.5">
             <button
               onClick={() => {
                 setOwnGoalMode(false);
@@ -1071,9 +1071,9 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                 setPicker('gol');
               }}
               disabled={fase === 'fin'}
-              className="py-3.5 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white rounded-xl text-sm font-black tracking-wide flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/25 disabled:opacity-40"
+              className="min-h-[68px] py-6 px-2 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white rounded-2xl text-[15px] font-black tracking-wide flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/40 disabled:opacity-40"
             >
-              <CircleDot className="w-4 h-4 fill-current shrink-0" />
+              <CircleDot className="w-5 h-5 fill-current shrink-0" />
               GOL
             </button>
             <button
@@ -1082,20 +1082,20 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                 setPicker('gol_contra');
               }}
               disabled={fase === 'fin'}
-              className="py-3.5 px-2 bg-red-600 hover:bg-red-700 active:scale-[0.99] text-white rounded-xl text-sm font-black tracking-wide flex items-center justify-center gap-1.5 shadow-md shadow-red-600/25 disabled:opacity-40"
+              className="min-h-[68px] py-6 px-2 bg-red-600 hover:bg-red-500 active:scale-[0.99] text-white rounded-2xl text-[15px] font-black tracking-wide flex items-center justify-center gap-2 shadow-lg shadow-red-600/40 disabled:opacity-40"
             >
-              <CircleDot className="w-4 h-4 shrink-0" />
+              <CircleDot className="w-5 h-5 shrink-0" />
               GOL EN CONTRA
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2.5">
             <button
               onClick={() => setPicker('asistencia')}
               disabled={fase === 'fin'}
-              className="py-3.5 px-3 bg-sky-600 hover:bg-sky-700 active:scale-[0.99] text-white rounded-xl text-sm font-black tracking-wide flex items-center justify-center gap-2 shadow-md shadow-sky-600/25 disabled:opacity-40"
+              className="min-h-[68px] py-6 px-3 bg-sky-600 hover:bg-sky-500 active:scale-[0.99] text-white rounded-2xl text-[15px] font-black tracking-wide flex items-center justify-center gap-2 shadow-lg shadow-sky-600/40 disabled:opacity-40"
             >
-              <Handshake className="w-4 h-4 shrink-0" />
+              <Handshake className="w-5 h-5 shrink-0" />
               ASISTENCIA
             </button>
             <button
@@ -1104,27 +1104,27 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                 setPicker('tarjeta');
               }}
               disabled={fase === 'fin'}
-              className="py-3.5 px-3 bg-amber-500 hover:bg-amber-600 active:scale-[0.99] text-white rounded-xl text-sm font-black tracking-wide flex items-center justify-center gap-2 shadow-md shadow-amber-500/25 disabled:opacity-40"
+              className="min-h-[68px] py-6 px-3 bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-white rounded-2xl text-[15px] font-black tracking-wide flex items-center justify-center gap-2 shadow-lg shadow-amber-500/40 disabled:opacity-40"
             >
-              <Ticket className="w-4 h-4 shrink-0" />
+              <Ticket className="w-5 h-5 shrink-0" />
               TARJETA
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2.5">
             <button
               onClick={() => setPicker('cambio')}
               disabled={fase === 'fin'}
-              className="py-3.5 px-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white rounded-xl text-sm font-black tracking-wide flex items-center justify-center gap-2 shadow-md shadow-blue-600/25 disabled:opacity-40"
+              className="min-h-[68px] py-6 px-3 bg-blue-600 hover:bg-blue-500 active:scale-[0.99] text-white rounded-2xl text-[15px] font-black tracking-wide flex items-center justify-center gap-2 shadow-lg shadow-blue-600/40 disabled:opacity-40"
             >
-              <ArrowRightLeft className="w-4 h-4 shrink-0" />
+              <ArrowRightLeft className="w-5 h-5 shrink-0" />
               CAMBIO
             </button>
             <button
               onClick={() => setShowNota(prev => !prev)}
               disabled={fase === 'fin'}
-              className="py-3.5 px-3 bg-gray-700 hover:bg-gray-800 active:scale-[0.99] text-white rounded-xl text-sm font-black tracking-wide flex items-center justify-center gap-2 shadow-md disabled:opacity-40"
+              className="min-h-[68px] py-6 px-3 bg-gray-700 hover:bg-gray-600 active:scale-[0.99] text-white rounded-2xl text-[15px] font-black tracking-wide flex items-center justify-center gap-2 shadow-lg shadow-black/30 disabled:opacity-40"
             >
-              <Plus className="w-4 h-4 shrink-0" />
+              <Plus className="w-5 h-5 shrink-0" />
               NOTA
             </button>
           </div>
@@ -1138,13 +1138,13 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
               onChange={e => setNotaTexto(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && addNota()}
               placeholder="Incidente, lesión, aviso..."
-              className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+              className="flex-1 min-w-0 px-3 py-2.5 border border-gray-700 bg-gray-800 text-white placeholder-gray-500 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
               autoFocus
             />
             <button
               onClick={addNota}
               disabled={!notaTexto.trim()}
-              className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-bold disabled:opacity-40"
+              className="px-4 py-2.5 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-sm font-bold disabled:opacity-40"
             >
               Añadir
             </button>
@@ -1153,13 +1153,13 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
       </div>
 
       {/* Cronología */}
-      <div className="bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
-        <div className="p-3 bg-gray-50 border-b border-gray-150 flex items-start justify-between gap-2">
+      <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
+        <div className="p-3 bg-gray-950 border-b border-gray-800 flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h3 className="font-bold text-xs uppercase tracking-wider text-gray-700">
+            <h3 className="font-bold text-xs uppercase tracking-wider text-gray-300">
               Cronología ({events.length})
             </h3>
-            <p className="text-[10px] text-gray-400 mt-0.5">
+            <p className="text-[10px] text-gray-500 mt-0.5">
               {finalizado
                 ? 'Acta cerrada: puedes añadir, editar o borrar eventos (se recalculan goles y estadísticas).'
                 : 'Pulsa el lápiz de cada evento para corregir el minuto, tipo o jugador.'}
@@ -1175,7 +1175,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
             className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 border transition-colors ${
               finalizado
                 ? 'bg-orange-500 hover:bg-orange-600 text-white border-orange-500 shadow-md shadow-orange-500/25'
-                : 'bg-white hover:bg-orange-50 text-orange-700 border-orange-200'
+                : 'bg-gray-800 hover:bg-gray-700 text-orange-300 border-gray-700'
             }`}
           >
             <Plus className="w-3.5 h-3.5" />
@@ -1183,34 +1183,34 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
           </button>
         </div>
         {events.length === 0 ? (
-          <div className="p-8 text-center text-gray-400">
-            <Flag className="w-7 h-7 mx-auto mb-2 text-gray-300" />
+          <div className="p-8 text-center text-gray-500">
+            <Flag className="w-7 h-7 mx-auto mb-2 text-gray-600" />
             <p className="text-sm font-semibold">
               Pulsa «Iniciar 1ª parte» y registra goles con los botones de arriba.
             </p>
           </div>
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-gray-800">
             {events.map(ev => {
               const meta = EVENT_META[ev.tipo];
               const expelled = ev.tipo === 'tarjeta' && ev.extra === 'roja';
               return (
-                <li key={ev.id} className={`p-3 flex items-start gap-3 ${expelled ? 'bg-red-50/50' : ''}`}>
-                  <span className="shrink-0 w-12 text-center text-xs font-black font-athletic text-orange-600 bg-orange-50 border border-orange-200 rounded-lg py-1 tabular-nums">
+                <li key={ev.id} className={`p-3 flex items-start gap-3 ${expelled ? 'bg-red-950/40' : ''}`}>
+                  <span className="shrink-0 w-12 text-center text-xs font-black font-athletic text-orange-300 bg-orange-950 border border-orange-900 rounded-lg py-1 tabular-nums">
                     {ev.minuto}′
                   </span>
                   <div className="min-w-0 flex-1">
                     <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border mb-1 ${meta.chip}`}>
                       {meta.label}{ev.extra ? ` · ${ev.extra}` : ''}
                     </span>
-                    <p className="text-sm text-gray-800 font-medium break-words">{ev.texto}</p>
+                    <p className="text-sm text-gray-100 font-medium break-words">{ev.texto}</p>
                     {ev.hora && (
-                      <p className="text-[10px] text-gray-400 mt-0.5 tabular-nums">
+                      <p className="text-[10px] text-gray-500 mt-0.5 tabular-nums">
                         {ev.hora}
                       </p>
                     )}
                     {ev.tipo === 'tarjeta' && ev.jugadorId && expelledIds.has(ev.jugadorId) && (
-                      <p className="text-[10px] font-bold text-red-600 mt-0.5 flex items-center gap-1">
+                      <p className="text-[10px] font-bold text-red-400 mt-0.5 flex items-center gap-1">
                         <AlertTriangle className="w-3 h-3" />
                         Expulsado — no disponible para más eventos
                       </p>
@@ -1221,7 +1221,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                     <button
                       onClick={() => openEdit(ev)}
                       title="Editar evento"
-                      className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                      className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-orange-300 hover:bg-gray-800 rounded-lg transition-colors"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
@@ -1235,8 +1235,8 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
 
       {/* Alineación */}
       {titulares.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-150 shadow-sm p-4 space-y-2">
-          <h3 className="font-bold text-xs uppercase tracking-wider text-gray-700">
+        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4 space-y-2">
+          <h3 className="font-bold text-xs uppercase tracking-wider text-gray-300">
             Titulares ({titulares.length})
           </h3>
           <div className="flex flex-wrap gap-1.5">
@@ -1247,8 +1247,8 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                   key={j.id}
                   className={`px-2 py-1 rounded-lg text-[11px] font-bold ${
                     expulsado
-                      ? 'bg-red-100 text-red-700 line-through border border-red-300'
-                      : 'bg-gray-900 text-white'
+                      ? 'bg-red-950 text-red-300 line-through border border-red-900'
+                      : 'bg-gray-800 text-gray-100'
                   }`}
                   title={expulsado ? `${j.nombre} — expulsado` : j.nombre}
                 >

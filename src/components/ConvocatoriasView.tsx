@@ -13,7 +13,9 @@ import {
   ArrowLeft,
   Users,
   ListChecks,
-  Ban
+  Ban,
+  UserPlus,
+  ChevronDown
 } from 'lucide-react';
 import { compareTeams, getCategoryOrder } from '../utils/teamOrder';
 import { notifyTeam } from '../services/notifications';
@@ -64,6 +66,8 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     initialPartidoId || partidos[0]?.id || ''
   );
   const [copied, setCopied] = useState(false);
+  // Lista corta: primero solo mi equipo; los refuerzos se muestran tras pulsar "Convocar más"
+  const [showRefuerzos, setShowRefuerzos] = useState(false);
 
   // Selección local: NO se guarda hasta pulsar "Convocar" (aceptar)
   const [localConvocados, setLocalConvocados] = useState<Set<string>>(new Set());
@@ -103,6 +107,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     if (selectedId) {
       const stored = partidos.find(p => p.id === selectedId);
       setLocalConvocados(new Set(stored?.convocados || []));
+      setShowRefuerzos(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
@@ -174,6 +179,16 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     });
     return count;
   }, [allJugadores, jugadores, localConvocados]);
+
+  const refuerzosCount = eligibleJugadores.length - teamPlayers.length;
+  const refuerzosConvocados = useMemo(() => {
+    const ids = new Set(teamPlayers.map(j => j.id));
+    let n = 0;
+    eligibleJugadores.forEach(j => {
+      if (!ids.has(j.id) && localConvocados.has(j.id)) n++;
+    });
+    return n;
+  }, [eligibleJugadores, teamPlayers, localConvocados]);
 
   const toggleLocal = (jugadorId: string) => {
     if (!canManage) return;
@@ -566,8 +581,27 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
           )}
           {teamPlayers.map(renderRow)}
 
+          {/* Acción: mostrar los refuerzos de otras categorías (lista corta por defecto) */}
+          {refuerzosCount > 0 && !showRefuerzos && (
+            <div className="p-3 bg-gray-50">
+              <button
+                type="button"
+                onClick={() => setShowRefuerzos(true)}
+                className="w-full py-2.5 px-3 bg-white hover:bg-sky-50 text-sky-700 border border-sky-200 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <UserPlus className="w-4 h-4" />
+                Convocar más ({refuerzosCount} refuerzos)
+                {refuerzosConvocados > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-sky-600 text-white rounded text-[9px] font-black">
+                    {refuerzosConvocados} ya citado{refuerzosConvocados === 1 ? '' : 's'}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+
           {/* Refuerzos: resto de jugadores agrupados por equipo (solo categorías contiguas) */}
-          {groupKeys.map(key => {
+          {showRefuerzos && groupKeys.map(key => {
             const isFree = key === 'Sin equipo';
             const team = equipos.find(e => e.nombre === key);
             const lista = groups.get(key)!;
@@ -595,6 +629,20 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
               </React.Fragment>
             );
           })}
+
+          {/* Colapsar de nuevo para acortar la lista */}
+          {refuerzosCount > 0 && showRefuerzos && (
+            <div className="p-3 bg-gray-50">
+              <button
+                type="button"
+                onClick={() => setShowRefuerzos(false)}
+                className="w-full py-2.5 px-3 bg-white hover:bg-gray-100 text-gray-600 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <ChevronDown className="w-4 h-4" />
+                Mostrar solo mi equipo
+              </button>
+            </div>
+          )}
 
           {eligibleJugadores.length === 0 && (
             <div className="p-6 text-center text-sm text-gray-400">

@@ -22,6 +22,7 @@ import {
   Image,
   Plane,
   MapPin,
+  Search,
   Star,
   Play,
   Ban
@@ -29,6 +30,8 @@ import {
 import { ActiveTab } from './Navbar';
 import { notifyTeam } from '../services/notifications';
 import { isPartidoSuspendido } from '../utils/partidoEstado';
+import { BuscadorRivalModal } from './BuscadorRivalModal';
+import { FfcvEquipo, ffcvUbicacion } from '../services/ffcvEquipos';
 
 interface PartidosViewProps {
   onNavigateToConvocatoria?: (partidoId: string) => void;
@@ -80,6 +83,18 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
   const [formTipo, setFormTipo] = useState<TipoPartido>('Liga');
   const [formJornada, setFormJornada] = useState<string | number>('');
   const [formHoraConvocatoria, setFormHoraConvocatoria] = useState('');
+
+  // Buscador de rival en el catálogo FFCV (escudo + ubicación)
+  const [isBuscadorRivalOpen, setIsBuscadorRivalOpen] = useState(false);
+
+  /** Rellena nombre, escudo y ubicación del rival al elegirlo del catálogo FFCV */
+  const handleRivalSeleccionado = (eq: FfcvEquipo) => {
+    setFormRival(eq.club || '');
+    if (eq.escudo) setFormRivalEscudo(eq.escudo);
+    const ubicacion = ffcvUbicacion(eq);
+    if (ubicacion) setFormCampo(ubicacion);
+  };
+
 
   const openAddModal = () => {
     setEditingPartido(null);
@@ -806,7 +821,20 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
                 onChange={e => setFormRival(e.target.value)}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
               />
+              <button
+                type="button"
+                onClick={() => setIsBuscadorRivalOpen(true)}
+                title="Buscar equipo contrario en el catálogo FFCV"
+                className="h-[38px] px-3 shrink-0 inline-flex items-center gap-1.5 bg-orange-50 border border-orange-300 text-orange-700 rounded-xl text-xs font-bold hover:bg-orange-100 active:scale-95 transition-all"
+              >
+                <Search className="w-3.5 h-3.5" />
+                Buscar
+              </button>
             </div>
+            <p className="text-[10px] text-gray-400 mt-1">
+              Busca el rival por nombre para rellenar escudo y ubicación automáticamente.
+            </p>
+
             <div className="flex items-center gap-2 mt-2">
               <Image className="w-4 h-4 text-gray-400 shrink-0" />
               <input
@@ -954,6 +982,13 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
           </div>
         </form>
       </Modal>
+
+      {/* Buscador de rival (fuera del <form> para que Enter no dispare el guardado) */}
+      <BuscadorRivalModal
+        isOpen={isBuscadorRivalOpen}
+        onClose={() => setIsBuscadorRivalOpen(false)}
+        onSelect={handleRivalSeleccionado}
+      />
     </div>
   );
 };

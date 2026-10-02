@@ -13,6 +13,8 @@ import { compareTeams } from '../utils/teamOrder';
 import { notifyTeam } from '../services/notifications';
 import { getJugadorUsuario } from '../utils/playerUsername';
 import { clearFfcvClasificacionCache } from '../utils/ffcvClasificacion';
+import { BuscadorRivalModal } from './BuscadorRivalModal';
+import { FfcvEquipo, ffcvUbicacion } from '../services/ffcvEquipos';
 import {
   Settings,
   Users,
@@ -209,6 +211,20 @@ export const AdminPanel: React.FC = () => {
   const [editingSheetItem, setEditingSheetItem] = useState<Equipo | Jugador | Entrenador | Partido | Asistencia | Estadistica | null>(null);
   const [sf, setSf] = useState<Record<string, string>>({});
 
+  // Buscador de rival en el catálogo FFCV (escudo + ubicación)
+  const [isBuscadorRivalOpen, setIsBuscadorRivalOpen] = useState(false);
+
+  /** Rellena nombre, escudo y ubicación del rival al elegirlo del catálogo FFCV */
+  const handleRivalSeleccionado = (eq: FfcvEquipo) => {
+    setSf(prev => ({
+      ...prev,
+      rival: eq.club || prev.rival || '',
+      escudoVisitante: eq.escudo || prev.escudoVisitante || '',
+      campo: ffcvUbicacion(eq) || prev.campo || ''
+    }));
+  };
+
+
   // Alta de equipo abierta desde otro formulario (usuario o ficha de entrenador)
   const [pendingTeamFor, setPendingTeamFor] = useState<'user' | 'trainer' | null>(null);
   const [pendingTrainerBack, setPendingTrainerBack] = useState<{
@@ -290,6 +306,7 @@ export const AdminPanel: React.FC = () => {
         equipo: clubTeam,
         condicion: cond,
         rival,
+        escudoVisitante: p?.escudoVisitante || '',
         fecha: p?.fecha || '',
         categoria: p?.categoria || equipos.find(e => e.nombre === clubTeam)?.categoria || categorias[0]?.nombre || '',
         campo: p?.campo || '',
@@ -368,6 +385,7 @@ export const AdminPanel: React.FC = () => {
         equipo: sf.equipo.trim(),
         condicion: (sf.condicion === 'fuera' ? 'fuera' : 'casa'),
         rival: sf.rival.trim(),
+        escudoVisitante: (sf.escudoVisitante || '').trim() || undefined,
         fecha: sf.fecha,
         categoria: sf.categoria || categorias[0]?.nombre || 'Senior',
         campo: sf.campo.trim() || undefined,
@@ -2733,13 +2751,24 @@ export const AdminPanel: React.FC = () => {
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Rival *</label>
-                <input
-                  type="text"
-                  required
-                  value={sf.rival || ''}
-                  onChange={e => setSf({ ...sf, rival: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    required
+                    value={sf.rival || ''}
+                    onChange={e => setSf({ ...sf, rival: e.target.value })}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsBuscadorRivalOpen(true)}
+                    title="Buscar equipo contrario en el catálogo FFCV"
+                    className="h-[38px] px-3 shrink-0 inline-flex items-center gap-1.5 bg-orange-50 border border-orange-300 text-orange-700 rounded-xl text-xs font-bold hover:bg-orange-100 active:scale-95 transition-all"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                    Buscar
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -2958,6 +2987,13 @@ export const AdminPanel: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Buscador de rival (fuera del <form> para que Enter no dispare el guardado) */}
+      <BuscadorRivalModal
+        isOpen={isBuscadorRivalOpen}
+        onClose={() => setIsBuscadorRivalOpen(false)}
+        onSelect={handleRivalSeleccionado}
+      />
     </div>
   );
 };

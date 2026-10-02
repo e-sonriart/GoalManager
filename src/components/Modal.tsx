@@ -1,6 +1,9 @@
 import React, { useEffect, ReactNode } from 'react';
 import { X } from 'lucide-react';
 
+// Pila de modales abiertos: solo el último (el de arriba) reacciona a Escape
+const modalStack: symbol[] = [];
+
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -19,14 +22,23 @@ export const Modal: React.FC<ModalProps> = ({
   maxWidth = 'max-w-xl'
 }) => {
   useEffect(() => {
+    if (!isOpen) return;
+    const id = Symbol('modal');
+    modalStack.push(id);
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape' && modalStack[modalStack.length - 1] === id) {
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      const i = modalStack.lastIndexOf(id);
+      if (i >= 0) modalStack.splice(i, 1);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isOpen, onClose]);
+
 
   if (!isOpen) return null;
 

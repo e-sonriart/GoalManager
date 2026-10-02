@@ -9,12 +9,6 @@ import {
   Usuario,
   SesionEntrenamiento
 } from '../types';
-import {
-  DEFAULT_TEAM_SHIELD_1,
-  DEFAULT_TEAM_SHIELD_2,
-  DEFAULT_TEAM_SHIELD_3,
-  DEFAULT_TEAM_SHIELD_4
-} from '../utils/shieldPresets';
 
 export const initialCategorias: Categoria[] = [
   { id: 'cat_1', nombre: 'Senior', tipo: 'F11', tiempojuego: 45 },
@@ -44,7 +38,6 @@ export const initialEquipos: Equipo[] = [
     letra: 'A',
     entrenador: 'Carlos Martínez',
     entrenadores: ['Carlos Martínez'],
-    escudo: DEFAULT_TEAM_SHIELD_1,
     temporada: '2025/2026'
   },
   {
@@ -54,7 +47,6 @@ export const initialEquipos: Equipo[] = [
     letra: 'A',
     entrenador: 'Laura Gómez',
     entrenadores: ['Laura Gómez'],
-    escudo: DEFAULT_TEAM_SHIELD_2,
     temporada: '2025/2026'
   },
   {
@@ -64,7 +56,6 @@ export const initialEquipos: Equipo[] = [
     letra: 'A',
     entrenador: 'Javier Soria',
     entrenadores: ['Javier Soria'],
-    escudo: DEFAULT_TEAM_SHIELD_3,
     temporada: '2025/2026'
   },
   {
@@ -75,7 +66,6 @@ export const initialEquipos: Equipo[] = [
     ano: '2do año',
     entrenador: 'Pablo Fernández',
     entrenadores: ['Pablo Fernández'],
-    escudo: DEFAULT_TEAM_SHIELD_4,
     temporada: '2025/2026'
   },
   {
@@ -86,7 +76,6 @@ export const initialEquipos: Equipo[] = [
     ano: '1er año',
     entrenador: 'Carlos Martínez',
     entrenadores: ['Carlos Martínez'],
-    escudo: DEFAULT_TEAM_SHIELD_1,
     temporada: '2025/2026'
   },
   {
@@ -96,7 +85,6 @@ export const initialEquipos: Equipo[] = [
     letra: 'B',
     entrenador: 'Miguel Ángel Ruiz',
     entrenadores: ['Miguel Ángel Ruiz'],
-    escudo: DEFAULT_TEAM_SHIELD_2,
     temporada: '2025/2026'
   },
   {
@@ -106,7 +94,6 @@ export const initialEquipos: Equipo[] = [
     letra: 'B',
     entrenador: 'Ana Torres',
     entrenadores: ['Ana Torres'],
-    escudo: DEFAULT_TEAM_SHIELD_3,
     temporada: '2025/2026'
   },
   {
@@ -116,7 +103,6 @@ export const initialEquipos: Equipo[] = [
     letra: 'A',
     entrenador: 'Javier Soria',
     entrenadores: ['Javier Soria'],
-    escudo: DEFAULT_TEAM_SHIELD_4,
     temporada: '2025/2026'
   },
   {
@@ -127,7 +113,6 @@ export const initialEquipos: Equipo[] = [
     ano: '1er año',
     entrenador: 'Pablo Fernández',
     entrenadores: ['Pablo Fernández'],
-    escudo: DEFAULT_TEAM_SHIELD_1,
     temporada: '2025/2026'
   },
   {
@@ -138,7 +123,6 @@ export const initialEquipos: Equipo[] = [
     ano: '2do año',
     entrenador: 'Lucía Ferrer',
     entrenadores: ['Lucía Ferrer'],
-    escudo: DEFAULT_TEAM_SHIELD_2,
     temporada: '2025/2026'
   },
   {
@@ -149,7 +133,6 @@ export const initialEquipos: Equipo[] = [
     ano: '1er año',
     entrenador: 'Lucía Ferrer',
     entrenadores: ['Lucía Ferrer'],
-    escudo: DEFAULT_TEAM_SHIELD_3,
     temporada: '2025/2026'
   }
 ];

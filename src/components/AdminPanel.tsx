@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useClub } from '../context/ClubContext';
 import { User, RolUsuario, Categoria, Equipo, Entrenador, Jugador, Partido, TipoFutbol, Asistencia, Estadistica, EstadoAsistencia, PosicionJugador } from '../types';
 import { Modal } from './Modal';
-import { SHIELD_PRESETS, DEFAULT_CLUB_SHIELD } from '../utils/shieldPresets';
+import { DEFAULT_CLUB_SHIELD } from '../utils/shieldPresets';
+import { extractShieldColors, DEFAULT_PRIMARY, DEFAULT_SECONDARY } from '../utils/clubTheme';
 import { TeamShield } from './TeamShield';
 import { WhatsAppIcon } from './WhatsAppIcon';
 import { RolePermissionsMatrix } from './RolePermissionsMatrix';
@@ -161,6 +162,9 @@ export const AdminPanel: React.FC = () => {
   const [clubAcronimo, setClubAcronimo] = useState(clubConfig?.acronimo || '');
   const [clubLema, setClubLema] = useState(clubConfig?.lema || '');
   const [clubTemporada, setClubTemporada] = useState(clubConfig?.temporada || '2025/2026');
+  const [clubColorPrimario, setClubColorPrimario] = useState(clubConfig?.colorPrimario || '');
+  const [clubColorSecundario, setClubColorSecundario] = useState(clubConfig?.colorSecundario || '');
+  const [extractingColors, setExtractingColors] = useState(false);
 
   // Sincronizar si cambia el contexto externamente
   useEffect(() => {
@@ -170,6 +174,8 @@ export const AdminPanel: React.FC = () => {
       setClubAcronimo(clubConfig.acronimo || '');
       setClubLema(clubConfig.lema || '');
       setClubTemporada(clubConfig.temporada || '2025/2026');
+      setClubColorPrimario(clubConfig.colorPrimario || '');
+      setClubColorSecundario(clubConfig.colorSecundario || '');
     }
   }, [clubConfig]);
 
@@ -203,6 +209,43 @@ export const AdminPanel: React.FC = () => {
   const [editingSheetItem, setEditingSheetItem] = useState<Equipo | Jugador | Entrenador | Partido | Asistencia | Estadistica | null>(null);
   const [sf, setSf] = useState<Record<string, string>>({});
 
+  // Alta de equipo abierta desde otro formulario (usuario o ficha de entrenador)
+  const [pendingTeamFor, setPendingTeamFor] = useState<'user' | 'trainer' | null>(null);
+  const [pendingTrainerBack, setPendingTrainerBack] = useState<{
+    form: Record<string, string>;
+    item: Equipo | Jugador | Entrenador | Partido | Asistencia | Estadistica | null;
+  } | null>(null);
+
+  const openCreateTeamFor = (dest: 'user' | 'trainer') => {
+    if (dest === 'trainer') {
+      setPendingTrainerBack({ form: { ...sf }, item: editingSheetItem });
+      setSheetModalKind(null);
+    } else {
+      setIsUserModalOpen(false);
+    }
+    setPendingTeamFor(dest);
+    openSheetModal('equipo');
+  };
+
+  // Cierra el modal de equipo y vuelve al formulario desde el que se abrió
+  const closeSheetModal = () => {
+    const dest = pendingTeamFor;
+    const back = pendingTrainerBack;
+    setPendingTeamFor(null);
+    setPendingTrainerBack(null);
+    setSheetModalKind(null);
+    if (dest === 'user') {
+      setEditingSheetItem(null);
+      setIsUserModalOpen(true);
+    } else if (dest === 'trainer' && back) {
+      setEditingSheetItem(back.item);
+      setSf(back.form);
+      setSheetModalKind('entrenador');
+    } else {
+      setEditingSheetItem(null);
+    }
+  };
+
   const openSheetModal = (kind: SheetModalKind, item?: Equipo | Jugador | Entrenador | Partido | Asistencia | Estadistica | null) => {
     setSheetModalKind(kind);
     setEditingSheetItem(item ?? null);
@@ -232,7 +275,11 @@ export const AdminPanel: React.FC = () => {
       });
     } else if (kind === 'entrenador') {
       const ent = item as Entrenador | undefined;
-      setSf({ nombre: ent?.nombre || '', telefono: ent?.telefono || '' });
+      setSf({
+        nombre: ent?.nombre || '',
+        telefono: ent?.telefono || '',
+        equipo: ent?.equipo || equipos[0]?.nombre || ''
+      });
     } else if (kind === 'partido') {
       const p = item as Partido | undefined;
       const clubTeam = p?.equipo || (p && equipos.some(e => e.nombre === p.local) ? p.local : p?.visitante) || equipos[0]?.nombre || '';
@@ -306,7 +353,8 @@ export const AdminPanel: React.FC = () => {
       await saveEntrenador({
         id: (editingSheetItem as Entrenador | null)?.id,
         nombre: sf.nombre.trim(),
-        telefono: sf.telefono.trim()
+        telefono: sf.telefono.trim(),
+        equipo: sf.equipo?.trim() || undefined
       });
     } else if (sheetModalKind === 'partido') {
       if (!sf.equipo.trim() || !sf.rival.trim() || !sf.fecha) return;
@@ -359,6 +407,25 @@ export const AdminPanel: React.FC = () => {
         tarjetas: Number(sf.tarjetas) || 0,
         partidosJugados: Number(sf.partidosJugados) || 0
       });
+    }
+    // Equipo creado desde el formulario de usuario o de entrenador: se selecciona y se vuelve atrás
+    if (sheetModalKind === 'equipo' && pendingTeamFor) {
+      const nuevoNombre = sf.nombre.trim();
+      const dest = pendingTeamFor;
+      const back = pendingTrainerBack;
+      setPendingTeamFor(null);
+      setPendingTrainerBack(null);
+      setSheetModalKind(null);
+      if (dest === 'user') {
+        setEditingSheetItem(null);
+        setFormEquipo(nuevoNombre);
+        setIsUserModalOpen(true);
+      } else if (dest === 'trainer' && back) {
+        setEditingSheetItem(back.item);
+        setSf({ ...back.form, equipo: nuevoNombre });
+        setSheetModalKind('entrenador');
+      }
+      return;
     }
     setSheetModalKind(null);
     setEditingSheetItem(null);
@@ -530,7 +597,45 @@ export const AdminPanel: React.FC = () => {
       escudo: clubEscudo.trim() || DEFAULT_CLUB_SHIELD,
       acronimo: clubAcronimo.trim() || clubNombre.trim().substring(0, 3).toUpperCase(),
       lema: clubLema.trim(),
-      temporada: clubTemporada.trim()
+      temporada: clubTemporada.trim(),
+      colorPrimario: clubColorPrimario.trim() || undefined,
+      colorSecundario: clubColorSecundario.trim() || undefined
+    });
+    addToast({
+      type: 'success',
+      title: 'Identidad guardada',
+      message: 'Los datos y colores ya están disponibles en todas las aplicaciones.'
+    });
+  };
+
+  // Extrae los colores dominantes del escudo del club y los deja listos para guardar
+  const handleExtractColors = async () => {
+    const url = clubEscudo.trim() || clubConfig?.escudo || '';
+    if (!url) {
+      addToast({
+        type: 'error',
+        title: 'Falta el escudo',
+        message: 'Pega primero la URL del escudo del club para extraer sus colores.'
+      });
+      return;
+    }
+    setExtractingColors(true);
+    const colors = await extractShieldColors(url);
+    setExtractingColors(false);
+    if (!colors) {
+      addToast({
+        type: 'error',
+        title: 'No se pudieron leer los colores',
+        message: 'La imagen no permite analizarla (CORS). Elige los colores a mano.'
+      });
+      return;
+    }
+    setClubColorPrimario(colors.primario);
+    setClubColorSecundario(colors.secundario);
+    addToast({
+      type: 'success',
+      title: 'Colores extraídos del escudo',
+      message: `${colors.primario.toUpperCase()} · ${colors.secundario.toUpperCase()} (pulsa Guardar)`
     });
   };
 
@@ -722,35 +827,102 @@ export const AdminPanel: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Presets rápidos */}
-                  <div className="pt-2 border-t border-orange-200/60">
-                    <p className="text-[10px] font-bold text-gray-600 uppercase tracking-wider mb-2 flex items-center gap-1">
+                  {/* Escudo por defecto del sistema */}
+                  <div className="pt-2 border-t border-orange-200/60 flex items-center justify-between gap-2 flex-wrap">
+                    <p className="text-[10px] font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1">
                       <Sparkles className="w-3 h-3 text-orange-500" />
-                      O elige uno de nuestros diseños predefinidos:
+                      Sin escudo propio se usa el genérico del sistema.
                     </p>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {SHIELD_PRESETS.map(preset => (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => setClubEscudo(preset.url)}
-                          className={`p-2 rounded-xl border text-left transition-all flex items-center gap-2 ${
-                            clubEscudo === preset.url
-                              ? 'bg-orange-500 text-white border-orange-600 shadow-sm ring-2 ring-orange-300'
-                              : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
-                          }`}
-                        >
-                          <img
-                            src={preset.url}
-                            alt={preset.name}
-                            className="w-6 h-6 object-contain shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
-                          <span className="text-[11px] font-bold truncate leading-tight">{preset.name}</span>
-                        </button>
-                      ))}
+                    <button
+                      type="button"
+                      onClick={() => setClubEscudo(DEFAULT_CLUB_SHIELD)}
+                      className="px-3 py-1.5 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-600 transition-colors flex items-center gap-1"
+                    >
+                      <Shield className="w-3 h-3" />
+                      Usar escudo por defecto
+                    </button>
+                  </div>
+                </div>
+
+                {/* Colores de la app derivados del escudo */}
+                <div className="bg-orange-50/60 p-4 rounded-2xl border border-orange-200/80 space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <label className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <Palette className="w-4 h-4 text-orange-600" />
+                      Colores de la App
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleExtractColors}
+                        disabled={extractingColors}
+                        className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-colors flex items-center gap-1.5 shadow-sm"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        {extractingColors ? 'Extrayendo…' : 'Extraer del escudo'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClubColorPrimario('');
+                          setClubColorSecundario('');
+                        }}
+                        className="px-3 py-1.5 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-600 transition-colors"
+                      >
+                        Restablecer
+                      </button>
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <span className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">
+                        Color principal
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={clubColorPrimario || DEFAULT_PRIMARY}
+                          onChange={e => setClubColorPrimario(e.target.value)}
+                          className="w-10 h-10 rounded-xl border border-gray-300 bg-white p-1 cursor-pointer shrink-0"
+                          aria-label="Color principal de la app"
+                        />
+                        <input
+                          type="text"
+                          value={clubColorPrimario}
+                          onChange={e => setClubColorPrimario(e.target.value)}
+                          placeholder={DEFAULT_PRIMARY}
+                          className="w-full min-w-0 px-3 py-2 bg-white border border-gray-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">
+                        Color secundario
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={clubColorSecundario || DEFAULT_SECONDARY}
+                          onChange={e => setClubColorSecundario(e.target.value)}
+                          className="w-10 h-10 rounded-xl border border-gray-300 bg-white p-1 cursor-pointer shrink-0"
+                          aria-label="Color secundario de la app"
+                        />
+                        <input
+                          type="text"
+                          value={clubColorSecundario}
+                          onChange={e => setClubColorSecundario(e.target.value)}
+                          placeholder={DEFAULT_SECONDARY}
+                          className="w-full min-w-0 px-3 py-2 bg-white border border-gray-300 rounded-xl text-xs font-mono focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-gray-500">
+                    Se aplican a toda la app (botones, navegación y acentos) al guardar y se sincronizan
+                    automáticamente con el resto de dispositivos.
+                  </p>
                 </div>
 
                 {/* Acrónimo, Lema y Temporada */}
@@ -867,7 +1039,7 @@ export const AdminPanel: React.FC = () => {
                   </div>
                   <div className="flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span>Compatible tanto con enlaces web HTTPS (PNG, SVG, JPG) como con presets.</span>
+                    <span>Compatible con enlaces web HTTPS (PNG, SVG, JPG) y con el escudo genérico del sistema.</span>
                   </div>
                 </div>
               </div>
@@ -993,7 +1165,7 @@ export const AdminPanel: React.FC = () => {
                   {selectedSheet === 'categorias' && 'Campos: nombre | tipo (F8 o F11) | tiempojuego (minutos por parte)'}
                   {selectedSheet === 'equipos' && 'Campos: escudo | nombre | categoria | entrenador | division | grupo | linkClasificacion'}
                   {selectedSheet === 'jugadores' && 'Campos: dorsal | nombre | posicion | equipo | categoria | fechaAlta | fechaNacimiento | pass'}
-                  {selectedSheet === 'entrenadores' && 'Campos: nombre | telefono'}
+                  {selectedSheet === 'entrenadores' && 'Campos: nombre | telefono | equipo'}
                   {selectedSheet === 'partidos' && 'Campos: local | visitante | fecha | categoria | equipo | hora | campo | tipo | jornada | golesLocal | golesVisitante | eventos | finalizado | convocados | titulares | formacion'}
                   {selectedSheet === 'usuarios' && 'Campos: nombre | email | rol | equipo'}
                   {selectedSheet === 'asistencias' && 'Campos: jugadorId | fecha | estado'}
@@ -1425,12 +1597,17 @@ export const AdminPanel: React.FC = () => {
                             <td className="py-3 px-4 font-bold text-gray-900 text-sm">{ent.nombre}</td>
                             <td className="py-3 px-4">
                               <div className="flex flex-wrap gap-1">
+                                {ent.equipo && (
+                                  <span className="px-2 py-0.5 bg-orange-500 text-white rounded font-bold text-[10px]">
+                                    {ent.equipo}
+                                  </span>
+                                )}
                                 {equiposAsignados.map(e => (
                                   <span key={e.id} className="px-2 py-0.5 bg-orange-100 text-orange-800 rounded font-semibold text-[10px]">
                                     {e.nombre}
                                   </span>
                                 ))}
-                                {equiposAsignados.length === 0 && (
+                                {equiposAsignados.length === 0 && !ent.equipo && (
                                   <span className="text-gray-400 italic">Sin asignar</span>
                                 )}
                               </div>
@@ -2069,6 +2246,14 @@ export const AdminPanel: React.FC = () => {
                   ))
                 )}
               </select>
+              <button
+                type="button"
+                onClick={() => openCreateTeamFor('user')}
+                className="mt-2 w-full px-3 py-2 bg-white hover:bg-orange-50 text-orange-700 border border-dashed border-orange-300 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {equipos.length === 0 ? 'Crear el primer equipo' : 'Crear equipo nuevo'}
+              </button>
               <p className="text-[11px] text-gray-600">
                 {formRol === 'entrenador'
                   ? 'Dirigirá y gestionará las convocatorias, partidos y asistencias de este equipo.'
@@ -2265,10 +2450,7 @@ export const AdminPanel: React.FC = () => {
       {/* Modal genérico: edición/alta de registros de hojas */}
       <Modal
         isOpen={sheetModalKind !== null}
-        onClose={() => {
-          setSheetModalKind(null);
-          setEditingSheetItem(null);
-        }}
+        onClose={closeSheetModal}
         title={
           editingSheetItem
             ? `Editar ${sheetModalKind === 'equipo' ? 'Equipo' : sheetModalKind === 'jugador' ? 'Jugador' : sheetModalKind === 'entrenador' ? 'Entrenador' : sheetModalKind === 'partido' ? 'Partido' : sheetModalKind === 'asistencia' ? 'Asistencia' : 'Estadísticas'}`
@@ -2487,6 +2669,32 @@ export const AdminPanel: React.FC = () => {
                   onChange={e => setSf({ ...sf, telefono: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Equipo al que pertenece *
+                </label>
+                <select
+                  required
+                  value={sf.equipo || ''}
+                  onChange={e => setSf({ ...sf, equipo: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                >
+                  <option value="">Selecciona un equipo…</option>
+                  {equipos.map(eq => (
+                    <option key={eq.id} value={eq.nombre}>
+                      {eq.nombre} ({eq.categoria})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => openCreateTeamFor('trainer')}
+                  className="mt-2 w-full px-3 py-2 bg-white hover:bg-orange-50 text-orange-700 border border-dashed border-orange-300 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {equipos.length === 0 ? 'Crear el primer equipo' : 'Crear equipo nuevo'}
+                </button>
               </div>
             </>
           )}
@@ -2736,10 +2944,7 @@ export const AdminPanel: React.FC = () => {
           <div className="flex justify-end gap-2 pt-4 border-t border-gray-150">
             <button
               type="button"
-              onClick={() => {
-                setSheetModalKind(null);
-                setEditingSheetItem(null);
-              }}
+              onClick={closeSheetModal}
               className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-xs font-semibold hover:bg-gray-50"
             >
               Cancelar

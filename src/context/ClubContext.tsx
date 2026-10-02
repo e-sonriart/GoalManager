@@ -36,6 +36,7 @@ import { apiClient, getGasUrl, setGasUrl as setGasUrlStore } from '../services/a
 import { getSupabaseUrl, getSupabaseAnonKey } from '../services/supabaseClient';
 import { exportToCsv } from '../utils/exportUtils';
 import { Permission, canRole, allowedTabsFor } from '../utils/permissions';
+import { applyClubTheme } from '../utils/clubTheme';
 import { getJugadorUsuario } from '../utils/playerUsername';
 import type { PlayerStatsDelta } from '../utils/playerStatsFromEvents';
 import { listClocksRemote } from '../services/matchClocks';
@@ -493,6 +494,57 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     refreshAll();
+  }, []);
+
+  // Colores del club: se aplican al cargar y en cada cambio de la identidad
+  useEffect(() => {
+    applyClubTheme(clubConfig);
+  }, [clubConfig]);
+
+  // Identidad del club "fijada" en todas las pestañas/dispositivos:
+  // refresco periódico del remoto + eventos `storage` entre pestañas del mismo navegador
+  useEffect(() => {
+    let disposed = false;
+
+    const mergeIfNewer = (remote: ClubConfig) => {
+      if (disposed) return;
+      setClubConfig(prev => {
+        if ((remote.ts || 0) <= (prev.ts || 0)) return prev;
+        const merged = { ...prev, ...remote };
+        try {
+          localStorage.setItem('cf_club_config', JSON.stringify(merged));
+        } catch {
+          // ignore
+        }
+        return merged;
+      });
+    };
+
+    const syncConfig = async () => {
+      try {
+        const remote = await clubConfigService.get();
+        if (remote) mergeIfNewer(remote);
+      } catch {
+        // best-effort: sin conexión se mantiene lo local
+      }
+    };
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== 'cf_club_config' || !e.newValue) return;
+      try {
+        mergeIfNewer(JSON.parse(e.newValue) as ClubConfig);
+      } catch {
+        // ignore
+      }
+    };
+
+    const intervalId = window.setInterval(syncConfig, 45000);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
   const updateGasUrl = useCallback((url: string) => {

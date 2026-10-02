@@ -93,17 +93,9 @@ export const initializeLocalStoreIfEmpty = (): void => {
               changed = true;
             }
 
-            if (!item.escudo) {
-              const seedMatch = initialEquipos.find(se => se.id === item.id || se.nombre === nombre);
-              if (seedMatch?.escudo) {
-                item.escudo = seedMatch.escudo;
-                changed = true;
-              }
-            }
-
             if (changed) {
               updated = true;
-              return { ...item, nombre, categoria, letra, ano, escudo: item.escudo };
+              return { ...item, nombre, categoria, letra, ano };
             }
             return item;
           });

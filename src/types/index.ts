@@ -38,6 +38,8 @@ export interface ClubConfig {
   acronimo?: string;
   lema?: string;
   temporada?: string;
+  colorPrimario?: string; // Color principal de la app (hex), derivado del escudo del club
+  colorSecundario?: string; // Color secundario/acento (hex)
   ts?: number; // Marca de última edición (sincronización entre dispositivos)
 }
 
@@ -55,6 +57,7 @@ export interface Entrenador {
   id: string;
   nombre: string;
   telefono: string;
+  equipo?: string; // Equipo al que pertenece
   temporada?: string;
 }
 

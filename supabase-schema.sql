@@ -159,6 +159,8 @@ create table if not exists club_config (
   acronimo text,
   lema text,
   temporada text,
+  "colorPrimario" text,
+  "colorSecundario" text,
   ts bigint default 0
 );
 alter table club_config enable row level security;
@@ -167,5 +169,8 @@ create policy "rw club_config" on club_config for all using (true) with check (t
 -- Nuevas columnas (ejecutar una vez en bases de datos existentes)
 alter table categorias add column if not exists anos text;
 alter table jugadores add column if not exists "fechaNacimiento" text;
+alter table entrenadores add column if not exists equipo text;
+alter table club_config add column if not exists "colorPrimario" text;
+alter table club_config add column if not exists "colorSecundario" text;
 alter table jugadores add column if not exists "pass" text;
 alter table equipos add column if not exists whatsapp text;

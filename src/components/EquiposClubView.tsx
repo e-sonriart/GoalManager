@@ -4,7 +4,6 @@ import { Equipo, Categoria, Entrenador, AnoEquipo, Jugador, PosicionJugador, Est
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import { WhatsAppIcon } from './WhatsAppIcon';
-import { SHIELD_PRESETS } from '../utils/shieldPresets';
 import { computeStandings, TeamStanding } from '../utils/standings';
 import { openStandingsPopup, openFfcvStandingsPopup } from '../utils/standingsPopup';
 import { fetchFfcvClasificacion } from '../utils/ffcvClasificacion';
@@ -143,6 +142,8 @@ export const EquiposClubView: React.FC = () => {
   // Modales generales
   const [modalType, setModalType] = useState<'equipo' | 'entrenador' | null>(null);
   const [editingItem, setEditingItem] = useState<any>(null);
+  // Respaldo al abrir la creación de equipo desde el formulario de entrenador
+  const [pendingTrainerBack, setPendingTrainerBack] = useState<{ editing: any } | null>(null);
 
   // Estados para plantillas de equipo
   const [selectedEquipoForSquad, setSelectedEquipoForSquad] = useState<Equipo | null>(null);
@@ -337,6 +338,7 @@ export const EquiposClubView: React.FC = () => {
   // Estados formulario Entrenador
   const [entNombre, setEntNombre] = useState('');
   const [entTelefono, setEntTelefono] = useState('');
+  const [entEquipo, setEntEquipo] = useState('');
 
   // Comprobar si la categoría seleccionada es de F8
   const currentCategoryObj = categorias.find(c => c.nombre === eqCategoria);
@@ -389,12 +391,36 @@ export const EquiposClubView: React.FC = () => {
       setEditingItem(ent);
       setEntNombre(ent.nombre);
       setEntTelefono(ent.telefono);
+      setEntEquipo(ent.equipo || '');
     } else {
       setEditingItem(null);
       setEntNombre('');
       setEntTelefono('');
+      setEntEquipo(equipos[0]?.nombre || '');
     }
     setModalType('entrenador');
+  };
+
+  // "Crear equipo" desde el formulario de entrenador: abre el modal de equipo y
+  // al guardar (o cancelar) se vuelve al formulario de entrenador
+  const openTeamCreateForTrainer = () => {
+    setPendingTrainerBack({ editing: editingItem });
+    openEquipoModal();
+  };
+
+  const returnFromTeamModal = () => {
+    const back = pendingTrainerBack;
+    setPendingTrainerBack(null);
+    setEditingItem(back?.editing ?? null);
+    setModalType(back ? 'entrenador' : null);
+  };
+
+  const closeEquipoModal = () => {
+    if (pendingTrainerBack) {
+      returnFromTeamModal();
+      return;
+    }
+    setModalType(null);
   };
 
   const handleSaveEquipo = async (e: React.FormEvent) => {
@@ -416,6 +442,12 @@ export const EquiposClubView: React.FC = () => {
       linkClasificacion: eqLinkClasificacion.trim() || undefined,
       whatsapp: eqWhatsapp.trim() || (editingItem?.whatsapp ? '' : undefined)
     });
+    if (pendingTrainerBack) {
+      const nombreNuevo = finalNombre;
+      returnFromTeamModal();
+      setEntEquipo(nombreNuevo);
+      return;
+    }
     setModalType(null);
   };
 
@@ -425,7 +457,8 @@ export const EquiposClubView: React.FC = () => {
     await saveEntrenador({
       id: editingItem?.id,
       nombre: entNombre.trim(),
-      telefono: entTelefono.trim()
+      telefono: entTelefono.trim(),
+      equipo: entEquipo.trim() || undefined
     });
     setModalType(null);
   };
@@ -911,7 +944,7 @@ export const EquiposClubView: React.FC = () => {
       {/* Modal Equipo */}
       <Modal
         isOpen={modalType === 'equipo'}
-        onClose={() => setModalType(null)}
+        onClose={closeEquipoModal}
         title={editingItem ? 'Editar Equipo' : 'Nuevo Equipo'}
         subtitle="Selecciona categoría y letra asignada al equipo del club"
         maxWidth="max-w-lg"
@@ -1228,6 +1261,33 @@ export const EquiposClubView: React.FC = () => {
             />
           </div>
 
+          <div>
+            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+              Equipo al que pertenece *
+            </label>
+            <select
+              required
+              value={entEquipo}
+              onChange={e => setEntEquipo(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-orange-500 focus:outline-none"
+            >
+              <option value="">Selecciona un equipo…</option>
+              {equipos.map(eq => (
+                <option key={eq.id} value={eq.nombre}>
+                  {eq.nombre} ({eq.categoria})
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={openTeamCreateForTrainer}
+              className="mt-2 w-full px-3 py-2 bg-white hover:bg-orange-50 text-orange-700 border border-dashed border-orange-300 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {equipos.length === 0 ? 'Crear el primer equipo' : 'Crear equipo nuevo'}
+            </button>
+          </div>
+
           <div className="flex justify-end gap-2 pt-4 border-t border-gray-150">
             <button
               type="button"
@@ -1504,16 +1564,16 @@ export const EquiposClubView: React.FC = () => {
 
 
             <div className="flex justify-end gap-2 pt-4 border-t border-gray-150">
-              <button
-                type="button"
-                onClick={() => setIsPlayerModalOpen(false)}
-                className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-xs font-semibold hover:bg-gray-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-colors shadow-md shadow-orange-500/20"
+            <button
+              type="button"
+              onClick={closeEquipoModal}
+              className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-xs font-semibold hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-colors shadow-md shadow-orange-500/20"
               >
                 Guardar Jugador
               </button>

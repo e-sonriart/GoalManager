@@ -29,6 +29,28 @@ const POS_DISK: Record<string, string> = {
   Delantero: 'bg-rose-500 text-white border-rose-300'
 };
 
+/** Iconos de posición para el mensaje de WhatsApp. */
+const ICONO_POS: Record<string, string> = {
+  Portero: '🧤',
+  Defensa: '🛡️',
+  Centrocampista: '⚙️',
+  Delantero: '⚽'
+};
+
+const ORDEN_POS = ['Portero', 'Defensa', 'Centrocampista', 'Delantero'];
+
+const KEYCAPS = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
+
+/** Dorsal como icono numérico: 21 → 2️⃣1️⃣ (sin dorsal → ⚪). */
+const dorsalIcono = (dorsal?: number | string): string => {
+  const s = String(dorsal ?? '').trim();
+  if (!s) return '⚪';
+  return s
+    .split('')
+    .map(ch => (ch >= '0' && ch <= '9' ? KEYCAPS[Number(ch)] : ch))
+    .join('');
+};
+
 /** Un partido sigue siendo convocable si su fecha es hoy o posterior (los pasados se ocultan). */
 const isUpcomingPartido = (p: Partido): boolean => {
   const raw = (p.fecha || '').trim();
@@ -288,20 +310,51 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
         ? f.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
         : '';
     const horaTxt = selectedPartido.hora || horaDeFecha;
+
+    // Liga/Torneo: con jornada; Amistoso: sin jornada
+    const esAmistoso = selectedPartido.tipo === 'Amistoso';
+    const competicion = [
+      selectedPartido.categoria,
+      selectedPartido.tipo,
+      !esAmistoso && selectedPartido.jornada ? `Jornada ${selectedPartido.jornada}` : ''
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    // Listado de convocados: por posición (portero → delantero) y dorsal ascendente
+    const convocados = eligibleJugadores
+      .filter(j => localConvocados.has(j.id))
+      .sort((a, b) => {
+        const pa = ORDEN_POS.indexOf(a.posicion);
+        const pb = ORDEN_POS.indexOf(b.posicion);
+        const oa = pa === -1 ? 99 : pa;
+        const ob = pb === -1 ? 99 : pb;
+        if (oa !== ob) return oa - ob;
+        const da = Number(a.dorsal) || 999;
+        const db = Number(b.dorsal) || 999;
+        if (da !== db) return da - db;
+        return a.nombre.localeCompare(b.nombre, 'es');
+      })
+      .map(j => `${ICONO_POS[j.posicion] || '👤'} ${dorsalIcono(j.dorsal)} · ${j.nombre}`);
+
     const appUrl = `${window.location.origin}/?tab=convocatorias&partido=${selectedPartido.id}`;
 
     const lineas = [
       '⚽ *CONVOCATORIA OFICIAL*',
-      `🏟️ ${selectedPartido.local} vs ${selectedPartido.visitante}`,
-      `🏆 Categoría: ${selectedPartido.categoria}${
-        selectedPartido.jornada ? ` · Jornada ${selectedPartido.jornada}` : ''
-      }`,
-      `📅 Día: ${diaTxt}`,
-      ...(horaTxt ? [`🕓 Horario: ${horaTxt}`] : []),
-      ...(selectedPartido.horaConvocatoria ? [`🕐 Convocados: ${selectedPartido.horaConvocatoria}`] : []),
-      ...(selectedPartido.campo ? [`📍 Lugar: ${selectedPartido.campo}`] : []),
+      `🏟️ *${selectedPartido.local} vs ${selectedPartido.visitante}*`,
       '',
-      '👇 Entra a la app para ver la convocatoria y confirmar tu asistencia:',
+      `📅 *Día:* ${diaTxt}`,
+      ...(horaTxt ? [`🕓 *Hora:* ${horaTxt}`] : []),
+      `${esAmistoso ? '🤝' : '🏆'} *${competicion || 'Partido'}*`,
+      ...(selectedPartido.campo ? [`📍 *Lugar:* ${selectedPartido.campo}`] : []),
+      ...(selectedPartido.horaConvocatoria
+        ? [`🕐 *Reunión:* ${selectedPartido.horaConvocatoria}`]
+        : []),
+      '',
+      `👥 *Convocados (${convocados.length})*`,
+      ...(convocados.length > 0 ? convocados : ['— Aún no hay jugadores seleccionados —']),
+      '',
+      '✅ Confirma tu asistencia en la app:',
       appUrl
     ];
 
@@ -667,7 +720,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
         {canManage && (
           <button
             onClick={handleSendWhatsApp}
-            title="Abre WhatsApp con el mensaje de la convocatoria ya escrito (día, horario, lugar y enlace a la app)"
+            title="Abre WhatsApp con la lista de convocados: día, hora, partido, jornada/amistoso y jugadores con su dorsal"
             className="w-full py-3.5 bg-[#25D366] hover:bg-[#1EBE5A] text-white rounded-xl text-sm font-black tracking-wide transition-all shadow-lg shadow-[#25D366]/30 active:scale-[0.99] flex items-center justify-center gap-2"
           >
             <WhatsAppIcon className="w-5 h-5" />

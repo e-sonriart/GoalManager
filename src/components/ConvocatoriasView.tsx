@@ -10,8 +10,6 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Check,
-  Share2,
   ArrowLeft,
   Users,
   ListChecks,
@@ -67,7 +65,6 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
   const [selectedPartidoId, setSelectedPartidoId] = useState<string>(
     initialPartidoId || partidos[0]?.id || ''
   );
-  const [copied, setCopied] = useState(false);
   // Lista corta: primero solo mi equipo; los refuerzos se muestran tras pulsar "Convocar más"
   const [showRefuerzos, setShowRefuerzos] = useState(false);
 
@@ -273,44 +270,6 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     }
   };
 
-  const handleShareSquad = async () => {
-    if (!selectedPartido) return;
-    const pool = allJugadores.length > 0 ? allJugadores : jugadores;
-    const teamLc = (clubTeamName || selectedPartido.equipo || '').toLowerCase();
-    const convocadosList = pool
-      .filter(j => localConvocados.has(j.id))
-      .sort((a, b) => {
-        const ra = teamLc && (a.equipo || '').toLowerCase() === teamLc ? 0 : 1;
-        const rb = teamLc && (b.equipo || '').toLowerCase() === teamLc ? 0 : 1;
-        if (ra !== rb) return ra - rb;
-        const eq = (a.equipo || '').localeCompare(b.equipo || '', 'es');
-        if (eq !== 0) return eq;
-        return a.nombre.localeCompare(b.nombre, 'es');
-      })
-      .map(j => `• #${j.dorsal || '-'} ${j.nombre} (${j.posicion})`)
-      .join('\n');
-
-    const text = `📋 CONVOCATORIA OFICIAL\n⚽ ${selectedPartido.local} vs ${selectedPartido.visitante}\n🏆 Categoría: ${selectedPartido.categoria}\n📅 Fecha: ${new Date(selectedPartido.fecha).toLocaleDateString('es-ES')}\n\nJUGADORES CONVOCADOS (${totalConvocados}):\n${convocadosList || 'Ninguno aún'}\n\n¡A por los 3 puntos! ⚽🔥`;
-
-    if (typeof navigator !== 'undefined' && navigator.share) {
-      try {
-        await navigator.share({
-          title: `Convocatoria: ${selectedPartido.local} vs ${selectedPartido.visitante}`,
-          text
-        });
-        return;
-      } catch (err) {
-        // Cancelado o fallback a portapapeles
-      }
-    }
-
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      await navigator.clipboard.writeText(text);
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 3000);
-  };
-
   // Mensaje autogenerado de la convocatoria para enviarlo por WhatsApp
   const handleSendWhatsApp = () => {
     if (!selectedPartido) return;
@@ -469,13 +428,6 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
           >
             <Ban className="w-4 h-4" />
             {suspendidoSelected ? 'Suspendido ✓' : 'Partido Suspendido'}
-          </button>
-          <button
-            onClick={handleShareSquad}
-            className="px-4 py-2 bg-gray-900 hover:bg-black text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
-          >
-            {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4 text-orange-400" />}
-            {copied ? '¡Copiado!' : 'Compartir Lista (WhatsApp)'}
           </button>
         </div>
       </div>

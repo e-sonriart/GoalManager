@@ -136,13 +136,6 @@ export const LoginScreen: React.FC = () => {
           </form>
 
         </div>
-
-        {/* Credenciales de demostración */}
-        <p className="text-center text-[10px] text-gray-600 mt-4 leading-relaxed">
-          Demo: admin@clubfutbol.com · contraseña 123456
-          <br />
-          Jugadores: usuario = nombre.dorsal (ej: sergio.21) · contraseña 123456
-        </p>
       </div>
 
       {/* Resultados en directo (accesible para todos, sin credenciales) */}

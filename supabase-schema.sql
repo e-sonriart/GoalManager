@@ -29,7 +29,8 @@ create table if not exists equipos (
   escudo text,
   division text,
   grupo text,
-  "linkClasificacion" text
+  "linkClasificacion" text,
+  whatsapp text
 );
 
 create table if not exists jugadores (
@@ -167,3 +168,4 @@ create policy "rw club_config" on club_config for all using (true) with check (t
 alter table categorias add column if not exists anos text;
 alter table jugadores add column if not exists "fechaNacimiento" text;
 alter table jugadores add column if not exists "pass" text;
+alter table equipos add column if not exists whatsapp text;

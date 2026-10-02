@@ -29,6 +29,7 @@ export interface Equipo {
   division?: string; // Ej: "2ª División"
   grupo?: string; // Ej: "Grupo 3"
   linkClasificacion?: string; // URL a la clasificación oficial de la liga
+  whatsapp?: string; // URL de invitación al grupo de WhatsApp del equipo
 }
 
 export interface ClubConfig {

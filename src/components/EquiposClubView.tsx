@@ -3,6 +3,7 @@ import { useClub } from '../context/ClubContext';
 import { Equipo, Categoria, Entrenador, AnoEquipo, Jugador, PosicionJugador, Estadistica, HistorialEstadisticaTemporada } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
+import { WhatsAppIcon } from './WhatsAppIcon';
 import { SHIELD_PRESETS } from '../utils/shieldPresets';
 import { computeStandings, TeamStanding } from '../utils/standings';
 import { openStandingsPopup, openFfcvStandingsPopup } from '../utils/standingsPopup';
@@ -327,6 +328,7 @@ export const EquiposClubView: React.FC = () => {
   const [eqDivision, setEqDivision] = useState('');
   const [eqGrupo, setEqGrupo] = useState('');
   const [eqLinkClasificacion, setEqLinkClasificacion] = useState('');
+  const [eqWhatsapp, setEqWhatsapp] = useState('');
   const [isFetchingClasif, setIsFetchingClasif] = useState(false);
 
   // Estados formulario Entrenador
@@ -361,6 +363,7 @@ export const EquiposClubView: React.FC = () => {
       setEqDivision(equipo.division || '');
       setEqGrupo(equipo.grupo || '');
       setEqLinkClasificacion(equipo.linkClasificacion || '');
+      setEqWhatsapp(equipo.whatsapp || '');
     } else {
       setEditingItem(null);
       const defaultCat = categorias[0]?.nombre || 'Senior';
@@ -372,6 +375,7 @@ export const EquiposClubView: React.FC = () => {
       setEqDivision('');
       setEqGrupo('');
       setEqLinkClasificacion('');
+      setEqWhatsapp('');
     }
     setModalType('equipo');
   };
@@ -406,7 +410,8 @@ export const EquiposClubView: React.FC = () => {
       escudo: eqEscudo.trim() || undefined,
       division: eqDivision.trim() || undefined,
       grupo: eqGrupo.trim() || undefined,
-      linkClasificacion: eqLinkClasificacion.trim() || undefined
+      linkClasificacion: eqLinkClasificacion.trim() || undefined,
+      whatsapp: eqWhatsapp.trim() || (editingItem?.whatsapp ? '' : undefined)
     });
     setModalType(null);
   };
@@ -772,6 +777,25 @@ export const EquiposClubView: React.FC = () => {
                             </div>
 
                             <div className="flex items-center gap-1 shrink-0">
+                              {eq.whatsapp ? (
+                                <a
+                                  href={eq.whatsapp}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="Abrir grupo de WhatsApp"
+                                  className="w-8 h-8 flex items-center justify-center text-[#25D366] hover:text-white hover:bg-[#25D366] rounded-lg transition-colors"
+                                >
+                                  <WhatsAppIcon className="w-4 h-4" />
+                                </a>
+                              ) : (
+                                <button
+                                  onClick={() => openEquipoModal(eq)}
+                                  title="Añadir grupo de WhatsApp"
+                                  className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-[#25D366] hover:bg-emerald-50 rounded-lg transition-colors"
+                                >
+                                  <WhatsAppIcon className="w-4 h-4" />
+                                </button>
+                              )}
                               <button
                                 onClick={() => openEquipoModal(eq)}
                                 title="Editar equipo y escudo"
@@ -1124,6 +1148,25 @@ export const EquiposClubView: React.FC = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
               />
             </div>
+          </div>
+
+          {/* Grupo de WhatsApp del equipo */}
+          <div className="bg-emerald-50/70 p-3 rounded-2xl border border-emerald-200/80 space-y-2">
+            <div className="text-[10px] uppercase font-bold tracking-wider text-emerald-800 flex items-center gap-1.5">
+              <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+              Grupo de WhatsApp (opcional)
+            </div>
+            <input
+              type="url"
+              placeholder="https://chat.whatsapp.com/..."
+              value={eqWhatsapp}
+              onChange={e => setEqWhatsapp(e.target.value)}
+              className="w-full px-3 py-2 border border-emerald-200 bg-white rounded-xl text-sm focus:ring-2 focus:ring-[#25D366] focus:outline-none"
+            />
+            <p className="text-[11px] text-emerald-700">
+              Link de invitación al grupo del equipo: se guarda en la ficha y en la tabla de equipos para
+              abrirlo con un toque.
+            </p>
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-gray-150">

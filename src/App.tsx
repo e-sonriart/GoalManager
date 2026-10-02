@@ -62,7 +62,10 @@ const MainContent: React.FC = () => {
     const t = new URLSearchParams(window.location.search).get('tab') as ActiveTab | null;
     return t && TABS.includes(t) ? t : 'dashboard';
   });
-  const [selectedPartidoForConvocatoria, setSelectedPartidoForConvocatoria] = useState<string | undefined>(undefined);
+  const [selectedPartidoForConvocatoria, setSelectedPartidoForConvocatoria] = useState<string | undefined>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('tab') === 'convocatorias' ? params.get('partido') || undefined : undefined;
+  });
   const [selectedPartidoForAlineacion, setSelectedPartidoForAlineacion] = useState<string | undefined>(undefined);
   const [selectedPartidoForEventos, setSelectedPartidoForEventos] = useState<string | undefined>(
     () => new URLSearchParams(window.location.search).get('partido') || undefined

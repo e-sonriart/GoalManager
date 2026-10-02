@@ -4,6 +4,7 @@ import { User, RolUsuario, Categoria, Equipo, Entrenador, Jugador, Partido, Tipo
 import { Modal } from './Modal';
 import { SHIELD_PRESETS, DEFAULT_CLUB_SHIELD } from '../utils/shieldPresets';
 import { TeamShield } from './TeamShield';
+import { WhatsAppIcon } from './WhatsAppIcon';
 import { RolePermissionsMatrix } from './RolePermissionsMatrix';
 import { ROLE_ORDER, getRoleInfo, roleRequiresTeam, SCOPE_LABELS } from '../utils/roles';
 import { validateUserForm } from '../utils/validation';
@@ -1181,6 +1182,7 @@ export const AdminPanel: React.FC = () => {
                       <th className="py-3 px-4">División / Grupo</th>
                       <th className="py-3 px-4">Entrenador</th>
                       <th className="py-3 px-4">Plantilla</th>
+                      <th className="py-3 px-4">Grupo WhatsApp</th>
                       <th className="py-3 px-4 text-right">Acciones</th>
                     </tr>
                   </thead>
@@ -1223,6 +1225,22 @@ export const AdminPanel: React.FC = () => {
                             </td>
                             <td className="py-2.5 px-4 text-gray-700">{eq.entrenador}</td>
                             <td className="py-2.5 px-4 font-athletic font-bold text-gray-800">{numJug} Jugadores</td>
+                            <td className="py-2.5 px-4">
+                              {eq.whatsapp ? (
+                                <a
+                                  href={eq.whatsapp}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="Abrir grupo de WhatsApp"
+                                  className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50 hover:bg-[#25D366] hover:text-white text-[#128C7E] border border-emerald-200 rounded-lg text-[11px] font-bold transition-colors"
+                                >
+                                  <WhatsAppIcon className="w-3.5 h-3.5" />
+                                  Grupo
+                                </a>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
                             <td className="py-2.5 px-4 text-right">
                               <div className="flex items-center justify-end gap-1">
                                 <button

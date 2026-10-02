@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useClub } from '../context/ClubContext';
+import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
+import { WhatsAppIcon } from './WhatsAppIcon';
 import { resolveVisitorShield } from '../utils/shieldPresets';
 import { Jugador, Partido } from '../types';
 import {
@@ -307,6 +309,44 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 3000);
+  };
+
+  // Mensaje autogenerado de la convocatoria para enviarlo por WhatsApp
+  const handleSendWhatsApp = () => {
+    if (!selectedPartido) return;
+    const f = new Date(selectedPartido.fecha);
+    const valid = !Number.isNaN(f.getTime());
+    const diaTxt = valid
+      ? f.toLocaleDateString('es-ES', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric'
+        })
+      : selectedPartido.fecha;
+    const horaDeFecha =
+      valid && (f.getHours() !== 0 || f.getMinutes() !== 0)
+        ? f.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+        : '';
+    const horaTxt = selectedPartido.hora || horaDeFecha;
+    const appUrl = `${window.location.origin}/?tab=convocatorias&partido=${selectedPartido.id}`;
+
+    const lineas = [
+      '⚽ *CONVOCATORIA OFICIAL*',
+      `🏟️ ${selectedPartido.local} vs ${selectedPartido.visitante}`,
+      `🏆 Categoría: ${selectedPartido.categoria}${
+        selectedPartido.jornada ? ` · Jornada ${selectedPartido.jornada}` : ''
+      }`,
+      `📅 Día: ${diaTxt}`,
+      ...(horaTxt ? [`🕓 Horario: ${horaTxt}`] : []),
+      ...(selectedPartido.horaConvocatoria ? [`🕐 Recogida: ${selectedPartido.horaConvocatoria}`] : []),
+      ...(selectedPartido.campo ? [`📍 Lugar: ${selectedPartido.campo}`] : []),
+      '',
+      '👇 Entra a la app para ver la convocatoria y confirmar tu asistencia:',
+      appUrl
+    ];
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(lineas.join('\n'))}`, '_blank', 'noopener,noreferrer');
   };
 
   const renderRow = (jugador: Jugador) => {
@@ -652,23 +692,33 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
         </div>
       </div>
 
-      {/* Acciones inferiores: Convocar (aceptar) y Atrás (cancelar) */}
-      <div className="flex gap-3 pb-4">
+      {/* Acciones inferiores: Convocar (aceptar), Atrás y envío por WhatsApp */}
+      <div className="space-y-3 pb-4">
+        <div className="flex gap-3">
+          <button
+            onClick={handleCancel}
+            className="flex-1 py-3 bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
+          >
+            <ArrowLeft className="w-4 h-4 text-gray-500" />
+            Atrás
+          </button>
+          <button
+            onClick={handleAccept}
+            disabled={!canManage}
+            title={canManage ? 'Guardar convocatoria y volver a la tarjeta' : 'Solo lectura: no tienes permisos para convocar'}
+            className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <ListChecks className="w-4 h-4" />
+            Convocar
+          </button>
+        </div>
         <button
-          onClick={handleCancel}
-          className="flex-1 py-3 bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-sm"
+          onClick={handleSendWhatsApp}
+          title="Abre WhatsApp con el mensaje de la convocatoria ya escrito (día, horario, lugar y enlace a la app)"
+          className="w-full py-3.5 bg-[#25D366] hover:bg-[#1EBE5A] text-white rounded-xl text-sm font-black tracking-wide transition-all shadow-lg shadow-[#25D366]/30 active:scale-[0.99] flex items-center justify-center gap-2"
         >
-          <ArrowLeft className="w-4 h-4 text-gray-500" />
-          Atrás
-        </button>
-        <button
-          onClick={handleAccept}
-          disabled={!canManage}
-          title={canManage ? 'Guardar convocatoria y volver a la tarjeta' : 'Solo lectura: no tienes permisos para convocar'}
-          className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <ListChecks className="w-4 h-4" />
-          Convocar
+          <WhatsAppIcon className="w-5 h-5" />
+          Enviar convocatoria por WhatsApp
         </button>
       </div>
     </div>

@@ -339,7 +339,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
       }`,
       `📅 Día: ${diaTxt}`,
       ...(horaTxt ? [`🕓 Horario: ${horaTxt}`] : []),
-      ...(selectedPartido.horaConvocatoria ? [`🕐 Recogida: ${selectedPartido.horaConvocatoria}`] : []),
+      ...(selectedPartido.horaConvocatoria ? [`🕐 Convocados: ${selectedPartido.horaConvocatoria}`] : []),
       ...(selectedPartido.campo ? [`📍 Lugar: ${selectedPartido.campo}`] : []),
       '',
       '👇 Entra a la app para ver la convocatoria y confirmar tu asistencia:',

@@ -250,14 +250,15 @@ const MainContent: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4 text-xs">
-            <button
-              onClick={() => setIsConfigModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-300 transition-colors border border-gray-800"
-            >
-              <Radio className={`w-3.5 h-3.5 ${isOnlineConfigured ? 'text-emerald-400' : 'text-orange-400'}`} />
-              <span>{isOnlineConfigured ? 'Supabase Conectado' : 'Configurar Supabase'}</span>
-            </button>
-
+            {currentUser?.rol === 'admin' && (
+              <button
+                onClick={() => setIsConfigModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-300 transition-colors border border-gray-800"
+              >
+                <Radio className={`w-3.5 h-3.5 ${isOnlineConfigured ? 'text-emerald-400' : 'text-orange-400'}`} />
+                <span>{isOnlineConfigured ? 'Supabase Conectado' : 'Configurar Supabase'}</span>
+              </button>
+            )}
             <button
               onClick={() => refreshAll()}
               disabled={loading}

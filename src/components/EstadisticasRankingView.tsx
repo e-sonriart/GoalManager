@@ -73,9 +73,11 @@ const sortDetails = (map: Map<string, MatchDetail[]>): void => {
 };
 
 export const EstadisticasRankingView: React.FC = () => {
-  const { jugadores, estadisticas, partidos, equipos, saveEstadistica, recalcularEstadisticas, exportSheet, getTeamEscudo, can } = useClub();
+  const { jugadores, estadisticas, partidos, equipos, saveEstadistica, recalcularEstadisticas, exportSheet, getTeamEscudo, can, currentUser } = useClub();
 
   const canManage = can('manage:estadisticas');
+  // Exportar a CSV: excluido para jugadores y entrenadores
+  const puedeExportar = currentUser?.rol !== 'jugador' && currentUser?.rol !== 'entrenador';
 
   const [activeTab, setActiveTab] = useState<'pichichi' | 'asistencias' | 'general'>('pichichi');
   const [editingStat, setEditingStat] = useState<Estadistica | null>(null);
@@ -401,13 +403,15 @@ export const EstadisticasRankingView: React.FC = () => {
               Recalcular estadísticas
             </button>
           )}
-          <button
-            onClick={() => exportSheet('estadisticas')}
-            className="px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
-          >
-            <Download className="w-3.5 h-3.5 text-gray-500" />
-            Exportar Estadísticas
-          </button>
+          {puedeExportar && (
+            <button
+              onClick={() => exportSheet('estadisticas')}
+              className="px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+            >
+              <Download className="w-3.5 h-3.5 text-gray-500" />
+              Exportar Estadísticas
+            </button>
+          )}
         </div>
       </div>
 

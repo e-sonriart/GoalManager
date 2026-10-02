@@ -56,6 +56,8 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
   } = useClub();
 
   const canManage = can('manage:partidos');
+  // Exportar a CSV: excluido para jugadores y entrenadores
+  const puedeExportar = currentUser?.rol !== 'jugador' && currentUser?.rol !== 'entrenador';
   const canGoConvocatoria = allowedTabs.includes('convocatorias');
 
   /** Relojes remotos: goles/tarjetas de partidos jugados en otro dispositivo */
@@ -504,13 +506,15 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => exportSheet('partidos')}
-            className="px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
-          >
-            <Download className="w-3.5 h-3.5 text-gray-500" />
-            Exportar Partidos
-          </button>
+          {puedeExportar && (
+            <button
+              onClick={() => exportSheet('partidos')}
+              className="px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+            >
+              <Download className="w-3.5 h-3.5 text-gray-500" />
+              Exportar Partidos
+            </button>
+          )}
           {canManage && (
             <button
               id="btn-add-partido"

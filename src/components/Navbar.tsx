@@ -124,28 +124,30 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden xl:inline text-xs font-semibold">Sincronizar</span>
           </button>
 
-          {/* Indicador de Estado Conexión Sheets (en móvil vive en el panel "Más") */}
-          <button
-            onClick={onOpenGoogleConfig}
-            title={isOnlineConfigured ? 'Conectado a Supabase' : 'Modo Local / Configurar Supabase'}
-            className={`hidden sm:flex h-10 px-2.5 sm:px-3 rounded-xl text-xs font-semibold border transition-all items-center gap-2 active:scale-95 ${
-              isOnlineConfigured
-                ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/50'
-                : 'bg-orange-950/30 border-orange-700/60 text-orange-300 hover:bg-orange-900/40'
-            }`}
-          >
-            <div className="relative flex items-center justify-center">
-              <Radio className="w-4 h-4 shrink-0" />
-              <span
-                className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${
-                  isOnlineConfigured ? 'bg-emerald-400 animate-pulse' : 'bg-orange-500'
-                }`}
-              />
-            </div>
-            <span className="hidden sm:inline text-xs">
-              {isOnlineConfigured ? 'Supabase Online' : 'Modo Local'}
-            </span>
-          </button>
+          {/* Indicador de Estado Conexión Sheets (en móvil vive en el panel "Más") — solo admin */}
+          {currentUser?.rol === 'admin' && (
+            <button
+              onClick={onOpenGoogleConfig}
+              title={isOnlineConfigured ? 'Conectado a Supabase' : 'Modo Local / Configurar Supabase'}
+              className={`hidden sm:flex h-10 px-2.5 sm:px-3 rounded-xl text-xs font-semibold border transition-all items-center gap-2 active:scale-95 ${
+                isOnlineConfigured
+                  ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/50'
+                  : 'bg-orange-950/30 border-orange-700/60 text-orange-300 hover:bg-orange-900/40'
+              }`}
+            >
+              <div className="relative flex items-center justify-center">
+                <Radio className="w-4 h-4 shrink-0" />
+                <span
+                  className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ${
+                    isOnlineConfigured ? 'bg-emerald-400 animate-pulse' : 'bg-orange-500'
+                  }`}
+                />
+              </div>
+              <span className="hidden sm:inline text-xs">
+                {isOnlineConfigured ? 'Supabase Online' : 'Modo Local'}
+              </span>
+            </button>
+          )}
 
           {/* Avisos push (Web Push): convocatorias, cambios, resultados y recordatorios */}
           <PushBellButton />

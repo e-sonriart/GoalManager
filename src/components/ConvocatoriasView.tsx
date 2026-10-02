@@ -664,14 +664,16 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
             Convocar
           </button>
         </div>
-        <button
-          onClick={handleSendWhatsApp}
-          title="Abre WhatsApp con el mensaje de la convocatoria ya escrito (día, horario, lugar y enlace a la app)"
-          className="w-full py-3.5 bg-[#25D366] hover:bg-[#1EBE5A] text-white rounded-xl text-sm font-black tracking-wide transition-all shadow-lg shadow-[#25D366]/30 active:scale-[0.99] flex items-center justify-center gap-2"
-        >
-          <WhatsAppIcon className="w-5 h-5" />
-          Enviar convocatoria por WhatsApp
-        </button>
+        {canManage && (
+          <button
+            onClick={handleSendWhatsApp}
+            title="Abre WhatsApp con el mensaje de la convocatoria ya escrito (día, horario, lugar y enlace a la app)"
+            className="w-full py-3.5 bg-[#25D366] hover:bg-[#1EBE5A] text-white rounded-xl text-sm font-black tracking-wide transition-all shadow-lg shadow-[#25D366]/30 active:scale-[0.99] flex items-center justify-center gap-2"
+          >
+            <WhatsAppIcon className="w-5 h-5" />
+            Enviar convocatoria por WhatsApp
+          </button>
+        )}
       </div>
     </div>
   );

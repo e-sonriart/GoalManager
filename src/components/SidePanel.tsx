@@ -257,20 +257,22 @@ export const SidePanel: React.FC<SidePanelProps> = ({
               <RefreshCw className={`w-5 h-5 shrink-0 ${loading ? 'animate-spin text-orange-400' : ''}`} />
             </button>
 
-            <button
-              onClick={() => {
-                onOpenGoogleConfig();
-                if (!vistaPC) onClose();
-              }}
-              title={isOnlineConfigured ? 'Supabase Online' : 'Modo Local'}
-              className={`px-2.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-colors ${
-                isOnlineConfigured
-                  ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/50'
-                  : 'bg-orange-950/30 border-orange-700/60 text-orange-300 hover:bg-orange-900/40'
-              }`}
-            >
-              <Radio className="w-5 h-5 shrink-0" />
-            </button>
+            {currentUser?.rol === 'admin' && (
+              <button
+                onClick={() => {
+                  onOpenGoogleConfig();
+                  if (!vistaPC) onClose();
+                }}
+                title={isOnlineConfigured ? 'Supabase Online' : 'Modo Local'}
+                className={`px-2.5 py-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 transition-colors ${
+                  isOnlineConfigured
+                    ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/50'
+                    : 'bg-orange-950/30 border-orange-700/60 text-orange-300 hover:bg-orange-900/40'
+                }`}
+              >
+                <Radio className="w-5 h-5 shrink-0" />
+              </button>
+            )}
           </div>
 
           <PWAInstallButton />

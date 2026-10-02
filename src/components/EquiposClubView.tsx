@@ -131,6 +131,9 @@ export const EquiposClubView: React.FC = () => {
     currentUser
   } = useClub();
 
+  // Exportar a CSV y crear equipos: excluido para jugadores y entrenadores
+  const puedeGestionarEquipos = currentUser?.rol !== 'jugador' && currentUser?.rol !== 'entrenador';
+
   const [activeSubTab, setActiveSubTab] = useState<'equipos' | 'entrenadores'>('equipos');
 
   // Navegación Equipos: modalidad (F8/F11) → categoría → equipos
@@ -490,14 +493,16 @@ export const EquiposClubView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => exportSheet(activeSubTab)}
-            className="px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
-          >
-            <Download className="w-3.5 h-3.5 text-gray-500" />
-            Exportar {activeSubTab}
-          </button>
-          {activeSubTab === 'equipos' && (
+          {puedeGestionarEquipos && (
+            <button
+              onClick={() => exportSheet(activeSubTab)}
+              className="px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+            >
+              <Download className="w-3.5 h-3.5 text-gray-500" />
+              Exportar {activeSubTab}
+            </button>
+          )}
+          {activeSubTab === 'equipos' && puedeGestionarEquipos && (
             <button
               onClick={() => openEquipoModal()}
               className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-orange-500/20 flex items-center gap-1.5"

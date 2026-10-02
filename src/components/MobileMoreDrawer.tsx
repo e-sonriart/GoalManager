@@ -262,21 +262,23 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
             </div>
           </button>
 
-          <button
-            onClick={() => {
-              onClose();
-              onOpenGoogleConfig();
-            }}
-            className="p-3 bg-gray-900 hover:bg-gray-800 rounded-xl border border-gray-800 text-left flex items-center gap-2.5 transition-all"
-          >
-            <Database className="w-4 h-4 text-emerald-400" />
-            <div>
-              <p className="text-xs font-bold text-gray-200">Supabase</p>
-              <p className="text-[10px] text-emerald-400 font-medium">
-                {isOnlineConfigured ? 'Conectado' : 'Configurar'}
-              </p>
-            </div>
-          </button>
+          {currentUser?.rol === 'admin' && (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenGoogleConfig();
+              }}
+              className="p-3 bg-gray-900 hover:bg-gray-800 rounded-xl border border-gray-800 text-left flex items-center gap-2.5 transition-all"
+            >
+              <Database className="w-4 h-4 text-emerald-400" />
+              <div>
+                <p className="text-xs font-bold text-gray-200">Supabase</p>
+                <p className="text-[10px] text-emerald-400 font-medium">
+                  {isOnlineConfigured ? 'Conectado' : 'Configurar'}
+                </p>
+              </div>
+            </button>
+          )}
         </div>
       </div>
     </div>

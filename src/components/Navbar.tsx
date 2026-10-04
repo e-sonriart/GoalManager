@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
 import { PushBellButton } from './PushBellButton';
+import { MiCuentaModal } from './MiCuentaModal';
 import { AppTab } from '../types';
 import {
   BarChart3,
@@ -42,6 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   offsetForSidePanel = false
 }) => {
   const { currentUser, isOnlineConfigured, refreshAll, loading, clubConfig, allowedTabs, logout } = useClub();
+  const [isMiCuentaOpen, setIsMiCuentaOpen] = useState(false);
   const handleOpenPanel = onOpenSidePanel || onOpenMoreMobile;
 
   const allNavItems: { id: ActiveTab; label: string; icon: React.FC<{ className?: string }> }[] = [
@@ -152,11 +154,14 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Avisos push (Web Push): convocatorias, cambios, resultados y recordatorios */}
           <PushBellButton />
 
-          {/* User Profile Chip (solo visual: la creación de usuarios es exclusiva del Admin) */}
-          <div
+          {/* User Profile Chip: al pulsarlo se puede cambiar la contraseña de acceso */}
+          <button
+            type="button"
             id="user-profile-button"
-            title={currentUser ? `${currentUser.nombre} (${currentUser.rol})` : ''}
-            className="h-10 pl-2 pr-2.5 sm:pr-3 bg-gray-900 rounded-full border border-gray-700/80 flex items-center gap-2.5 shadow-sm"
+            onClick={() => setIsMiCuentaOpen(true)}
+            title={currentUser ? `${currentUser.nombre} (${currentUser.rol}) · Cambiar contraseña` : 'Mi cuenta'}
+            aria-label="Mi cuenta: cambiar contraseña"
+            className="h-10 pl-2 pr-2.5 sm:pr-3 bg-gray-900 hover:bg-gray-800 rounded-full border border-gray-700/80 flex items-center gap-2.5 shadow-sm transition-colors cursor-pointer active:scale-95"
           >
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-xs shrink-0 ${
@@ -179,7 +184,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {currentUser?.rol || 'Invitado'}
               </span>
             </div>
-          </div>
+          </button>
+
+          <MiCuentaModal isOpen={isMiCuentaOpen} onClose={() => setIsMiCuentaOpen(false)} />
 
           {/* Cerrar Sesión */}
           <button

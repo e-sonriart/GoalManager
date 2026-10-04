@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ActiveTab } from './Navbar';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
 import { PWAInstallButton } from './PWAInstallButton';
+import { MiCuentaModal } from './MiCuentaModal';
 import {
   BarChart3,
   Calendar,
@@ -18,7 +19,8 @@ import {
   Database,
   Dumbbell,
   Monitor,
-  LogOut
+  LogOut,
+  KeyRound
 } from 'lucide-react';
 
 interface SidePanelProps {
@@ -43,6 +45,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   onToggleVistaPC
 }) => {
   const { currentUser, isOnlineConfigured, refreshAll, loading, clubConfig, allowedTabs, logout } = useClub();
+  const [isMiCuentaOpen, setIsMiCuentaOpen] = useState(false);
 
   if (!isOpen) return null;
 
@@ -121,9 +124,15 @@ export const SidePanel: React.FC<SidePanelProps> = ({
           </button>
         </div>
 
-        {/* Perfil del Usuario Activo */}
+        {/* Perfil del Usuario Activo: pulsarlo abre "Mi cuenta" para cambiar la contraseña */}
         <div className="p-3 border-b border-gray-800/80 bg-gray-900/50 shrink-0 space-y-2">
-          <div className="p-2.5 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => setIsMiCuentaOpen(true)}
+            title="Mi cuenta: cambiar contraseña"
+            aria-label="Mi cuenta: cambiar contraseña"
+            className="w-full p-2.5 rounded-xl bg-gray-900 border border-gray-800 hover:border-orange-500/60 hover:bg-gray-800 flex items-center justify-between gap-3 transition-colors text-left group"
+          >
             <div className="flex items-center gap-2.5 min-w-0">
               <div
                 className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-xs shrink-0 ${
@@ -147,7 +156,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
                 </p>
               </div>
             </div>
-          </div>
+            <KeyRound className="w-4 h-4 text-gray-500 group-hover:text-orange-400 shrink-0" />
+          </button>
 
           <button
             onClick={() => {
@@ -159,6 +169,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
             <LogOut className="w-5 h-5" />
             Cerrar Sesión
           </button>
+
+          <MiCuentaModal isOpen={isMiCuentaOpen} onClose={() => setIsMiCuentaOpen(false)} />
         </div>
 
         {/* Lista de Navegación con Scroll vertical suave y sin desbordamiento horizontal */}

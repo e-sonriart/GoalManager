@@ -58,6 +58,8 @@ interface ClubContextType {
   users: Usuario[];
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  /** Cambia la contraseña del usuario en sesión (jugador: ficha pass; resto: tabla usuarios). */
+  cambiarPassword: (actual: string, nueva: string) => Promise<{ ok: boolean; message: string }>;
   can: (permission: Permission) => boolean;
   allowedTabs: AppTab[];
   /** true si el rol actual solo puede ver los equipos que tenga asignados. */
@@ -617,6 +619,46 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       message: 'Has salido de tu cuenta de forma segura.'
     });
   }, [addToast]);
+
+  const cambiarPassword = useCallback(
+    async (actual: string, nueva: string): Promise<{ ok: boolean; message: string }> => {
+      if (!currentUser) return { ok: false, message: 'No hay sesión iniciada.' };
+      if (nueva.length < 6) {
+        return { ok: false, message: 'La nueva contraseña debe tener al menos 6 caracteres.' };
+      }
+
+      // Jugador: su contraseña vive en la ficha del jugador (pass); vacía = 123456
+      if (currentUser.rol === 'jugador') {
+        const pj = jugadores.find(j => j.id === currentUser.id);
+        if (pj) {
+          const esperada = pj.pass && pj.pass.trim() ? pj.pass.trim() : '123456';
+          if (actual !== esperada) return { ok: false, message: 'La contraseña actual no es correcta.' };
+          try {
+            const updated = await jugadoresService.update({ ...pj, pass: nueva });
+            setJugadores(prev => prev.map(j => (j.id === updated.id ? updated : j)));
+            return { ok: true, message: 'Contraseña actualizada correctamente.' };
+          } catch {
+            return { ok: false, message: 'No se pudo guardar la contraseña. Inténtalo de nuevo.' };
+          }
+        }
+      }
+
+      // Personal del club: tabla usuarios (password)
+      const u = users.find(x => x.id === currentUser.id);
+      if (!u) return { ok: false, message: 'No se encontró tu cuenta de usuario.' };
+      const esperada = u.password || '123456';
+      if (actual !== esperada) return { ok: false, message: 'La contraseña actual no es correcta.' };
+      try {
+        const updated = await usuariosService.update({ ...u, password: nueva });
+        setUsers(prev => prev.map(x => (x.id === updated.id ? updated : x)));
+        if (currentUser.id === updated.id) setCurrentUser(updated);
+        return { ok: true, message: 'Contraseña actualizada correctamente.' };
+      } catch {
+        return { ok: false, message: 'No se pudo guardar la contraseña. Inténtalo de nuevo.' };
+      }
+    },
+    [currentUser, jugadores, users]
+  );
 
   // Permisos del usuario activo
   const can = useCallback((permission: Permission): boolean => {
@@ -1381,6 +1423,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     users,
     login,
     logout,
+    cambiarPassword,
     can,
     allowedTabs,
     isTeamScoped,

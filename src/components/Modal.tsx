@@ -1,4 +1,5 @@
 import React, { useEffect, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 // Pila de modales abiertos: solo el último (el de arriba) reacciona a Escape
@@ -42,7 +43,9 @@ export const Modal: React.FC<ModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  // Portal al body: si el modal nace dentro de un ancestro con transform/filter
+  // (header con backdrop-blur, panel lateral...), el "fixed" se recorta y no se ve bien.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs overflow-y-auto"
       onClick={onClose}
@@ -69,6 +72,7 @@ export const Modal: React.FC<ModalProps> = ({
         {/* Cuerpo con scroll interno. min-h-0 + overflow-x = no recorta laterales ni bloques altos */}
         <div className="p-4 sm:p-6 flex-1 min-h-0 overflow-y-auto overflow-x-auto overscroll-contain">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

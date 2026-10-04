@@ -66,11 +66,18 @@ interface ClubContextType {
   isTeamScoped: boolean;
   /** Nombres de los equipos asignados al usuario actual. */
   assignedTeams: string[];
+  /** Nombres de los equipos bajo el control del usuario actual (>1 activa el selector "Todos / uno"). */
+  equiposControlables: string[];
+  /** Equipo concreto a mostrar; null = todos. Solo usuarios con más de un equipo. */
+  equipoFiltro: string | null;
+  setEquipoFiltro: (equipo: string | null) => void;
 
   // Entidades principales
   jugadores: Jugador[];
   /** Todos los jugadores del club, sin scoping por equipo (para convocar de otros equipos / sin equipo). */
   allJugadores: Jugador[];
+  /** Jugadores con scoping por rol pero sin filtro de equipo (fichas y plantillas de equipo). */
+  jugadoresScope: Jugador[];
   equipos: Equipo[];
   categorias: Categoria[];
   entrenadores: Entrenador[];
@@ -297,6 +304,62 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const isTeamScoped = scopedTeamNames !== null;
   const assignedTeams = useMemo(() => visibleEquipos.map(e => e.nombre), [visibleEquipos]);
 
+  // Equipos bajo el control del usuario: entrenador/jugador los asignados (scoping),
+  // coordinadores su modalidad, admin/directiva todos.
+  const equiposControlables = useMemo<string[]>(() => {
+    if (!currentUser) return [];
+    if (TEAM_SCOPED_ROLES.has(currentUser.rol)) return assignedTeams;
+    if (currentUser.rol === 'coordinador_f8' || currentUser.rol === 'coordinador_f11') {
+      const soloF8 = currentUser.rol === 'coordinador_f8';
+      return equipos
+        .filter(e => {
+          const cat = categorias.find(c => c.nombre === e.categoria);
+          return cat ? (cat.tipo === 'F8') === soloF8 : true;
+        })
+        .map(e => e.nombre);
+    }
+    if (currentUser.rol === 'admin' || currentUser.rol === 'directiva') return equipos.map(e => e.nombre);
+    return [];
+  }, [currentUser, equipos, categorias, assignedTeams]);
+
+  // Filtro global de equipo ("Todos" = null) para quien controla más de uno; recordado por usuario.
+  const [equipoFiltroState, setEquipoFiltroState] = useState<string | null>(null);
+  useEffect(() => {
+    if (!currentUser) {
+      setEquipoFiltroState(null);
+      return;
+    }
+    try {
+      setEquipoFiltroState(localStorage.getItem(`cf_equipo_filtro_${currentUser.id}`) || null);
+    } catch {
+      setEquipoFiltroState(null);
+    }
+  }, [currentUser?.id]);
+
+  const setEquipoFiltro = useCallback(
+    (equipo: string | null) => {
+      setEquipoFiltroState(equipo);
+      if (!currentUser) return;
+      try {
+        if (equipo) localStorage.setItem(`cf_equipo_filtro_${currentUser.id}`, equipo);
+        else localStorage.removeItem(`cf_equipo_filtro_${currentUser.id}`);
+      } catch {
+        // Sin localStorage disponible: el filtro solo dura la sesión
+      }
+    },
+    [currentUser?.id]
+  );
+
+  // Solo se aplica si el usuario controla >1 equipo y el valor sigue siendo válido.
+  const equipoFiltro = useMemo(() => {
+    if (!equipoFiltroState || equiposControlables.length < 2) return null;
+    const found = equiposControlables.find(n => n.trim().toLowerCase() === equipoFiltroState.trim().toLowerCase());
+    return found || null;
+  }, [equipoFiltroState, equiposControlables]);
+
+  const matchEquipoFiltro = (nombre?: string): boolean =>
+    !equipoFiltro || (nombre || '').trim().toLowerCase() === equipoFiltro.trim().toLowerCase();
+
   const visibleCategorias = useMemo(() => {
     if (!scopedTeamNames) return categorias;
     const catNames = new Set(visibleEquipos.map(e => (e.categoria || '').toLowerCase().trim()));
@@ -316,23 +379,39 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return entrenadores.filter(en => names.has(en.nombre.trim().toLowerCase()));
   }, [entrenadores, scopedTeamNames, visibleEquipos, currentUser?.nombre]);
 
-  const visibleJugadores = useMemo(
-    () => (scopedTeamNames ? jugadores.filter(j => scopedTeamNames.has(j.equipo.toLowerCase().trim())) : jugadores),
+  const jugadoresScope = useMemo(
+    () => (scopedTeamNames ? jugadores.filter(j => scopedTeamNames.has((j.equipo || '').toLowerCase().trim())) : jugadores),
     [jugadores, scopedTeamNames]
+  );
+
+  const visibleJugadores = useMemo(
+    () => (equipoFiltro ? jugadoresScope.filter(j => matchEquipoFiltro(j.equipo)) : jugadoresScope),
+    [jugadoresScope, equipoFiltro]
   );
 
   const visibleJugadorIds = useMemo(() => new Set(visibleJugadores.map(j => j.id)), [visibleJugadores]);
 
   const visiblePartidos = useMemo(() => {
-    if (!scopedTeamNames) return partidos;
+    const equipoDelPartido = (p: Partido): string => {
+      if (p.equipo) return p.equipo;
+      if (equipos.some(e => e.nombre === p.local)) return p.local;
+      if (equipos.some(e => e.nombre === p.visitante)) return p.visitante;
+      return '';
+    };
     return partidos.filter(p => {
-      const equipo = (p.equipo || '').toLowerCase().trim();
-      if (equipo && scopedTeamNames.has(equipo)) return true;
-      const local = (p.local || '').toLowerCase().trim();
-      const visitante = (p.visitante || '').toLowerCase().trim();
-      return scopedTeamNames.has(local) || scopedTeamNames.has(visitante);
+      if (scopedTeamNames) {
+        const equipo = (p.equipo || '').toLowerCase().trim();
+        if (equipo && scopedTeamNames.has(equipo)) {
+          // Sigue sujeto al filtro de equipo concreto si está activo
+        } else {
+          const local = (p.local || '').toLowerCase().trim();
+          const visitante = (p.visitante || '').toLowerCase().trim();
+          if (!scopedTeamNames.has(local) && !scopedTeamNames.has(visitante)) return false;
+        }
+      }
+      return equipoFiltro ? matchEquipoFiltro(equipoDelPartido(p)) : true;
     });
-  }, [partidos, scopedTeamNames]);
+  }, [partidos, scopedTeamNames, equipos, equipoFiltro]);
 
   const visibleAsistencias = useMemo(
     () => (scopedTeamNames ? asistencias.filter(a => visibleJugadorIds.has(a.jugadorId)) : asistencias),
@@ -354,6 +433,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return equipo && scopedTeamNames.has(equipo);
       });
     }
+    if (equipoFiltro) scoped = scoped.filter(s => matchEquipoFiltro(s.equipo));
     const rol = currentUser?.rol;
     if (rol === 'coordinador_f8' || rol === 'coordinador_f11') {
       const soloF8 = rol === 'coordinador_f8';
@@ -367,7 +447,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
     }
     return scoped;
-  }, [sesiones, scopedTeamNames, categorias, currentUser?.rol]);
+  }, [sesiones, scopedTeamNames, categorias, currentUser?.rol, equipoFiltro]);
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
@@ -1428,9 +1508,13 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     allowedTabs,
     isTeamScoped,
     assignedTeams,
+    equiposControlables,
+    equipoFiltro,
+    setEquipoFiltro,
 
     jugadores: visibleJugadores,
     allJugadores: jugadores,
+    jugadoresScope,
     equipos: visibleEquipos,
     categorias: visibleCategorias,
     entrenadores: visibleEntrenadores,
@@ -1512,7 +1596,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     exportSheet
   }), [
     currentUser, users, login, logout, can, allowedTabs, isTeamScoped, assignedTeams,
-    jugadores, visibleJugadores, visibleEquipos, visibleCategorias, visibleEntrenadores,
+    equiposControlables, equipoFiltro, setEquipoFiltro,
+    jugadores, jugadoresScope, visibleJugadores, visibleEquipos, visibleCategorias, visibleEntrenadores,
     visiblePartidos, visibleAsistencias, visibleEstadisticas, visibleSesiones,
     clubConfig, saveClubConfig, getTeamEscudo,
     loading, refreshAll, gasUrl, updateGasUrl, testGoogleConnection, initRemoteSheets, resetDatabase,

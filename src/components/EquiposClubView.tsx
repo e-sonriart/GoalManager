@@ -115,7 +115,7 @@ export const EquiposClubView: React.FC = () => {
     equipos,
     categorias,
     entrenadores,
-    jugadores,
+    jugadoresScope,
     estadisticas,
     partidos,
     clubConfig,
@@ -203,9 +203,9 @@ export const EquiposClubView: React.FC = () => {
 
   const squadPlayers = useMemo(
     () => selectedEquipoForSquad
-      ? sortSquadByPos(jugadores.filter(j => j.equipo === selectedEquipoForSquad.nombre))
+      ? sortSquadByPos(jugadoresScope.filter(j => j.equipo === selectedEquipoForSquad.nombre))
       : [],
-    [jugadores, selectedEquipoForSquad]
+    [jugadoresScope, selectedEquipoForSquad]
   );
 
   const categoriasFiltradas = useMemo(
@@ -767,7 +767,7 @@ export const EquiposClubView: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {equiposFiltrados.map(eq => {
-                    const numJugadores = jugadores.filter(j => j.equipo === eq.nombre).length;
+                    const numJugadores = jugadoresScope.filter(j => j.equipo === eq.nombre).length;
                     const shieldUrl = eq.escudo || clubConfig.escudo;
                     const isUserTeam = currentUser?.equipo === eq.nombre;
                     return (

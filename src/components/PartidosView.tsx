@@ -56,7 +56,8 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     allowedTabs,
     partidoRespuestas,
     responderPartido,
-    jugadorActual
+    jugadorActual,
+    equipoFiltro
   } = useClub();
 
   const canManage = can('manage:partidos');
@@ -103,7 +104,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
 
   const openAddModal = () => {
     setEditingPartido(null);
-    const initialEquipo = currentUser?.equipo || equipos[0]?.nombre || 'Club';
+    const initialEquipo = equipoFiltro || currentUser?.equipo || equipos[0]?.nombre || 'Club';
     const foundEq = equipos.find(e => e.nombre === initialEquipo);
     const initialCat = foundEq?.categoria || categorias[0]?.nombre || 'Senior';
 

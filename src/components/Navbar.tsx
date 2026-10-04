@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
 import { PushBellButton } from './PushBellButton';
+import { SelectorEquipos } from './SelectorEquipos';
 import { MiCuentaModal } from './MiCuentaModal';
 import { AppTab } from '../types';
 import {
@@ -150,6 +151,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </button>
           )}
+
+          {/* Filtro de equipo: solo si el usuario controla más de uno (uno en concreto o todos) */}
+          <SelectorEquipos />
 
           {/* Avisos push (Web Push): convocatorias, cambios, resultados y recordatorios */}
           <PushBellButton />

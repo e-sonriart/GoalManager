@@ -83,7 +83,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     jugadorActual,
     refreshRespuestas,
     partidoRespuestas,
-    responderPartido
+    responderPartido,
+    equipoFiltro,
+    equiposControlables
   } = useClub();
 
   const [isFetchingClasif, setIsFetchingClasif] = useState(false);
@@ -97,10 +99,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const handleVerClasificaciones = async () => {
     setIsFetchingClasif(true);
     try {
-      const sections = await fetchResumenClasificaciones(equipos, categorias);
+      const eqsClasif = equipoFiltro ? equipos.filter(e => (e.nombre || '').trim().toLowerCase() === equipoFiltro.trim().toLowerCase()) : equipos;
+      const sections = await fetchResumenClasificaciones(eqsClasif, categorias);
       openResumenClasificacionesPopup({
         sections,
-        highlightNames: [clubConfig?.nombre, ...equipos.map(e => e.nombre)].filter(
+        highlightNames: [clubConfig?.nombre, ...eqsClasif.map(e => e.nombre)].filter(
           (n): n is string => Boolean(n && n.trim())
         ),
         clubName: clubConfig?.nombre,
@@ -113,13 +116,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
   // Top goleadores/asistencias (del equipo asignado; selector si hay varios)
   const misEquipos = useMemo(() => {
+    // Con filtro de equipo activo solo se muestra ese equipo (coherente con el resto de la app)
+    if (equipoFiltro) return [equipoFiltro];
+    if (equiposControlables.length) {
+      return equiposControlables.length > 1 ? ['Todos', ...equiposControlables] : equiposControlables;
+    }
     const asignados = (currentUser?.equipo || '')
       .split(',')
       .map(s => s.trim())
       .filter(Boolean);
     if (asignados.length) return asignados;
     return ['Todos', ...equipos.map(e => e.nombre)];
-  }, [currentUser?.equipo, equipos]);
+  }, [equipoFiltro, equiposControlables, currentUser?.equipo, equipos]);
 
   const [statsTeam, setStatsTeam] = useState('');
   const [statsMetric, setStatsMetric] = useState<'goles' | 'asistencias'>('goles');
@@ -293,7 +301,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   // Próximo evento más cercano (partido o entrenamiento) del equipo del entrenador
   const proximoEvento = useMemo<ProxEvento | null>(() => {
     const now = Date.now();
-    const eq = (currentUser?.equipo || '').trim().toLowerCase();
+    const eq = (equipoFiltro || currentUser?.equipo || '').trim().toLowerCase();
     const evs: ProxEvento[] = [];
     for (const p of partidos) {
       if (p.finalizado) continue;
@@ -326,7 +334,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     }
     evs.sort((a, b) => a.when - b.when);
     return evs[0] || null;
-  }, [partidos, sesiones, currentUser?.equipo, equipos]);
+  }, [partidos, sesiones, currentUser?.equipo, equipos, equipoFiltro]);
 
   // Calendario: ventana de 7 días que arranca en HOY (las flechas mueven de 7 en 7)
   const weekStart = useMemo(() => {

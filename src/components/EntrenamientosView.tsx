@@ -49,7 +49,8 @@ export const EntrenamientosView: React.FC = () => {
     getTeamEscudo,
     currentUser,
     can,
-    clubConfig
+    clubConfig,
+    equipoFiltro
   } = useClub();
 
   const canManage = can('manage:entrenamientos');
@@ -81,7 +82,7 @@ export const EntrenamientosView: React.FC = () => {
 
   const openAddModal = () => {
     setEditingSesion(null);
-    const initialEquipo = currentUser?.equipo || equipos[0]?.nombre || '';
+    const initialEquipo = equipoFiltro || currentUser?.equipo || equipos[0]?.nombre || '';
     const foundEq = equipos.find(e => e.nombre === initialEquipo);
 
     setFormEquipo(initialEquipo);

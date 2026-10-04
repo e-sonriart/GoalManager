@@ -13,6 +13,7 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Dumbbell,
   RefreshCw,
   Users
@@ -327,12 +328,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     return evs[0] || null;
   }, [partidos, sesiones, currentUser?.equipo, equipos]);
 
-  // Calendario de la semana (lunes a domingo) con eventos E/P
+  // Calendario: ventana de 7 días que arranca en HOY (las flechas mueven de 7 en 7)
   const weekStart = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
-    const dow = (d.getDay() + 6) % 7;
-    d.setDate(d.getDate() - dow + weekOffset * 7);
+    d.setDate(d.getDate() + weekOffset * 7);
     return d;
   }, [weekOffset]);
 
@@ -910,13 +910,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             </div>
 
             <div className="grid grid-cols-7 gap-1">
-              {weekDays.map((d, i) => {
+              {weekDays.map(d => {
                 const key = dayKeyFmt(d);
                 const evs = weekEventsByDay.get(key) || [];
                 const hasE = evs.some(ev => ev.tipo === 'E');
                 const hasP = evs.some(ev => ev.tipo === 'P');
                 const isToday = key === dayKeyFmt(new Date());
                 const isSelected = selectedDay === key;
+                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
                 return (
                   <button
                     type="button"
@@ -927,14 +928,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                       isSelected
                         ? 'bg-orange-500 border-orange-500 text-white shadow-sm'
                         : evs.length
-                        ? `bg-white border-gray-200 hover:border-orange-400 ${isToday ? 'ring-1 ring-orange-400' : ''}`
+                        ? `${
+                            isWeekend
+                              ? 'bg-violet-50 border-violet-300 hover:border-violet-500'
+                              : 'bg-white border-gray-200 hover:border-orange-400'
+                          } ${isToday ? 'ring-1 ring-orange-400' : ''}`
+                        : isWeekend
+                        ? 'bg-violet-100/60 border-transparent'
                         : 'bg-gray-50 border-transparent'
                     }`}
                   >
-                    <span className={`text-[9px] font-bold uppercase ${isSelected ? 'text-orange-100' : 'text-gray-400'}`}>
-                      {['L', 'M', 'X', 'J', 'V', 'S', 'D'][i]}
+                    {isToday && (
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-white' : 'text-orange-500'}`}
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span
+                      className={`text-[9px] font-bold uppercase ${
+                        isSelected ? 'text-orange-100' : isWeekend ? 'text-violet-500' : 'text-gray-400'
+                      }`}
+                    >
+                      {['D', 'L', 'M', 'X', 'J', 'V', 'S'][d.getDay()]}
                     </span>
-                    <span className={`text-xs font-black leading-none ${evs.length || isSelected ? '' : 'text-gray-400'}`}>
+                    <span
+                      className={`text-xs font-black leading-none ${
+                        evs.length || isSelected ? '' : isWeekend ? 'text-violet-400' : 'text-gray-400'
+                      }`}
+                    >
                       {d.getDate()}
                     </span>
                     <span className="flex gap-0.5 justify-center min-h-[12px]">

@@ -15,6 +15,7 @@ import { getJugadorUsuario } from '../utils/playerUsername';
 import { clearFfcvClasificacionCache } from '../utils/ffcvClasificacion';
 import { BuscadorRivalModal } from './BuscadorRivalModal';
 import { FfcvEquipo, ffcvUbicacion } from '../services/ffcvEquipos';
+import { leerPrefNotificarPartido, guardarPrefNotificarPartido } from '../utils/prefNotificarPartido';
 import {
   Settings,
   Users,
@@ -315,7 +316,8 @@ export const AdminPanel: React.FC = () => {
         golesLocal: p?.golesLocal !== undefined && p?.golesLocal !== null ? String(p.golesLocal) : '',
         golesVisitante: p?.golesVisitante !== undefined && p?.golesVisitante !== null ? String(p.golesVisitante) : '',
         finalizado: p?.finalizado ? '1' : '0',
-        horaConvocatoria: p?.horaConvocatoria || ''
+        horaConvocatoria: p?.horaConvocatoria || '',
+        notificar: leerPrefNotificarPartido() ? '1' : '0'
       });
     } else if (kind === 'asistencia') {
       const a = item as Asistencia | undefined;
@@ -396,7 +398,7 @@ export const AdminPanel: React.FC = () => {
         finalizado: sf.finalizado === '1',
         horaConvocatoria: sf.horaConvocatoria.trim() || undefined
       });
-      if (guardada && !editingSheetItem) {
+      if (guardada && !editingSheetItem && sf.notificar !== '0') {
         void notifyTeam({
           tipo: 'partido_rsvp',
           equipo: sf.equipo.trim(),
@@ -408,6 +410,7 @@ export const AdminPanel: React.FC = () => {
           url: '/?tab=partidos'
         });
       }
+      guardarPrefNotificarPartido(sf.notificar !== '0');
     } else if (sheetModalKind === 'asistencia') {
       if (!sf.jugadorId || !sf.fecha) return;
       await saveAsistencia({
@@ -2866,6 +2869,25 @@ export const AdminPanel: React.FC = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
                 />
               </div>
+              {!editingSheetItem && (
+                <label className="flex items-start gap-2.5 p-3 bg-gray-50 border border-gray-200 rounded-xl cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={sf.notificar !== '0'}
+                    onChange={e => setSf({ ...sf, notificar: e.target.checked ? '1' : '0' })}
+                    className="mt-0.5 w-4 h-4 accent-orange-500 shrink-0"
+                  />
+                  <span>
+                    <span className="block text-xs font-bold text-gray-800">
+                      Notificar al equipo al guardar
+                    </span>
+                    <span className="block text-[10px] text-gray-500 mt-0.5">
+                      Si vas a cargar el calendario completo, déjalo desmarcado: se recuerda la
+                      última elección y no se enviarán avisos sin día ni hora confirmados.
+                    </span>
+                  </span>
+                </label>
+              )}
             </>
           )}
 

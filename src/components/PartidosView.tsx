@@ -32,6 +32,7 @@ import { notifyTeam } from '../services/notifications';
 import { isPartidoSuspendido } from '../utils/partidoEstado';
 import { BuscadorRivalModal } from './BuscadorRivalModal';
 import { FfcvEquipo, ffcvUbicacion } from '../services/ffcvEquipos';
+import { leerPrefNotificarPartido, guardarPrefNotificarPartido } from '../utils/prefNotificarPartido';
 
 interface PartidosViewProps {
   onNavigateToConvocatoria?: (partidoId: string) => void;
@@ -87,6 +88,9 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
   // Buscador de rival en el catálogo FFCV (escudo + ubicación)
   const [isBuscadorRivalOpen, setIsBuscadorRivalOpen] = useState(false);
 
+  // ¿Avisar al equipo al grabar? (se recuerda la última elección)
+  const [formNotificar, setFormNotificar] = useState(leerPrefNotificarPartido());
+
   /** Rellena nombre, escudo y ubicación del rival al elegirlo del catálogo FFCV */
   const handleRivalSeleccionado = (eq: FfcvEquipo) => {
     setFormRival(eq.club || '');
@@ -111,6 +115,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     setFormTipo('Liga');
     setFormJornada('');
     setFormHoraConvocatoria('');
+    setFormNotificar(leerPrefNotificarPartido());
 
     // Fecha por defecto: próximo fin de semana a las 17:00
     const nextDate = new Date();
@@ -139,6 +144,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     setFormTipo(p.tipo || 'Liga');
     setFormJornada(p.jornada ?? '');
     setFormHoraConvocatoria(p.horaConvocatoria || '');
+    setFormNotificar(leerPrefNotificarPartido());
     setIsModalOpen(true);
   };
 
@@ -166,7 +172,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
       horaConvocatoria: formHoraConvocatoria.trim() || undefined
     });
 
-    if (guardada && !editingPartido) {
+    if (guardada && !editingPartido && formNotificar) {
       void notifyTeam({
         tipo: 'partido_rsvp',
         equipo: formEquipo.trim(),
@@ -181,6 +187,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
 
     // Aviso push si cambió la fecha/hora, el campo o la hora de convocatoria
     if (
+      formNotificar &&
       editingPartido &&
       (editingPartido.fecha !== formFecha ||
         (editingPartido.campo || '') !== formCampo.trim() ||
@@ -198,6 +205,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
       });
     }
 
+    guardarPrefNotificarPartido(formNotificar);
     setIsModalOpen(false);
   };
 
@@ -964,6 +972,24 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
               </span>
             </div>
           </div>
+
+          <label className="flex items-start gap-2.5 p-3 bg-gray-50 border border-gray-200 rounded-xl cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={formNotificar}
+              onChange={e => setFormNotificar(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-orange-500 shrink-0"
+            />
+            <span>
+              <span className="block text-xs font-bold text-gray-800">
+                Notificar al equipo al guardar
+              </span>
+              <span className="block text-[10px] text-gray-500 mt-0.5">
+                Si vas a cargar el calendario completo, déjalo desmarcado: se recuerda la última
+                elección y no se enviarán avisos sin día ni hora confirmados.
+              </span>
+            </span>
+          </label>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-gray-150">
             <button

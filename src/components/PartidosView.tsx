@@ -62,6 +62,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
   const canManage = can('manage:partidos');
   // Exportar a CSV: excluido para jugadores y entrenadores
   const puedeExportar = currentUser?.rol !== 'jugador' && currentUser?.rol !== 'entrenador';
+  const puedeConvocar = can('manage:convocatorias');
   const canGoConvocatoria = allowedTabs.includes('convocatorias');
 
   /** Relojes remotos: goles/tarjetas de partidos jugados en otro dispositivo */
@@ -172,22 +173,27 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
       horaConvocatoria: formHoraConvocatoria.trim() || undefined
     });
 
+    // Aviso del partido grabado (sin preguntar asistencia: eso lo hace la convocatoria)
     if (guardada && !editingPartido && formNotificar) {
       void notifyTeam({
-        tipo: 'partido_rsvp',
+        tipo: 'nuevo',
         equipo: formEquipo.trim(),
-        refId: `rsvp_${guardada.id}`,
-        titulo: `⚽ ¿Vas al partido? (${formEquipo.trim()})`,
-        cuerpo: `${local} vs ${visitante} · ${formFecha.replace('T', ' ').slice(0, 16)}${
+        refId: `nuevo_${guardada.id}`,
+        titulo: `⚽ ${local} vs ${visitante}`,
+        cuerpo: `${formFecha.replace('T', ' ').slice(0, 16)}${
           formCampo.trim() ? ` · ${formCampo.trim()}` : ''
-        } · Confirma si asistes ✅❌`,
+        }${
+          formTipo === 'Liga' && formJornada !== '' ? ` · Jornada ${formJornada}` : ''
+        }`,
         url: '/?tab=partidos'
       });
     }
 
-    // Aviso push si cambió la fecha/hora, el campo o la hora de convocatoria
+    // Aviso push si cambió la fecha/hora, el campo o la hora de convocatoria (solo con convocatoria hecha)
     if (
       formNotificar &&
+      guardada &&
+      convocatoriaHecha(guardada) &&
       editingPartido &&
       (editingPartido.fecha !== formFecha ||
         (editingPartido.campo || '') !== formCampo.trim() ||
@@ -275,10 +281,14 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     .map(s => s.trim().toLowerCase())
     .filter(Boolean);
 
+  // La convocatoria es la que registra al equipo: hasta que exista, no se pregunta asistencia
+  const convocatoriaHecha = (p: Partido): boolean => (p.convocados?.length ?? 0) > 0;
+
   const puedeResponderPartido = (p: Partido): boolean => {
     if (!jugadorActual) return false;
     if (p.finalizado) return false;
     if (isPartidoSuspendido(p)) return false;
+    if (!convocatoriaHecha(p)) return false;
     const when = new Date(p.fecha).getTime();
     if (isNaN(when) || when < Date.now()) return false;
     const clubTeam = p.equipo || (equipos.some(e => e.nombre === p.local) ? p.local : p.visitante);
@@ -472,41 +482,47 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
           </div>
         )}
 
-        {/* Action Buttons: Convocar / Convocados + Comenzar */}
+        {/* Action Buttons: Convocar (gestores) / Convocatoria (jugadores, desactivada si aún no está hecha) */}
         {canGoConvocatoria && (
           <div className={`grid gap-2 pt-0.5 text-xs font-bold ${
-            (partido.convocados && partido.convocados.length > 0) ? 'grid-cols-2' : 'grid-cols-1'
+            convocatoriaHecha(partido) ? 'grid-cols-2' : 'grid-cols-1'
           }`}>
-            {(partido.convocados && partido.convocados.length > 0) ? (
-              <>
-                <button
-                  onClick={() => onNavigateToConvocatoria && onNavigateToConvocatoria(partido.id)}
-                  className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors text-center flex items-center justify-center gap-1.5 truncate shadow-sm"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">Convocados</span>
-                </button>
-                <button
-                  onClick={() => {
-                    if (onNavigateToAlineacion) {
-                      onNavigateToAlineacion(partido.id);
-                    } else {
-                      onNavigateToConvocatoria && onNavigateToConvocatoria(partido.id);
-                    }
-                  }}
-                  className="py-2 px-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-colors text-center flex items-center justify-center gap-1.5 truncate shadow-md shadow-orange-500/20"
-                >
-                  <Play className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">Alineación</span>
-                </button>
-              </>
-            ) : (
+            <button
+              onClick={() => onNavigateToConvocatoria && onNavigateToConvocatoria(partido.id)}
+              disabled={!puedeConvocar && !convocatoriaHecha(partido)}
+              title={!puedeConvocar && !convocatoriaHecha(partido) ? 'La convocatoria aún no está hecha' : undefined}
+              className={`py-2 px-3 rounded-xl transition-colors text-center flex items-center justify-center gap-1.5 truncate ${
+                convocatoriaHecha(partido)
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                  : puedeConvocar
+                    ? 'bg-gray-900 hover:bg-black text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+              }`}
+            >
+              {convocatoriaHecha(partido) ? (
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <Users className={`w-3.5 h-3.5 shrink-0 ${puedeConvocar ? 'text-orange-400' : 'text-gray-400'}`} />
+              )}
+              <span className="truncate">
+                {puedeConvocar
+                  ? convocatoriaHecha(partido) ? 'Convocados' : 'Convocar'
+                  : 'Convocatoria'}
+              </span>
+            </button>
+            {convocatoriaHecha(partido) && (
               <button
-                onClick={() => onNavigateToConvocatoria && onNavigateToConvocatoria(partido.id)}
-                className="py-2 px-3 bg-gray-900 hover:bg-black text-white rounded-xl transition-colors text-center flex items-center justify-center gap-1.5 truncate shadow-sm"
+                onClick={() => {
+                  if (onNavigateToAlineacion) {
+                    onNavigateToAlineacion(partido.id);
+                  } else {
+                    onNavigateToConvocatoria && onNavigateToConvocatoria(partido.id);
+                  }
+                }}
+                className="py-2 px-3 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-colors text-center flex items-center justify-center gap-1.5 truncate shadow-md shadow-orange-500/20"
               >
-                <Users className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                <span className="truncate">Convocar</span>
+                <Play className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Alineación</span>
               </button>
             )}
           </div>

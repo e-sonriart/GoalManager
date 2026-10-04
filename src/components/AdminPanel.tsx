@@ -398,15 +398,18 @@ export const AdminPanel: React.FC = () => {
         finalizado: sf.finalizado === '1',
         horaConvocatoria: sf.horaConvocatoria.trim() || undefined
       });
+      // Aviso del partido grabado (sin preguntar asistencia: eso lo hace la convocatoria)
       if (guardada && !editingSheetItem && sf.notificar !== '0') {
         void notifyTeam({
-          tipo: 'partido_rsvp',
+          tipo: 'nuevo',
           equipo: sf.equipo.trim(),
-          refId: `rsvp_${guardada.id}`,
-          titulo: `⚽ ¿Vas al partido? (${sf.equipo.trim()})`,
-          cuerpo: `${local} vs ${visitante} · ${sf.fecha.replace('T', ' ').slice(0, 16)}${
+          refId: `nuevo_${guardada.id}`,
+          titulo: `⚽ ${local} vs ${visitante}`,
+          cuerpo: `${sf.fecha.replace('T', ' ').slice(0, 16)}${
             sf.campo.trim() ? ` · ${sf.campo.trim()}` : ''
-          } · Confirma si asistes ✅❌`,
+          }${
+            (sf.tipo || 'Liga') === 'Liga' && sf.jornada.trim() !== '' ? ` · Jornada ${sf.jornada.trim()}` : ''
+          }`,
           url: '/?tab=partidos'
         });
       }

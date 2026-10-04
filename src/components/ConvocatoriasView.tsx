@@ -257,7 +257,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
         titulo: `📋 Convocatoria: ${selectedPartido.local} vs ${selectedPartido.visitante}`,
         cuerpo: `📅 ${fechaTxt}${
           selectedPartido.horaConvocatoria ? ` · recogida ${selectedPartido.horaConvocatoria}` : ''
-        }${selectedPartido.campo ? ` · ${selectedPartido.campo}` : ''}`
+        }${selectedPartido.campo ? ` · ${selectedPartido.campo}` : ''} · Confirma tu asistencia ✅❌`
       });
     }
     onBack?.(selectedPartido.id);

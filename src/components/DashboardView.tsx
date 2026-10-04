@@ -18,6 +18,7 @@ import {
   Users
 } from 'lucide-react';
 import { ActiveTab } from './Navbar';
+import { Partido } from '../types';
 
 interface DashboardViewProps {
   onNavigate: (tab: ActiveTab) => void;
@@ -169,6 +170,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     [partidosFuturos, equipoJugador]
   );
 
+  // La convocatoria es la que registra al equipo: hasta que exista, no se pregunta asistencia
+  const convocatoriaHecha = (p: Partido): boolean => (p.convocados?.length ?? 0) > 0;
+
   // Entrenador/admin: selector de equipo y evento de referencia
   const equiposRsvp = useMemo(() => {
     const asignados = misEquipos.filter(e => e !== 'Todos');
@@ -190,10 +194,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     [sesionesFuturas, equipoRsvp]
   );
 
+  // Solo cuenta respuestas del partido cuya convocatoria ya esté hecha (la convocatoria es la que registra)
   const proximoPartidoRsvp = useMemo(
     () =>
       equipoRsvp
-        ? partidosFuturos.find(p => (p.equipo || '').trim().toLowerCase() === equipoRsvp.toLowerCase()) || null
+        ? partidosFuturos.find(
+            p =>
+              (p.equipo || '').trim().toLowerCase() === equipoRsvp.toLowerCase() &&
+              (p.convocados?.length ?? 0) > 0
+          ) || null
         : null,
     [partidosFuturos, equipoRsvp]
   );
@@ -523,12 +532,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* Jugador: responde si va al próximo partido */}
+      {/* Jugador: responde si va al próximo partido (solo cuando la convocatoria ya está hecha) */}
       {currentUser?.rol === 'jugador' && proximoPartidoJugador && (
         <div className="bg-white rounded-2xl border border-blue-200 shadow-xs p-4 sm:p-5 space-y-3 animate-in fade-in duration-300">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
-              <Trophy className="w-3.5 h-3.5 text-blue-600" /> ¿Vas al próximo partido?
+              <Trophy className="w-3.5 h-3.5 text-blue-600" />{' '}
+              {convocatoriaHecha(proximoPartidoJugador) ? '¿Vas al próximo partido?' : 'Próximo partido'}
             </p>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
               {proximoPartidoJugador.equipo}
@@ -550,6 +560,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             </div>
           </div>
 
+          {convocatoriaHecha(proximoPartidoJugador) ? (
           <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
             {(['si', 'no'] as const).map(op => {
               const yaResponde = partidoRespuestas.find(
@@ -587,6 +598,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 : 'Sin responder aún'}
             </span>
           </div>
+          ) : (
+            <p className="text-[11px] text-gray-500 font-semibold pt-2 border-t border-gray-100">
+              La convocatoria aún no está hecha: aquí podrás confirmar si vas cuando el míster convoque al equipo.
+            </p>
+          )}
         </div>
       )}
 
@@ -763,7 +779,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           ) : (
             <p className="text-xs text-gray-400">
               {tipoRsvp === 'partido'
-                ? 'No hay partidos programados próximamente.'
+                ? 'Aún no hay convocatorias hechas: las respuestas aparecerán cuando se convoque al equipo.'
                 : 'No hay entrenamientos programados próximamente.'}
             </p>
           )}

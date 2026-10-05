@@ -8,6 +8,7 @@ import { computeStandings, TeamStanding } from '../utils/standings';
 import { openStandingsPopup, openFfcvStandingsPopup } from '../utils/standingsPopup';
 import { fetchFfcvClasificacion } from '../utils/ffcvClasificacion';
 import { imprimirPdf, pdfFechaCorta, pdfEstadoPartido, pdfEdad, PdfSeccion } from '../utils/pdfPrint';
+import { equiposDelEntrenador } from '../utils/equipos';
 
 type PosJugador = PosicionJugador;
 
@@ -135,24 +136,9 @@ export const EquiposClubView: React.FC = () => {
   // Exportar a CSV y crear equipos: excluido para jugadores y entrenadores
   const puedeGestionarEquipos = currentUser?.rol !== 'jugador' && currentUser?.rol !== 'entrenador';
 
-  // Equipos a cargo de un entrenador (lista "entrenadores" del equipo o columna antigua)
-  const equiposDelEntrenador = (ent: Entrenador): Equipo[] => {
-    const clave = (ent.nombre || '').trim().toLowerCase();
-    if (!clave) return [];
-    return equipos.filter(e => {
-      const lista =
-        e.entrenadores && e.entrenadores.length
-          ? e.entrenadores
-          : e.entrenador
-          ? e.entrenador.split(',').map(s => s.trim())
-          : [];
-      return lista.some(n => (n || '').trim().toLowerCase() === clave);
-    });
-  };
-
   // PDF con las listas del entrenador: sus partidos y la plantilla de sus equipos
   const exportarListasEntrenador = (ent: Entrenador) => {
-    const eqs = equiposDelEntrenador(ent);
+    const eqs = equiposDelEntrenador(equipos, ent.nombre);
     const nombres = new Set(eqs.map(e => e.nombre));
     const clubTeam = (p: Partido): string =>
       p.equipo ||
@@ -947,7 +933,7 @@ export const EquiposClubView: React.FC = () => {
       {activeSubTab === 'entrenadores' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {entrenadores.map(ent => {
-            const equiposAsignados = equiposDelEntrenador(ent);
+            const equiposAsignados = equiposDelEntrenador(equipos, ent.nombre);
             return (
               <div
                 key={ent.id}

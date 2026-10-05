@@ -28,7 +28,7 @@ var HOJAS_CONFIG = {
   jugadores: ['id', 'nombre', 'dorsal', 'posición', 'categoría', 'equipo', 'fechaAlta'],
   equipos: ['id', 'nombre', 'categoria', 'letra', 'entrenadores', 'escudo', 'temporada'],
   categorias: ['id', 'nombre', 'tipo', 'tiempojuego'],
-  entrenadores: ['id', 'nombre', 'telefono'],
+  entrenadores: ['id', 'nombre', 'telefono', 'equipo'],
   partidos: ['id', 'local', 'visitante', 'fecha', 'categoria', 'equipo', 'hora', 'horaConvocatoria', 'campo', 'tipo', 'jornada', 'golesLocal', 'golesVisitante', 'eventos', 'finalizado', 'convocados'],
   asistencias: ['id', 'jugadorId', 'fecha', 'estado'],
   estadisticas: ['id', 'jugadorId', 'temporada', 'goles', 'asistencias', 'tarjetas', 'partidosJugados', 'titular', 'tarjetasAmarillas', 'tarjetasRojas'],
@@ -169,6 +169,19 @@ function getOrCreateSheet(sheetName) {
     var headers = HOJAS_CONFIG[sheetName] || ['id', 'nombre'];
     sheet.appendRow(headers);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#F97316').setFontColor('#FFFFFF');
+  } else {
+    // Completa en hojas existentes las columnas nuevas de HOJAS_CONFIG (ej: "equipo" en entrenadores)
+    var esperadas = HOJAS_CONFIG[sheetName] || [];
+    if (esperadas.length) {
+      var raw = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      var actuales = raw.map(function(h) { return normalizeHeader(h); });
+      var faltantes = esperadas.filter(function(col) { return actuales.indexOf(col) === -1; });
+      if (faltantes.length) {
+        var ini = sheet.getLastColumn() + 1;
+        sheet.getRange(1, ini, 1, faltantes.length).setValues([faltantes]);
+        sheet.getRange(1, ini, 1, faltantes.length).setFontWeight('bold').setBackground('#F97316').setFontColor('#FFFFFF');
+      }
+    }
   }
   return sheet;
 }
@@ -366,9 +379,9 @@ function inicializarBaseDeDatos() {
 
   // 3. Insertar Entrenadores iniciales
   var entSheet = ss.getSheetByName('entrenadores');
-  entSheet.appendRow(['ent_1', 'Carlos Martínez', '+34 600 123 456']);
-  entSheet.appendRow(['ent_2', 'Laura Gómez', '+34 600 654 321']);
-  entSheet.appendRow(['ent_3', 'Pablo Fernández', '+34 600 999 888']);
+  entSheet.appendRow(['ent_1', 'Carlos Martínez', '+34 600 123 456', 'Senior A']);
+  entSheet.appendRow(['ent_2', 'Laura Gómez', '+34 600 654 321', 'Juvenil A']);
+  entSheet.appendRow(['ent_3', 'Pablo Fernández', '+34 600 999 888', 'Cadete A']);
 
   // 4. Insertar Equipos iniciales (nombre con fórmula =categoria+letra y escudo por defecto del club)
   var eqSheet = ss.getSheetByName('equipos');

@@ -13,6 +13,7 @@ import { compareTeams } from '../utils/teamOrder';
 import { notifyTeam } from '../services/notifications';
 import { getJugadorUsuario } from '../utils/playerUsername';
 import { clearFfcvClasificacionCache } from '../utils/ffcvClasificacion';
+import { equiposDelEntrenador } from '../utils/equipos';
 import { BuscadorRivalModal } from './BuscadorRivalModal';
 import { FfcvEquipo, ffcvUbicacion } from '../services/ffcvEquipos';
 import { leerPrefNotificarPartido, guardarPrefNotificarPartido } from '../utils/prefNotificarPartido';
@@ -1615,7 +1616,7 @@ export const AdminPanel: React.FC = () => {
                     {entrenadores
                       .filter(ent => ent.nombre.toLowerCase().includes(sheetSearch.toLowerCase()))
                       .map(ent => {
-                        const equiposAsignados = equipos.filter(e => e.entrenador === ent.nombre);
+                        const equiposAsignados = equiposDelEntrenador(equipos, ent.nombre);
                         return (
                           <tr key={ent.id} className="hover:bg-orange-50/30 transition-colors">
                             <td className="py-3 px-4 font-bold text-gray-900 text-sm">{ent.nombre}</td>

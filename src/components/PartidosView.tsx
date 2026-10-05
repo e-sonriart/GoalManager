@@ -651,7 +651,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${pdfMenuAbierto ? 'rotate-180' : ''}`} />
               </button>
               {pdfMenuAbierto && (
-                <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-gray-200 shadow-2xl z-40 overflow-hidden text-left">
+                <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-gray-200 shadow-2xl z-50 overflow-hidden text-left">
                   <button
                     type="button"
                     onClick={exportarPartidosPdf}

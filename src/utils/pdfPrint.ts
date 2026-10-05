@@ -97,11 +97,12 @@ export const imprimirPdf = (datos: PdfDatos): boolean => {
   h2 { font-size: 11px; background: #f3f4f6; border: 1px solid #e5e7eb; padding: 5px 8px; margin: 14px 0 0; border-radius: 5px 5px 0 0; text-transform: uppercase; }
   h2 .n { color: #9ca3af; font-weight: 600; }
   table { width: 100%; border-collapse: collapse; }
-  th, td { border: 1px solid #e5e7eb; padding: 4px 6px; text-align: left; vertical-align: top; }
+  th, td { border: 1px solid #e5e7eb; padding: 4px 6px; text-align: left; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; }
   th { background: #111827; color: #fff; font-size: 8.5px; text-transform: uppercase; letter-spacing: .04em; }
   tbody tr:nth-child(even) td { background: #f9fafb; }
   thead { display: table-header-group; }
   tr { page-break-inside: avoid; }
+  h2 { break-after: avoid; page-break-after: avoid; }
   footer { margin-top: 16px; border-top: 1px solid #e5e7eb; padding-top: 6px; color: #9ca3af; font-size: 8.5px; text-align: right; }
 </style>
 </head>
@@ -121,13 +122,14 @@ export const imprimirPdf = (datos: PdfDatos): boolean => {
 
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
+  // Offscreen con tamaño A4: con visibility/0×0 la vista previa sale en blanco
+  // y el documento se destruye antes de imprimir.
   iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
+  iframe.style.left = '-10000px';
+  iframe.style.top = '0';
+  iframe.style.width = '794px';
+  iframe.style.height = '1123px';
   iframe.style.border = '0';
-  iframe.style.visibility = 'hidden';
   document.body.appendChild(iframe);
 
   const doc = iframe.contentDocument || iframe.contentWindow?.document;
@@ -140,18 +142,27 @@ export const imprimirPdf = (datos: PdfDatos): boolean => {
   doc.write(html);
   doc.close();
 
+  // El documento se elimina cuando se cierra el diálogo (afterprint), nunca antes:
+  // print() no bloquea y borrarlo en caliente deja la vista previa vacía.
+  let limpiado = false;
+  const limpiar = () => {
+    if (limpiado) return;
+    limpiado = true;
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+  };
+  win.addEventListener('afterprint', limpiar);
+  setTimeout(limpiar, 120000);
+
   const lanzar = () => {
     try {
       win.focus();
       win.print();
-    } finally {
-      setTimeout(() => {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      }, 2000);
+    } catch {
+      limpiar();
     }
   };
-  if (doc.readyState === 'complete') setTimeout(lanzar, 300);
-  else win.addEventListener('load', () => setTimeout(lanzar, 300));
+  if (doc.readyState === 'complete') setTimeout(lanzar, 500);
+  else win.addEventListener('load', () => setTimeout(lanzar, 500));
 
   return true;
 };

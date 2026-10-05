@@ -168,6 +168,7 @@ export const AdminPanel: React.FC = () => {
   const [clubTemporada, setClubTemporada] = useState(clubConfig?.temporada || '2025/2026');
   const [clubColorPrimario, setClubColorPrimario] = useState(clubConfig?.colorPrimario || '');
   const [clubColorSecundario, setClubColorSecundario] = useState(clubConfig?.colorSecundario || '');
+  const [clubUbicacion, setClubUbicacion] = useState(clubConfig?.ubicacion || '');
   const [extractingColors, setExtractingColors] = useState(false);
 
   // Sincronizar si cambia el contexto externamente
@@ -180,6 +181,7 @@ export const AdminPanel: React.FC = () => {
       setClubTemporada(clubConfig.temporada || '2025/2026');
       setClubColorPrimario(clubConfig.colorPrimario || '');
       setClubColorSecundario(clubConfig.colorSecundario || '');
+      setClubUbicacion(clubConfig.ubicacion || '');
     }
   }, [clubConfig]);
 
@@ -624,7 +626,8 @@ export const AdminPanel: React.FC = () => {
       lema: clubLema.trim(),
       temporada: clubTemporada.trim(),
       colorPrimario: clubColorPrimario.trim() || undefined,
-      colorSecundario: clubColorSecundario.trim() || undefined
+      colorSecundario: clubColorSecundario.trim() || undefined,
+      ubicacion: clubUbicacion.trim() || undefined
     });
     addToast({
       type: 'success',
@@ -950,7 +953,7 @@ export const AdminPanel: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Acrónimo, Lema y Temporada */}
+                {/* Acrónimo, Lema, Temporada y Ubicación */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
@@ -990,6 +993,22 @@ export const AdminPanel: React.FC = () => {
                       onChange={e => setClubLema(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                     />
+                  </div>
+
+                  <div className="sm:col-span-3">
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                      Ubicación del Club
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej: Calle del Deporte 12, 28001 Madrid"
+                      value={clubUbicacion}
+                      onChange={e => setClubUbicacion(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      Se usa para rellenar automáticamente el campo de los partidos en casa.
+                    </p>
                   </div>
                 </div>
 

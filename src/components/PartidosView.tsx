@@ -81,9 +81,11 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
   const [editingPartido, setEditingPartido] = useState<Partido | null>(null);
 
   const [formEquipo, setFormEquipo] = useState('');
-  const [formCondicion, setFormCondicion] = useState<CondicionPartido>('casa');
+  const [formCondicion, setFormCondicion] = useState<CondicionPartido | ''>('');
   const [formRival, setFormRival] = useState('');
   const [formRivalEscudo, setFormRivalEscudo] = useState('');
+  // Ubicación del rival elegido del catálogo FFCV (se aplica al marcar "Juega Fuera")
+  const [formRivalUbicacion, setFormRivalUbicacion] = useState('');
   const [formFecha, setFormFecha] = useState('');
   const [formCategoria, setFormCategoria] = useState('');
   const [formCampo, setFormCampo] = useState('');
@@ -101,8 +103,10 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
   const handleRivalSeleccionado = (eq: FfcvEquipo) => {
     setFormRival(eq.club || '');
     if (eq.escudo) setFormRivalEscudo(eq.escudo);
-    const ubicacion = ffcvUbicacion(eq);
-    if (ubicacion) setFormCampo(ubicacion);
+    const ubicacion = ffcvUbicacion(eq) || '';
+    setFormRivalUbicacion(ubicacion);
+    // La ubicación del rival solo es el campo si el partido se juega fuera
+    if (formCondicion === 'fuera' && ubicacion) setFormCampo(ubicacion);
   };
 
 
@@ -113,9 +117,10 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     const initialCat = foundEq?.categoria || categorias[0]?.nombre || 'Senior';
 
     setFormEquipo(initialEquipo);
-    setFormCondicion('casa');
+    setFormCondicion('');
     setFormRival('');
     setFormRivalEscudo('');
+    setFormRivalUbicacion('');
     setFormCategoria(initialCat);
     setFormCampo('');
     setFormTipo('Liga');
@@ -142,6 +147,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     setFormCondicion(cond);
     setFormRival(rivalName);
     setFormRivalEscudo(p.escudoVisitante || '');
+    setFormRivalUbicacion('');
     setFormFecha(p.fecha);
     setFormCategoria(
       p.categoria || equipos.find(e => e.nombre === clubTeam)?.categoria || categorias[0]?.nombre || ''
@@ -157,6 +163,10 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
   const handleSavePartido = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formEquipo.trim() || !formRival.trim() || !formFecha) return;
+    if (!formCondicion) {
+      window.alert('Elige si el partido se juega en casa o fuera.');
+      return;
+    }
 
     const isCasa = formCondicion === 'casa';
     const local = isCasa ? formEquipo.trim() : formRival.trim();
@@ -438,7 +448,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
               </span>
             )}
 
-            <span className="text-gray-500 font-bold text-[11px] truncate max-w-[120px]" title={clubTeam}>
+            <span className="text-gray-500 font-bold text-[11px] line-clamp-2 break-words max-w-[140px] text-left" title={clubTeam}>
               {clubTeam}
             </span>
           </div>
@@ -479,7 +489,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
         <div className="bg-gray-950 text-white rounded-2xl p-3.5 flex items-center justify-between shadow-inner border border-gray-800/80 min-w-0">
           {/* Equipo Local */}
           <div className="flex flex-col items-center text-center flex-1 min-w-0 px-1">
-            <div className={`w-11 h-11 rounded-2xl bg-white/10 p-1 flex items-center justify-center border shadow-sm mb-1.5 overflow-hidden shrink-0 ${
+            <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/10 p-1 flex items-center justify-center border shadow-sm mb-1.5 overflow-hidden shrink-0 ${
               partido.local === clubTeam
                 ? 'border-orange-500 ring-2 ring-orange-500/40 bg-orange-950/30'
                 : 'border-white/20'
@@ -487,11 +497,11 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
               <TeamShield
                 escudoUrl={partido.local === clubTeam ? getTeamEscudo(partido.local) : resolveVisitorShield(partido)}
                 teamName={partido.local}
-                size="md"
+                size="lg"
                 className="w-full h-full object-contain"
               />
             </div>
-            <p className="font-bold text-xs sm:text-sm truncate w-full font-athletic tracking-wide" title={partido.local}>
+            <p className="font-bold text-xs sm:text-sm line-clamp-2 break-words leading-tight w-full font-athletic tracking-wide" title={partido.local}>
               {partido.local}
             </p>
           </div>
@@ -525,7 +535,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
 
           {/* Equipo Visitante */}
           <div className="flex flex-col items-center text-center flex-1 min-w-0 px-1">
-            <div className={`w-11 h-11 rounded-2xl bg-white/10 p-1 flex items-center justify-center border shadow-sm mb-1.5 overflow-hidden shrink-0 ${
+            <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/10 p-1 flex items-center justify-center border shadow-sm mb-1.5 overflow-hidden shrink-0 ${
               partido.visitante === clubTeam
                 ? 'border-orange-500 ring-2 ring-orange-500/40 bg-orange-950/30'
                 : 'border-white/20'
@@ -533,11 +543,11 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
               <TeamShield
                 escudoUrl={partido.visitante === clubTeam ? getTeamEscudo(partido.visitante) : resolveVisitorShield(partido)}
                 teamName={partido.visitante}
-                size="md"
+                size="lg"
                 className="w-full h-full object-contain"
               />
             </div>
-            <p className="font-bold text-xs sm:text-sm truncate w-full font-athletic tracking-wide" title={partido.visitante}>
+            <p className="font-bold text-xs sm:text-sm line-clamp-2 break-words leading-tight w-full font-athletic tracking-wide" title={partido.visitante}>
               {partido.visitante}
             </p>
           </div>
@@ -922,7 +932,11 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
             <div className="grid grid-cols-2 gap-2.5">
               <button
                 type="button"
-                onClick={() => setFormCondicion('casa')}
+                onClick={() => {
+                  setFormCondicion('casa');
+                  // En casa el campo es la ubicación del club (editable a mano después)
+                  setFormCampo(clubConfig?.ubicacion?.trim() || '');
+                }}
                 className={`p-3 rounded-2xl border text-left transition-all flex items-center gap-3 ${
                   formCondicion === 'casa'
                     ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-400 text-emerald-950 shadow-xs'
@@ -942,7 +956,11 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => setFormCondicion('fuera')}
+                onClick={() => {
+                  setFormCondicion('fuera');
+                  // Fuera: la ubicación la pone el rival del catálogo (o a mano)
+                  setFormCampo(formRivalUbicacion);
+                }}
                 className={`p-3 rounded-2xl border text-left transition-all flex items-center gap-3 ${
                   formCondicion === 'fuera'
                     ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-400 text-blue-950 shadow-xs'
@@ -1019,7 +1037,13 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
               <MapPin className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder={formCondicion === 'casa' ? 'Ej: Municipal El Naranjal - Campo 1' : 'Ej: Polideportivo Municipal Rival'}
+                placeholder={
+                  formCondicion === 'casa'
+                    ? 'Ej: Municipal El Naranjal - Campo 1'
+                    : formCondicion === 'fuera'
+                    ? 'Ej: Polideportivo Municipal Rival'
+                    : 'Ej: Campo o instalación donde se juega'
+                }
                 value={formCampo}
                 onChange={e => setFormCampo(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
@@ -1117,7 +1141,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
             </div>
             <div className="flex items-center justify-center gap-3 text-xs font-athletic">
               <span className={`font-bold truncate max-w-[130px] ${formCondicion === 'casa' ? 'text-orange-400' : 'text-gray-300'}`}>
-                {formCondicion === 'casa' ? formEquipo || 'Nuestro Club' : formRival || 'Rival'}
+                {formCondicion === 'fuera' ? formRival || 'Rival' : formEquipo || 'Nuestro Club'}
                 {formCondicion === 'casa' && ' (Casa)'}
               </span>
               <span className="text-gray-500 font-black">VS</span>

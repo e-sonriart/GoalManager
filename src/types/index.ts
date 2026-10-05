@@ -40,6 +40,7 @@ export interface ClubConfig {
   temporada?: string;
   colorPrimario?: string; // Color principal de la app (hex), derivado del escudo del club
   colorSecundario?: string; // Color secundario/acento (hex)
+  ubicacion?: string; // Dirección / ubicación de las instalaciones del club
   ts?: number; // Marca de última edición (sincronización entre dispositivos)
 }
 

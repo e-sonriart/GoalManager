@@ -10,6 +10,7 @@ create table if not exists club_config (
   temporada text,
   "colorPrimario" text,
   "colorSecundario" text,
+  ubicacion text,
   ts bigint default 0
 );
 
@@ -20,6 +21,7 @@ alter table club_config add column if not exists lema text;
 alter table club_config add column if not exists temporada text;
 alter table club_config add column if not exists "colorPrimario" text;
 alter table club_config add column if not exists "colorSecundario" text;
+alter table club_config add column if not exists ubicacion text;
 alter table club_config add column if not exists ts bigint default 0;
 
 alter table club_config enable row level security;

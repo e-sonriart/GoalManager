@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { useClub } from '../context/ClubContext';
-import { Equipo, Categoria, Entrenador, AnoEquipo, Jugador, PosicionJugador, Estadistica, HistorialEstadisticaTemporada } from '../types';
+import { Equipo, Categoria, Entrenador, AnoEquipo, Jugador, PosicionJugador, Estadistica, HistorialEstadisticaTemporada, Partido } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import { WhatsAppIcon } from './WhatsAppIcon';
 import { computeStandings, TeamStanding } from '../utils/standings';
 import { openStandingsPopup, openFfcvStandingsPopup } from '../utils/standingsPopup';
 import { fetchFfcvClasificacion } from '../utils/ffcvClasificacion';
+import { imprimirPdf, pdfFechaCorta, pdfEstadoPartido, pdfEdad, PdfSeccion } from '../utils/pdfPrint';
 
 type PosJugador = PosicionJugador;
 
@@ -107,7 +108,8 @@ import {
   ChevronRight,
   ChevronLeft,
   Play,
-  ExternalLink
+  ExternalLink,
+  FileDown
 } from 'lucide-react';
 
 export const EquiposClubView: React.FC = () => {
@@ -132,6 +134,68 @@ export const EquiposClubView: React.FC = () => {
 
   // Exportar a CSV y crear equipos: excluido para jugadores y entrenadores
   const puedeGestionarEquipos = currentUser?.rol !== 'jugador' && currentUser?.rol !== 'entrenador';
+
+  // Equipos a cargo de un entrenador (lista "entrenadores" del equipo o columna antigua)
+  const equiposDelEntrenador = (ent: Entrenador): Equipo[] => {
+    const clave = (ent.nombre || '').trim().toLowerCase();
+    if (!clave) return [];
+    return equipos.filter(e => {
+      const lista =
+        e.entrenadores && e.entrenadores.length
+          ? e.entrenadores
+          : e.entrenador
+          ? e.entrenador.split(',').map(s => s.trim())
+          : [];
+      return lista.some(n => (n || '').trim().toLowerCase() === clave);
+    });
+  };
+
+  // PDF con las listas del entrenador: sus partidos y la plantilla de sus equipos
+  const exportarListasEntrenador = (ent: Entrenador) => {
+    const eqs = equiposDelEntrenador(ent);
+    const nombres = new Set(eqs.map(e => e.nombre));
+    const clubTeam = (p: Partido): string =>
+      p.equipo ||
+      (equipos.some(e => e.nombre === p.local) ? p.local : equipos.some(e => e.nombre === p.visitante) ? p.visitante : '');
+    const subtitulo = [clubConfig?.nombre, clubConfig?.temporada].filter(Boolean).join(' · ');
+    const secciones: PdfSeccion[] = [];
+
+    const ps = partidos
+      .filter(p => nombres.has(clubTeam(p)))
+      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+    secciones.push({
+      titulo: 'Partidos',
+      columnas: ['Fecha', 'Hora', 'Equipo', 'Enfrentamiento', 'Campo', 'Estado'],
+      filas: ps.map(p => [
+        pdfFechaCorta(p.fecha),
+        p.hora || '',
+        clubTeam(p),
+        `${p.local} vs ${p.visitante}`,
+        p.campo || '',
+        pdfEstadoPartido(p)
+      ])
+    });
+
+    eqs.forEach(e => {
+      const filas = jugadoresScope
+        .filter(j => (j.equipo || '').trim().toLowerCase() === e.nombre.trim().toLowerCase())
+        .sort((a, b) => Number(a.dorsal) - Number(b.dorsal) || a.nombre.localeCompare(b.nombre, 'es'))
+        .map(j => [String(j.dorsal || '-'), j.nombre, j.posicion || '-', j.categoria || '-', pdfEdad(j.fechaNacimiento)]);
+      secciones.push({
+        titulo: `Jugadores — ${e.nombre}`,
+        columnas: ['Dorsal', 'Nombre', 'Posición', 'Categoría', 'Edad'],
+        filas
+      });
+    });
+
+    const ok = imprimirPdf({
+      titulo: `Listas — ${ent.nombre}`,
+      subtitulo,
+      meta: eqs.length ? `Equipos a cargo: ${eqs.map(e => e.nombre).join(' · ')}` : 'Sin equipos asignados',
+      secciones
+    });
+    if (!ok) window.alert('Este entrenador no tiene partidos ni jugadores que exportar.');
+  };
 
   const [activeSubTab, setActiveSubTab] = useState<'equipos' | 'entrenadores'>('equipos');
 
@@ -883,7 +947,7 @@ export const EquiposClubView: React.FC = () => {
       {activeSubTab === 'entrenadores' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {entrenadores.map(ent => {
-            const equiposAsignados = equipos.filter(e => e.entrenador === ent.nombre);
+            const equiposAsignados = equiposDelEntrenador(ent);
             return (
               <div
                 key={ent.id}
@@ -904,6 +968,14 @@ export const EquiposClubView: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => exportarListasEntrenador(ent)}
+                      title="Exportar a PDF sus listas (partidos y jugadores de sus equipos)"
+                      aria-label="Exportar listas del entrenador a PDF"
+                      className="p-1.5 text-gray-400 hover:text-orange-600 rounded-lg hover:bg-orange-50"
+                    >
+                      <FileDown className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={() => openEntrenadorModal(ent)}
                       className="p-1.5 text-gray-400 hover:text-gray-900 rounded-lg hover:bg-gray-100"

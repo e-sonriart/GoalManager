@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useClub } from '../context/ClubContext';
 import { Partido, CondicionPartido, TipoPartido, Equipo } from '../types';
 import { Modal } from './Modal';
@@ -25,11 +25,13 @@ import {
   Search,
   Star,
   Play,
-  Ban
+  Ban,
+  FileDown
 } from 'lucide-react';
 import { ActiveTab } from './Navbar';
 import { notifyTeam } from '../services/notifications';
 import { isPartidoSuspendido } from '../utils/partidoEstado';
+import { imprimirPdf, pdfFechaCorta, pdfEstadoPartido, pdfEdad, PdfSeccion } from '../utils/pdfPrint';
 import { BuscadorRivalModal } from './BuscadorRivalModal';
 import { FfcvEquipo, ffcvUbicacion } from '../services/ffcvEquipos';
 import { leerPrefNotificarPartido, guardarPrefNotificarPartido } from '../utils/prefNotificarPartido';
@@ -57,7 +59,9 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     partidoRespuestas,
     responderPartido,
     jugadorActual,
-    equipoFiltro
+    equipoFiltro,
+    clubConfig,
+    jugadores
   } = useClub();
 
   const canManage = can('manage:partidos');
@@ -276,6 +280,94 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
 
   const equiposF8 = useMemo(() => agruparPorEquipos('F8', filteredPartidos), [equipos, categorias, filteredPartidos]);
   const equiposF11 = useMemo(() => agruparPorEquipos('F11', filteredPartidos), [equipos, categorias, filteredPartidos]);
+
+  // ===== Exportar a PDF: las listas tal y como están en pantalla =====
+  const [pdfMenuAbierto, setPdfMenuAbierto] = useState(false);
+  const pdfMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pdfMenuAbierto) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (pdfMenuRef.current && !pdfMenuRef.current.contains(e.target as Node)) setPdfMenuAbierto(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPdfMenuAbierto(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [pdfMenuAbierto]);
+
+  const subtituloPdf = [clubConfig?.nombre, clubConfig?.temporada].filter(Boolean).join(' · ');
+  const metaPdf = [
+    `Estado: ${filterStatus === 'pendientes' ? 'por jugar' : filterStatus === 'finalizados' ? 'finalizados' : 'todos'}`,
+    `Categoría: ${filterCategoria || 'todas'}`,
+    ...(equipoFiltro ? [`Equipo: ${equipoFiltro}`] : [])
+  ].join(' · ');
+
+  const exportarPartidosPdf = () => {
+    const columnas = ['Fecha', 'Hora', 'Enfrentamiento', 'Competición', 'Campo', 'Estado'];
+    const secciones: PdfSeccion[] = [];
+    ([
+      { tipo: 'F8', grupos: equiposF8 },
+      { tipo: 'F11', grupos: equiposF11 }
+    ] as const).forEach(({ tipo, grupos }) => {
+      grupos.forEach(({ equipo, partidos: lista }) => {
+        const filas = [...lista]
+          .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))
+          .map(p => [
+            pdfFechaCorta(p.fecha),
+            p.hora || '',
+            `${p.local} vs ${p.visitante}`,
+            `${p.tipo || 'Partido'}${p.jornada ? ` · Jornada ${p.jornada}` : ''}`,
+            p.campo || '',
+            pdfEstadoPartido(p)
+          ]);
+        if (filas.length) secciones.push({ titulo: `${tipo} · ${equipo.nombre}`, columnas, filas });
+      });
+    });
+    setPdfMenuAbierto(false);
+    if (!imprimirPdf({ titulo: 'Calendario de partidos', subtitulo: subtituloPdf, meta: metaPdf, secciones })) {
+      window.alert('No hay partidos que exportar con los filtros actuales.');
+    }
+  };
+
+  const nombresEquiposPdf = useMemo(
+    () => Array.from(new Set(equipos.map(e => e.nombre).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es')),
+    [equipos]
+  );
+  const equipoPlantillaPdf =
+    (equipoFiltro && nombresEquiposPdf.includes(equipoFiltro) && equipoFiltro) ||
+    (currentUser?.equipo && nombresEquiposPdf.includes(currentUser.equipo) && currentUser.equipo) ||
+    nombresEquiposPdf[0] ||
+    '';
+
+  const exportarPlantillaPdf = (nombreEquipo: string) => {
+    setPdfMenuAbierto(false);
+    if (!nombreEquipo) return;
+    const plantilla = jugadores
+      .filter(j => (j.equipo || '').trim().toLowerCase() === nombreEquipo.trim().toLowerCase())
+      .sort((a, b) => Number(a.dorsal) - Number(b.dorsal) || a.nombre.localeCompare(b.nombre, 'es'));
+    const filas = plantilla.map(j => [
+      String(j.dorsal || '-'),
+      j.nombre,
+      j.posicion || '-',
+      j.categoria || '-',
+      pdfEdad(j.fechaNacimiento)
+    ]);
+    const ok = imprimirPdf({
+      titulo: `Plantilla — ${nombreEquipo}`,
+      subtitulo: subtituloPdf,
+      meta: `${filas.length} jugadores`,
+      secciones: [
+        { titulo: `Jugadores — ${nombreEquipo}`, columnas: ['Dorsal', 'Nombre', 'Posición', 'Categoría', 'Edad'], filas }
+      ]
+    });
+    if (!ok) window.alert('Este equipo no tiene jugadores en plantilla.');
+  };
 
   const equiposDelJugador = (jugadorActual?.equipo || '')
     .split(',')
@@ -546,6 +638,52 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {(puedeExportar || currentUser?.rol === 'entrenador') && (
+            <div ref={pdfMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setPdfMenuAbierto(o => !o)}
+                aria-expanded={pdfMenuAbierto}
+                className="px-3.5 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+              >
+                <FileDown className="w-3.5 h-3.5" />
+                Exportar PDF
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${pdfMenuAbierto ? 'rotate-180' : ''}`} />
+              </button>
+              {pdfMenuAbierto && (
+                <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-gray-200 shadow-2xl z-40 overflow-hidden text-left">
+                  <button
+                    type="button"
+                    onClick={exportarPartidosPdf}
+                    className="w-full flex items-start gap-2.5 px-3.5 py-3 text-left hover:bg-gray-50 transition-colors"
+                  >
+                    <Calendar className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
+                    <span className="min-w-0">
+                      <span className="block text-xs font-bold text-gray-900">Partidos (lista en pantalla)</span>
+                      <span className="block text-[10px] text-gray-500">
+                        {filteredPartidos.length} partidos con los filtros actuales
+                      </span>
+                    </span>
+                  </button>
+                  <div className="border-t border-gray-100" />
+                  <div className="px-3.5 py-3 space-y-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Jugadores del equipo</p>
+                    <select
+                      value={equipoPlantillaPdf}
+                      onChange={e => exportarPlantillaPdf(e.target.value)}
+                      className="w-full px-2.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-700 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    >
+                      {nombresEquiposPdf.map(n => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           {puedeExportar && (
             <button
               onClick={() => exportSheet('partidos')}

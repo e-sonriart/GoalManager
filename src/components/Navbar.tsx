@@ -114,8 +114,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           })}
         </nav>
 
-        {/* Acciones Rápidas con Espaciado Consistente */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+        {/* Acciones Rápidas con Espaciado Consistente (relative: ancla de los menús desplegables) */}
+        <div className="relative flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           {/* Botón Sincronizar (en móvil vive en el panel "Más") */}
           <button
             onClick={() => refreshAll()}

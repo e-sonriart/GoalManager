@@ -637,9 +637,9 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex flex-wrap items-center gap-2">
           {(puedeExportar || currentUser?.rol === 'entrenador') && (
-            <div ref={pdfMenuRef} className="relative">
+            <div ref={pdfMenuRef}>
               <button
                 type="button"
                 onClick={() => setPdfMenuAbierto(o => !o)}
@@ -651,7 +651,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${pdfMenuAbierto ? 'rotate-180' : ''}`} />
               </button>
               {pdfMenuAbierto && (
-                <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-gray-200 shadow-2xl z-50 overflow-hidden text-left">
+                <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-1.5rem)] bg-white rounded-2xl border border-gray-200 shadow-2xl z-50 overflow-hidden text-left">
                   <button
                     type="button"
                     onClick={exportarPartidosPdf}

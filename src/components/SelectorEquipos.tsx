@@ -34,7 +34,7 @@ export const SelectorEquipos: React.FC = () => {
   const etiqueta = equipoFiltro || 'Todos';
 
   return (
-    <div ref={rootRef} className="relative shrink-0">
+    <div ref={rootRef} className="shrink-0">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
@@ -53,7 +53,7 @@ export const SelectorEquipos: React.FC = () => {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl border border-gray-200 shadow-2xl z-50 overflow-hidden">
+        <div className="absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] bg-white rounded-2xl border border-gray-200 shadow-2xl z-50 overflow-hidden">
           <p className="px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">
             Mostrar equipo
           </p>

@@ -7,7 +7,7 @@ import { WhatsAppIcon } from './WhatsAppIcon';
 import { computeStandings, TeamStanding } from '../utils/standings';
 import { openStandingsPopup, openFfcvStandingsPopup } from '../utils/standingsPopup';
 import { fetchFfcvClasificacion } from '../utils/ffcvClasificacion';
-import { imprimirPdf, pdfFechaCorta, pdfEstadoPartido, pdfEdad, PdfSeccion } from '../utils/pdfPrint';
+import { abrirPdf, pdfFechaCorta, pdfEstadoPartido, pdfEdad, PdfSeccion } from '../utils/pdfPrint';
 import { equiposDelEntrenador } from '../utils/equipos';
 
 type PosJugador = PosicionJugador;
@@ -174,7 +174,7 @@ export const EquiposClubView: React.FC = () => {
       });
     });
 
-    const ok = imprimirPdf({
+    const ok = abrirPdf({
       titulo: `Listas — ${ent.nombre}`,
       subtitulo,
       meta: eqs.length ? `Equipos a cargo: ${eqs.map(e => e.nombre).join(' · ')}` : 'Sin equipos asignados',

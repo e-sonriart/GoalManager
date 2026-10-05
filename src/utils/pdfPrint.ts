@@ -1,6 +1,3 @@
-import { Partido } from '../types';
-import { isPartidoSuspendido } from './partidoEstado';
-
 export interface PdfSeccion {
   titulo: string;
   columnas: string[];
@@ -9,160 +6,274 @@ export interface PdfSeccion {
 
 export interface PdfDatos {
   titulo: string;
-  /** Cabecera: nombre del club y temporada. */
   subtitulo?: string;
-  /** Filtros aplicados en pantalla (se muestra en una banda destacada). */
   meta?: string;
   secciones: PdfSeccion[];
 }
 
-/** Fecha corta legible para tablas: "sáb 04/10/26". */
 export const pdfFechaCorta = (fecha?: string): string => {
-  const raw = (fecha || '').slice(0, 10);
-  if (!raw) return '';
-  const d = new Date(`${raw}T12:00:00`);
-  return isNaN(d.getTime())
-    ? fecha || ''
-    : d.toLocaleDateString('es-ES', { weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit' });
+  if (!fecha) return '';
+  const d = new Date(`${fecha}T00:00:00`);
+  if (isNaN(d.getTime())) return fecha;
+  const dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(2);
+  return `${dias[d.getDay()]} ${dd}/${mm}/${yy}`;
 };
 
-/** Estado del partido para la última columna: marcador, Suspendido o Por jugar. */
-export const pdfEstadoPartido = (p: Partido): string => {
-  if (p.finalizado) return `${p.golesLocal ?? 0} - ${p.golesVisitante ?? 0}`;
-  if (isPartidoSuspendido(p)) return 'Suspendido';
+export const pdfEstadoPartido = (p: { finalizado?: boolean | string; golesLocal?: number | string | null; golesVisitante?: number | string | null; suspendido?: boolean | string }): string => {
+  const fin = p.finalizado === true || p.finalizado === 'true';
+  const hayMarcador = p.golesLocal !== undefined && p.golesLocal !== null && p.golesLocal !== '' && p.golesVisitante !== undefined && p.golesVisitante !== null && p.golesVisitante !== '';
+  if (fin && hayMarcador) return `${p.golesLocal} - ${p.golesVisitante}`;
+  if (p.suspendido === true || p.suspendido === 'true') return 'Suspendido';
   return 'Por jugar';
 };
 
-/** Edad en años a partir de la fecha de nacimiento (vacío si no hay fecha válida). */
 export const pdfEdad = (fechaNacimiento?: string): string => {
-  const raw = (fechaNacimiento || '').slice(0, 10);
-  if (!raw) return '';
-  const n = new Date(`${raw}T12:00:00`);
-  if (isNaN(n.getTime())) return '';
+  if (!fechaNacimiento) return '-';
+  const n = new Date(`${fechaNacimiento}T00:00:00`);
+  if (isNaN(n.getTime())) return '-';
   const hoy = new Date();
   let edad = hoy.getFullYear() - n.getFullYear();
   const m = hoy.getMonth() - n.getMonth();
   if (m < 0 || (m === 0 && hoy.getDate() < n.getDate())) edad--;
-  return edad >= 0 && edad < 120 ? String(edad) : '';
+  return edad >= 0 ? String(edad) : '-';
 };
 
-const esc = (v: unknown): string =>
-  String(v ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+// ---------------------------------------------------------------- motor PDF
+// Escritor mínimo de PDF 1.4 (A4, Helvetica, multi-página). Todo el contenido
+// se serializa en Latin-1 (1 byte por carácter) para calcular offsets exactos.
 
-/**
- * Genera un documento (A4) y abre el diálogo de impresión del navegador —
- * elegir "Guardar como PDF" para descargar. Devuelve false si no hay filas.
- */
-export const imprimirPdf = (datos: PdfDatos): boolean => {
-  const conFilas = datos.secciones.filter(s => s.filas.length > 0);
-  if (conFilas.length === 0) return false;
-  if (typeof document === 'undefined') return false;
+const PAGE_W = 595;
+const PAGE_H = 842;
+const MARGIN = 40;
+const CONTENT_W = PAGE_W - MARGIN * 2;
+const TOP_Y = 46; // primer elemento desde arriba
+const BOTTOM_LIMIT = 786; // nada por debajo (deja sitio al pie)
 
-  const ahora = new Date().toLocaleString('es-ES', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+const COLOR = {
+  naranja: '0.976 0.451 0.086',
+  oscuro: '0.067 0.094 0.153',
+  texto: '0.106 0.122 0.145',
+  gris: '0.42 0.447 0.5',
+  grisClaro: '0.898 0.906 0.922',
+  fila: '0.976 0.98 0.984',
+  meta: '1 0.969 0.929',
+  blanco: '1 1 1'
+};
 
-  const seccionesHtml = conFilas
-    .map(
-      sec => `<h2>${esc(sec.titulo)} <span class="n">${sec.filas.length}</span></h2>
-    <table>
-      <thead><tr>${sec.columnas.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
-      <tbody>${sec.filas.map(f => `<tr>${f.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody>
-    </table>`
-    )
-    .join('');
-
-  const html = `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="utf-8" />
-<title>${esc(datos.titulo)}</title>
-<style>
-  @page { size: A4; margin: 14mm 12mm; }
-  * { box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: #111827; margin: 0; font-size: 11px; }
-  header { display: flex; justify-content: space-between; align-items: flex-end; gap: 14px; border-bottom: 3px solid #f97316; padding-bottom: 8px; margin-bottom: 12px; }
-  h1 { font-size: 17px; margin: 0 0 3px; text-transform: uppercase; letter-spacing: .02em; }
-  .sub { color: #6b7280; font-size: 10.5px; }
-  .der { text-align: right; color: #6b7280; font-size: 9.5px; white-space: nowrap; }
-  .meta { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; border-radius: 6px; padding: 5px 9px; font-size: 9.5px; margin-bottom: 10px; }
-  h2 { font-size: 11px; background: #f3f4f6; border: 1px solid #e5e7eb; padding: 5px 8px; margin: 14px 0 0; border-radius: 5px 5px 0 0; text-transform: uppercase; }
-  h2 .n { color: #9ca3af; font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { border: 1px solid #e5e7eb; padding: 4px 6px; text-align: left; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; }
-  th { background: #111827; color: #fff; font-size: 8.5px; text-transform: uppercase; letter-spacing: .04em; }
-  tbody tr:nth-child(even) td { background: #f9fafb; }
-  thead { display: table-header-group; }
-  tr { page-break-inside: avoid; }
-  h2 { break-after: avoid; page-break-after: avoid; }
-  footer { margin-top: 16px; border-top: 1px solid #e5e7eb; padding-top: 6px; color: #9ca3af; font-size: 8.5px; text-align: right; }
-</style>
-</head>
-<body>
-  <header>
-    <div>
-      <h1>${esc(datos.titulo)}</h1>
-      ${datos.subtitulo ? `<div class="sub">${esc(datos.subtitulo)}</div>` : ''}
-    </div>
-    <div class="der">${ahora}</div>
-  </header>
-  ${datos.meta ? `<div class="meta">${esc(datos.meta)}</div>` : ''}
-  ${seccionesHtml}
-  <footer>Generado por GoalManager · ${ahora}</footer>
-</body>
-</html>`;
-
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('aria-hidden', 'true');
-  // Offscreen con tamaño A4: con visibility/0×0 la vista previa sale en blanco
-  // y el documento se destruye antes de imprimir.
-  iframe.style.position = 'fixed';
-  iframe.style.left = '-10000px';
-  iframe.style.top = '0';
-  iframe.style.width = '794px';
-  iframe.style.height = '1123px';
-  iframe.style.border = '0';
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentDocument || iframe.contentWindow?.document;
-  const win = iframe.contentWindow;
-  if (!doc || !win) {
-    document.body.removeChild(iframe);
-    return false;
+const esc = (s: string): string => {
+  let out = '';
+  for (const ch of s) {
+    const c = ch.codePointAt(0) || 0;
+    if (ch === '\\' || ch === '(' || ch === ')') out += '\\' + ch;
+    else if (c >= 32 && c <= 126) out += ch;
+    else if (c <= 0xff) out += '\\' + c.toString(8).padStart(3, '0');
+    else out += '?';
   }
-  doc.open();
-  doc.write(html);
-  doc.close();
+  return out;
+};
 
-  // El documento se elimina cuando se cierra el diálogo (afterprint), nunca antes:
-  // print() no bloquea y borrarlo en caliente deja la vista previa vacía.
-  let limpiado = false;
-  const limpiar = () => {
-    if (limpiado) return;
-    limpiado = true;
-    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+const medir = (s: string, size: number, bold: boolean): number => s.length * size * (bold ? 0.54 : 0.5);
+
+const envolver = (s: string, maxW: number, size: number, bold: boolean): string[] => {
+  const palabras = String(s ?? '').split(/\s+/).filter(Boolean);
+  const lineas: string[] = [];
+  let act = '';
+  for (const p of palabras) {
+    const cand = act ? `${act} ${p}` : p;
+    if (!act || medir(cand, size, bold) <= maxW) act = cand;
+    else {
+      lineas.push(act);
+      act = p;
+    }
+  }
+  if (act) lineas.push(act);
+  return lineas.length ? lineas : [''];
+};
+
+// yTop: distancia desde el borde superior → coordenada PDF (origen abajo-izquierda)
+const yPos = (yTop: number, alto = 0): number => PAGE_H - yTop - alto;
+
+const txt = (x: number, yTop: number, size: number, bold: boolean, gris: boolean, s: string): string =>
+  `BT /${bold ? 'F2' : 'F1'} ${size} Tf ${gris ? COLOR.gris : COLOR.texto} rg ${x.toFixed(2)} ${yPos(yTop, size * 0.8).toFixed(2)} Td (${esc(s)}) Tj ET`;
+
+const rect = (x: number, yTop: number, w: number, h: number, color: string): string =>
+  `${color} rg ${x.toFixed(2)} ${yPos(yTop, h).toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`;
+
+const rectBorde = (x: number, yTop: number, w: number, h: number): string =>
+  `${COLOR.grisClaro} RG 0.5 w ${x.toFixed(2)} ${yPos(yTop, h).toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re S`;
+
+const linea = (x1: number, y1Top: number, x2: number, y2Top: number): string =>
+  `${COLOR.grisClaro} RG 0.5 w ${x1.toFixed(2)} ${yPos(y1Top).toFixed(2)} m ${x2.toFixed(2)} ${yPos(y2Top).toFixed(2)} l S`;
+
+export const construirPdf = (d: PdfDatos): Uint8Array => {
+  const paginas: string[][] = [];
+  let ops: string[] = [];
+  let y = TOP_Y;
+
+  const cerrarPagina = () => {
+    // Pie de página
+    ops.push(linea(MARGIN, PAGE_H - 30, PAGE_W - MARGIN, PAGE_H - 30));
+    ops.push(
+      txt(MARGIN, PAGE_H - 24, 7.5, false, true, `Generado por GoalManager · ${new Date().toLocaleString('es-ES')}`)
+    );
+    paginas.push(ops);
+    ops = [];
   };
-  win.addEventListener('afterprint', limpiar);
-  setTimeout(limpiar, 120000);
 
-  const lanzar = () => {
-    try {
-      win.focus();
-      win.print();
-    } catch {
-      limpiar();
+  const barraSuperior = () => {
+    ops.push(rect(0, 0, PAGE_W, 4, COLOR.naranja));
+  };
+
+  const nuevaPagina = (continuacion: boolean) => {
+    if (ops.length || paginas.length === 0) cerrarPagina();
+    barraSuperior();
+    y = TOP_Y;
+    if (continuacion) {
+      ops.push(txt(MARGIN, y, 9, true, true, `${d.titulo} (continuación)`));
+      y += 16;
+      ops.push(linea(MARGIN, y, PAGE_W - MARGIN, y));
+      y += 10;
     }
   };
-  if (doc.readyState === 'complete') setTimeout(lanzar, 500);
-  else win.addEventListener('load', () => setTimeout(lanzar, 500));
 
-  return true;
+  barraSuperior();
+  // Cabecera (solo primera página)
+  ops.push(txt(MARGIN, y, 17, true, false, d.titulo));
+  y += 24;
+  if (d.subtitulo) {
+    ops.push(txt(MARGIN, y, 10, false, true, d.subtitulo));
+    y += 16;
+  }
+  if (d.meta) {
+    ops.push(rect(MARGIN, y, CONTENT_W, 20, COLOR.meta));
+    ops.push(txt(MARGIN + 8, y + 5.5, 8.5, false, false, d.meta));
+    y += 30;
+  } else {
+    y += 8;
+  }
+
+  const dibujarThead = (s: PdfSeccion): number => {
+    const n = Math.max(s.columnas.length, 1);
+    const anchoC = CONTENT_W / n;
+    const padX = 4;
+    let hMax = 0;
+    s.columnas.forEach((c, i) => {
+      const l = envolver(String(c), anchoC - padX * 2, 7.5, true);
+      hMax = Math.max(hMax, l.length);
+    });
+    const h = hMax * 9 + 8;
+    ops.push(rect(MARGIN, y, CONTENT_W, h, COLOR.oscuro));
+    s.columnas.forEach((c, i) => {
+      const l = envolver(String(c), anchoC - padX * 2, 7.5, true);
+      l.forEach((lineaTxt, li) => {
+        ops.push(`BT /F2 7.5 Tf ${COLOR.blanco} rg ${(MARGIN + i * anchoC + padX).toFixed(2)} ${yPos(y + 4 + li * 9, 6).toFixed(2)} Td (${esc(lineaTxt)}) Tj ET`);
+      });
+    });
+    return h;
+  };
+
+  for (const s of d.secciones) {
+    if (!s.filas.length) continue;
+    y += 6;
+    if (y + 34 > BOTTOM_LIMIT) nuevaPagina(true);
+    ops.push(txt(MARGIN, y, 11, true, false, s.titulo));
+    y += 15;
+    ops.push(linea(MARGIN, y, PAGE_W - MARGIN, y));
+    y += 6;
+
+    y += dibujarThead(s);
+
+    const n = Math.max(s.columnas.length, 1);
+    const anchoC = CONTENT_W / n;
+    const padX = 4;
+    const padY = 4;
+    const lh = 10;
+
+    s.filas.forEach((fila, idx) => {
+      const celdas: string[][] = fila.map((c, i) => envolver(String(c ?? ''), anchoC - padX * 2, 8.5, false));
+      const lineasMax = Math.max(...celdas.map(c => c.length), 1);
+      const h = lineasMax * lh + padY * 2 + 1;
+
+      if (y + h > BOTTOM_LIMIT) {
+        nuevaPagina(true);
+        y += dibujarThead(s);
+      }
+
+      if (idx % 2 === 1) ops.push(rect(MARGIN, y, CONTENT_W, h, COLOR.fila));
+      celdas.forEach((c, i) => {
+        c.forEach((lineaTxt, li) => {
+          ops.push(txt(MARGIN + i * anchoC + padX, y + padY + li * lh, 8.5, false, false, lineaTxt));
+        });
+        ops.push(rectBorde(MARGIN + i * anchoC, y, anchoC, h));
+      });
+      y += h;
+    });
+    y += 10;
+  }
+
+  if (!paginas.length || ops.length) cerrarPagina();
+
+  // ---- serialización de objetos ----
+  const objetos: string[] = []; // índice 0 = objeto 1
+  const kids: number[] = [];
+  let next = 5;
+  for (let i = 0; i < paginas.length; i++) {
+    const pageObj = next;
+    const contObj = next + 1;
+    next += 2;
+    kids.push(pageObj);
+    objetos.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contObj} 0 R >>`
+    );
+    const stream = paginas[i].join('\n');
+    objetos.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  }
+
+  const objs: string[] = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    `<< /Type /Pages /Kids [${kids.map(k => `${k} 0 R`).join(' ')}] /Count ${paginas.length} >>`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+    ...objetos
+  ];
+
+  let pdf = '%PDF-1.4\n';
+  const offsets: number[] = [];
+  for (let i = 0; i < objs.length; i++) {
+    offsets.push(pdf.length);
+    pdf += `${i + 1} 0 obj\n${objs[i]}\nendobj\n`;
+  }
+  const xrefStart = pdf.length;
+  pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+  for (const off of offsets) pdf += `${String(off).padStart(10, '0')} 00000 n \n`;
+  pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
+
+  const bytes = new Uint8Array(pdf.length);
+  for (let i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 0xff;
+  return bytes;
+};
+
+// Abre el PDF directamente en una pestaña del navegador (visor de PDF integrado).
+export const abrirPdf = (d: PdfDatos): boolean => {
+  if (!d.secciones.some(s => s.filas.length)) return false;
+  try {
+    const bytes = construirPdf(d);
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const win = window.open(url, '_blank');
+    if (!win) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${d.titulo.replace(/[^\w -]/g, '_').trim() || 'documento'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 300000);
+    return true;
+  } catch {
+    return false;
+  }
 };

@@ -31,7 +31,7 @@ import {
 import { ActiveTab } from './Navbar';
 import { notifyTeam } from '../services/notifications';
 import { isPartidoSuspendido } from '../utils/partidoEstado';
-import { imprimirPdf, pdfFechaCorta, pdfEstadoPartido, pdfEdad, PdfSeccion } from '../utils/pdfPrint';
+import { abrirPdf, pdfFechaCorta, pdfEstadoPartido, pdfEdad, PdfSeccion } from '../utils/pdfPrint';
 import { BuscadorRivalModal } from './BuscadorRivalModal';
 import { FfcvEquipo, ffcvUbicacion } from '../services/ffcvEquipos';
 import { leerPrefNotificarPartido, guardarPrefNotificarPartido } from '../utils/prefNotificarPartido';
@@ -330,7 +330,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
       });
     });
     setPdfMenuAbierto(false);
-    if (!imprimirPdf({ titulo: 'Calendario de partidos', subtitulo: subtituloPdf, meta: metaPdf, secciones })) {
+    if (!abrirPdf({ titulo: 'Calendario de partidos', subtitulo: subtituloPdf, meta: metaPdf, secciones })) {
       window.alert('No hay partidos que exportar con los filtros actuales.');
     }
   };
@@ -358,7 +358,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
       j.categoria || '-',
       pdfEdad(j.fechaNacimiento)
     ]);
-    const ok = imprimirPdf({
+    const ok = abrirPdf({
       titulo: `Plantilla — ${nombreEquipo}`,
       subtitulo: subtituloPdf,
       meta: `${filas.length} jugadores`,

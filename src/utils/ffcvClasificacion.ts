@@ -83,7 +83,9 @@ export function ffcvParamsDeEquipo(equipo: {
   letra?: string;
 }): { tipo: 'link'; url: string } | { tipo: 'grupo'; params: FfcvGrupoParams } | null {
   const link = equipo.linkClasificacion?.trim();
-  if (link) return { tipo: 'link', url: link };
+  // Solo sirve como link de clasificación si trae cod_partido (ficha de partido);
+  // los enlaces de equipo/calendario no aportan el contexto de clasificación.
+  if (link && /[?&]cod_partido=\d+/.test(link)) return { tipo: 'link', url: link };
   const params: FfcvGrupoParams = {
     categoria: equipo.categoria?.trim(),
     division: equipo.division?.trim(),

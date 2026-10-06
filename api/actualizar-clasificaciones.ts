@@ -94,7 +94,29 @@ export default async function handler(req: any, res: any): Promise<void> {
       );
     }
 
-    if (!urls.length) {
+    // Grupos ya resueltos por la vía categoría/liga/grupo (tabla ffcv_grupos)
+    let codGrupos: string[] = [];
+    if (!bodyUrls.length) {
+      try {
+        const rows = await restGet('ffcv_grupos?select=cod_grupo');
+        codGrupos = Array.from(
+          new Set(
+            rows
+              .map(r => String(r.cod_grupo || '').trim())
+              .filter(g => /^\d+$/.test(g))
+          )
+        );
+      } catch {
+        codGrupos = [];
+      }
+    }
+
+    const tarefas: { qs: string }[] = [
+      ...urls.map(u => ({ qs: `url=${encodeURIComponent(u)}` })),
+      ...codGrupos.map(g => ({ qs: `cod_grupo=${encodeURIComponent(g)}` }))
+    ];
+
+    if (!tarefas.length) {
       res.status(200).json({
         ok: true,
         total: 0,
@@ -107,11 +129,9 @@ export default async function handler(req: any, res: any): Promise<void> {
 
     let actualizados = 0;
     let errores = 0;
-    await runPool(urls, 3, async u => {
+    await runPool(tarefas, 3, async t => {
       try {
-        const r = await fetch(
-          `${BASE_URL}/api/clasificacion?url=${encodeURIComponent(u)}&force=1`
-        );
+        const r = await fetch(`${BASE_URL}/api/clasificacion?${t.qs}&force=1`);
         const j: any = await r.json().catch(() => ({}));
         if (r.ok && j?.ok) actualizados++;
         else errores++;
@@ -122,7 +142,9 @@ export default async function handler(req: any, res: any): Promise<void> {
 
     res.status(200).json({
       ok: true,
-      total: urls.length,
+      total: tarefas.length,
+      urls: urls.length,
+      grupos: codGrupos.length,
       actualizados,
       errores,
       fecha: new Date().toISOString()

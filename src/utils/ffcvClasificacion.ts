@@ -1,6 +1,11 @@
 /**
  * Extracción de la clasificación oficial FFCV vía proxy serverless
  * (/api/clasificacion), que devuelve filas normalizadas.
+ *
+ * Dos vías de entrada:
+ *  - por link oficial (equipo.linkClasificacion con cod_partido)
+ *  - por datos del equipo (categoria/division/grupo/letra): el server
+ *    resuelve el cod_grupo y cachea en Supabase.
  */
 
 export interface FfcvStandingsRow {
@@ -27,11 +32,21 @@ export interface FfcvClasificacion {
   updatedAt: string;
 }
 
-export async function fetchFfcvClasificacion(url: string): Promise<FfcvClasificacion> {
-  const res = await fetch(`/api/clasificacion?url=${encodeURIComponent(url)}`);
+export interface FfcvGrupoParams {
+  categoria?: string;
+  division?: string;
+  grupo?: string;
+  letra?: string;
+}
+
+async function requestClasificacion(qs: string): Promise<FfcvClasificacion> {
+  const res = await fetch(`/api/clasificacion?${qs}`);
   const data: any = await res.json().catch(() => null);
   if (!res.ok || !data?.ok || !Array.isArray(data.rows) || !data.rows.length) {
-    throw new Error(String(data?.error || `HTTP ${res.status}`));
+    const err: any = new Error(String(data?.error || `HTTP ${res.status}`));
+    err.candidatos = Array.isArray(data?.candidatos) ? data.candidatos : [];
+    err.detalle = String(data?.detalle || '');
+    throw err;
   }
   return {
     competicion: String(data.competicion || ''),
@@ -43,23 +58,87 @@ export async function fetchFfcvClasificacion(url: string): Promise<FfcvClasifica
   };
 }
 
+/** Clasificación por link oficial de la FFCV (ficha con cod_partido). */
+export async function fetchFfcvClasificacion(url: string): Promise<FfcvClasificacion> {
+  return requestClasificacion(`url=${encodeURIComponent(url)}`);
+}
+
+/** Clasificación resolviendo el grupo FFCV con los datos del equipo. */
+export async function fetchFfcvClasificacionGrupo(params: FfcvGrupoParams): Promise<FfcvClasificacion> {
+  const qs = new URLSearchParams();
+  if (params.categoria) qs.set('categoria', params.categoria);
+  if (params.division) qs.set('division', params.division);
+  if (params.grupo) qs.set('grupo', params.grupo);
+  if (params.letra) qs.set('letra', params.letra);
+  if (![...qs.keys()].length) throw new Error('sin_datos_equipo');
+  return requestClasificacion(qs.toString());
+}
+
+/** Devuelve la mejor vía FFCV de un equipo: link oficial o datos. */
+export function ffcvParamsDeEquipo(equipo: {
+  linkClasificacion?: string;
+  categoria?: string;
+  division?: string;
+  grupo?: string;
+  letra?: string;
+}): { tipo: 'link'; url: string } | { tipo: 'grupo'; params: FfcvGrupoParams } | null {
+  const link = equipo.linkClasificacion?.trim();
+  if (link) return { tipo: 'link', url: link };
+  const params: FfcvGrupoParams = {
+    categoria: equipo.categoria?.trim(),
+    division: equipo.division?.trim(),
+    grupo: equipo.grupo?.trim(),
+    letra: equipo.letra?.trim()
+  };
+  if (params.categoria || params.division) return { tipo: 'grupo', params };
+  return null;
+}
+
 const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_TTL_GRUPO = 30 * 60 * 1000;
 const cache = new Map<string, { ts: number; data: FfcvClasificacion | null }>();
 
-async function fetchFfcvClasificacionCached(url: string): Promise<FfcvClasificacion> {
-  const hit = cache.get(url);
-  if (hit && Date.now() - hit.ts < CACHE_TTL) {
-    if (hit.data) return hit.data;
+function cacheGet(key: string, ttl: number): FfcvClasificacion | null | undefined {
+  const hit = cache.get(key);
+  if (!hit || Date.now() - hit.ts >= ttl) return undefined;
+  return hit.data;
+}
+
+function cacheSet(key: string, data: FfcvClasificacion | null): void {
+  cache.set(key, { ts: Date.now(), data });
+}
+
+async function fetchClasificacionCached(
+  key: string,
+  loader: () => Promise<FfcvClasificacion>,
+  ttl: number
+): Promise<FfcvClasificacion> {
+  const hit = cacheGet(key, ttl);
+  if (hit !== undefined) {
+    if (hit) return hit;
     throw new Error('error_extraccion');
   }
   try {
-    const data = await fetchFfcvClasificacion(url);
-    cache.set(url, { ts: Date.now(), data });
+    const data = await loader();
+    cacheSet(key, data);
     return data;
   } catch (e) {
-    cache.set(url, { ts: Date.now(), data: null });
+    cacheSet(key, null);
     throw e;
   }
+}
+
+export function fetchFfcvClasificacionLinkCached(url: string): Promise<FfcvClasificacion> {
+  return fetchClasificacionCached(`url:${url}`, () => fetchFfcvClasificacion(url), CACHE_TTL);
+}
+
+export function fetchFfcvClasificacionGrupoCached(
+  params: FfcvGrupoParams
+): Promise<FfcvClasificacion> {
+  const key = `grupo:${params.categoria || ''}|${params.division || ''}|${
+    params.grupo || ''
+  }|${params.letra || ''}`;
+  return fetchClasificacionCached(key, () => fetchFfcvClasificacionGrupo(params), CACHE_TTL_GRUPO);
 }
 
 /** Vacia la caché local (tras una actualización manual del admin) */
@@ -90,6 +169,8 @@ export interface ClasifTeamResumen {
   sub: string;
   rows: FfcvStandingsRow[];
   updatedAt: string;
+  /** Moto del fallo (p. ej. liga ambigua con candidatos) */
+  nota?: string;
 }
 
 export interface ClasifCategoriaResumen {
@@ -100,6 +181,7 @@ export interface ClasifCategoriaResumen {
 interface EquipoLike {
   nombre: string;
   categoria: string;
+  letra?: string;
   division?: string;
   grupo?: string;
   linkClasificacion?: string;
@@ -107,6 +189,31 @@ interface EquipoLike {
 
 interface CategoriaLike {
   nombre: string;
+}
+
+const NOTAS_ERROR: Record<string, string> = {
+  liga_no_encontrada: 'No se encontró esa liga en la FFCV con la categoría/división del equipo.',
+  liga_ambigua: 'Hay varias ligas posibles con esos datos: ajusta la división o añade el link oficial.',
+  grupo_no_encontrado: 'No se encontró el grupo (o la letra) dentro de esa liga.',
+  grupo_ambiguo: 'Hay varios grupos posibles en esa liga.',
+  grupo_requerido: 'Falta el grupo del equipo para encontrar la clasificación.',
+  sin_grupos: 'Esa liga no tiene grupos publicados.',
+  sin_datos_equipo: 'El equipo no tiene link ni datos de liga/grupo.',
+  error_extraccion: 'No se pudo extraer la clasificación de la FFCV.'
+};
+
+function notaDeError(err: any): string {
+  const base = String(err?.message || '');
+  const nota = NOTAS_ERROR[base] || 'No se pudo extraer la clasificación de la FFCV.';
+  const cands: string[] = Array.isArray(err?.candidatos) ? err.candidatos : [];
+  if (cands.length) {
+    const detalle = err?.detalle ? ` (${err.detalle})` : '';
+    return `${nota}${detalle} Candidatos: ${cands
+      .slice(0, 4)
+      .map(c => c.split('|').slice(1).filter(Boolean).join(' · '))
+      .join(' / ')}${cands.length > 4 ? '…' : ''}`;
+  }
+  return nota;
 }
 
 export async function fetchResumenClasificaciones(
@@ -131,19 +238,23 @@ export async function fetchResumenClasificaciones(
   const pairs = groups.flatMap(g => g.equipos.map(e => ({ categoria: g.categoria, equipo: e })));
   const results = await runPool(pairs, 4, async ({ equipo }) => {
     const meta = [equipo.division, equipo.grupo].filter(Boolean).join(' · ');
-    const link = equipo.linkClasificacion?.trim();
-    if (!link) {
+    const origen = ffcvParamsDeEquipo(equipo);
+    if (!origen) {
       return {
         estado: 'sin-link' as EstadoClasif,
         meta,
         title: '',
         sub: '',
         rows: [] as FfcvStandingsRow[],
-        updatedAt: ''
+        updatedAt: '',
+        nota: NOTAS_ERROR.sin_datos_equipo
       };
     }
     try {
-      const data = await fetchFfcvClasificacionCached(link);
+      const data =
+        origen.tipo === 'link'
+          ? await fetchFfcvClasificacionLinkCached(origen.url)
+          : await fetchFfcvClasificacionGrupoCached(origen.params);
       const j = data.jornada.trim();
       return {
         estado: 'ok' as EstadoClasif,
@@ -155,14 +266,15 @@ export async function fetchResumenClasificaciones(
         rows: data.rows,
         updatedAt: data.updatedAt
       };
-    } catch {
+    } catch (err) {
       return {
         estado: 'error' as EstadoClasif,
         meta,
         title: '',
         sub: '',
         rows: [] as FfcvStandingsRow[],
-        updatedAt: ''
+        updatedAt: '',
+        nota: notaDeError(err)
       };
     }
   });
@@ -178,7 +290,8 @@ export async function fetchResumenClasificaciones(
       title: r.title,
       sub: r.sub,
       rows: r.rows,
-      updatedAt: r.updatedAt
+      updatedAt: r.updatedAt,
+      nota: r.nota
     });
     byCat.set(p.categoria, list);
   });

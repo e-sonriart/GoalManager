@@ -6,7 +6,11 @@ import { TeamShield } from './TeamShield';
 import { WhatsAppIcon } from './WhatsAppIcon';
 import { computeStandings, TeamStanding } from '../utils/standings';
 import { openStandingsPopup, openFfcvStandingsPopup } from '../utils/standingsPopup';
-import { fetchFfcvClasificacion } from '../utils/ffcvClasificacion';
+import {
+  fetchFfcvClasificacionLinkCached,
+  fetchFfcvClasificacionGrupoCached,
+  ffcvParamsDeEquipo
+} from '../utils/ffcvClasificacion';
 import { abrirPdf, pdfFechaCorta, pdfEstadoPartido, pdfEdad, PdfSeccion } from '../utils/pdfPrint';
 import { equiposDelEntrenador } from '../utils/equipos';
 
@@ -529,14 +533,17 @@ export const EquiposClubView: React.FC = () => {
   const handleOpenClasificacion = async () => {
     const equipo = selectedEquipoForSquad;
     if (!equipo) return;
-    const link = equipo.linkClasificacion?.trim();
-    if (!link) {
+    const origen = ffcvParamsDeEquipo(equipo);
+    if (!origen) {
       openOwnStandingsPopup(equipo);
       return;
     }
     setIsFetchingClasif(true);
     try {
-      const data = await fetchFfcvClasificacion(link);
+      const data =
+        origen.tipo === 'link'
+          ? await fetchFfcvClasificacionLinkCached(origen.url)
+          : await fetchFfcvClasificacionGrupoCached(origen.params);
       const j = data.jornada.trim();
       openFfcvStandingsPopup({
         title: [data.competicion, data.grupo].filter(Boolean).join(' · ') || 'Clasificación oficial',

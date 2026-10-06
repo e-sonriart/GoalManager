@@ -303,13 +303,13 @@ export function openResumenClasificacionesPopup(options: ResumenClasificacionesO
           if (t.estado === 'sin-link') {
             return `<div class="team-block">
               <div class="team-title">${esc(t.nombre)}${meta}</div>
-              <div class="note">Sin link de clasificación.</div>
+              <div class="note">${esc(t.nota || 'Sin link de clasificación.')}</div>
             </div>`;
           }
           if (t.estado === 'error') {
             return `<div class="team-block">
               <div class="team-title">${esc(t.nombre)}${meta}</div>
-              <div class="note">No se pudo extraer la clasificación de la FFCV.</div>
+              <div class="note">${esc(t.nota || 'No se pudo extraer la clasificación de la FFCV.')}</div>
             </div>`;
           }
           const idx = t.rows.findIndex(r => isOurs(r.equipo));

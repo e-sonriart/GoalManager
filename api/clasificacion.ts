@@ -1,15 +1,17 @@
 /**
  * GET /api/clasificacion — extrae la clasificación oficial FFCV.
  *
- * Tres modos de entrada:
+ * Cuatro modos de entrada:
  *  1) ?url=<ficha FFCV con cod_partido=...>            (histórico)
  *  2) ?cod_grupo=<id>                                  (directo, sin resolver)
- *  3) ?categoria=&division=&grupo=&letra=              (resuelve cod_grupo por nombre)
+ *  3) ?codigo_equipo=<id>                              (ficha del equipo)
+ *  4) ?categoria=&division=&grupo=&letra=&ano=          (resuelve cod_grupo por nombre)
  *
- * El modo 3 resuelve: temporada → competiciones_fetch → scoring por
- * categoría/división (con equivalencias es/val) → grupos_fetch → jornadas →
- * clasificaciones_ajax. El resultado (cod_grupo) se persiste en `ffcv_grupos`
- * si la tabla existe (opcional, ver ffcv_grupos.sql).
+ * El modo 4 resuelve: temporada → competiciones_fetch → scoring por
+ * categoría/división/año (con equivalencias es/val) → grupos_fetch → desempate
+ * por nombre del club dentro del grupo → jornadas → clasificaciones_ajax. El
+ * resultado (cod_grupo) se persiste en `ffcv_grupos` si la tabla existe
+ * (opcional, ver ffcv_grupos.sql).
  */
 export const maxDuration = 30;
 
@@ -105,8 +107,14 @@ async function getGrupoMap(key: string): Promise<string> {
   }
 }
 
-const grupoMapKey = (categoria: string, division: string, grupo: string, letra: string): string =>
-  [categoria, division, grupo, letra]
+const grupoMapKey = (
+  categoria: string,
+  division: string,
+  grupo: string,
+  letra: string,
+  ano: string
+): string =>
+  [categoria, division, grupo, letra, ano]
     .map(s => String(s || '').trim().toLowerCase())
     .join('|');
 
@@ -227,17 +235,38 @@ function frasesDivision(div: string): string[] {
   return [...out];
 }
 
+/** Palabras normalizadas (minúsculas, sin acentos, separadas) */
+const normTokens = (s: unknown): string[] =>
+  String(s ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+
 function scoreComp(
   c: any,
   categoria: string,
   division: string,
-  conCategoria: boolean
+  conCategoria: boolean,
+  ano: string
 ): number {
-  const h = norm(String(c?.NombreCategoria || '')) + norm(String(c?.nombre || ''));
+  const nombreCat = String(c?.NombreCategoria || '');
+  const nombre = String(c?.nombre || '');
+  const h = norm(nombreCat) + norm(nombre);
+  const hayTokens = [...normTokens(nombreCat), ...normTokens(nombre)];
   const cat = norm(categoria);
   let s = 0;
   if (conCategoria && cat) {
-    if (!cat.split(/\s+/).filter(Boolean).every(t => h.includes(t))) return -1;
+    // Token-equality (no substring): "Benjamín" no debe matchear "Prebenjamín";
+    // acepta valenciano sin -n final ("Benjamí") y viceversa.
+    const ok = hayTokens.some(
+      t =>
+        t === cat ||
+        (cat.length >= 5 && t.startsWith(cat.slice(0, -1))) ||
+        (t.length >= 5 && cat.startsWith(t.slice(0, -1)))
+    );
+    if (!ok) return -1;
     s += 3;
   }
   if (division) {
@@ -264,6 +293,26 @@ function scoreComp(
     if (h.includes('playa')) return -1;
     if (!divN.includes('femen') && h.includes('femenin')) s -= 3;
   }
+  // Año del equipo F8: "1er año" ↔ 1r. any / 1er. Año; "2do año" ↔ 2n. any / 2º. Año.
+  // Si la liga no lleva marcador de año en el nombre, no se penaliza.
+  const anoTxt = String(ano || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, ' ');
+  const haySpaced = (' ' + nombreCat + ' ' + nombre)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ');
+  const hay1 = / 1(er|r|o)? (any|ano)/.test(haySpaced);
+  const hay2 = / 2(n|do|o)? (any|ano)/.test(haySpaced);
+  if (/1/.test(anoTxt) || /primer/.test(anoTxt)) {
+    if (hay2) return -1;
+    if (hay1) s += 6;
+  } else if (/2/.test(anoTxt) || /segundo/.test(anoTxt)) {
+    if (hay1) return -1;
+    if (hay2) s += 6;
+  }
   if (String(c?.Activa) === '1') s += 3;
   return s;
 }
@@ -286,14 +335,63 @@ interface ResolucionError {
   candidatos?: string[];
 }
 
+/** Nombre del club (club_config) para desempatar provincias; '' si no hay. */
+let cachedClubNombre = '';
+let cachedClubTs = 0;
+
+async function getClubNombre(): Promise<string> {
+  if (cachedClubNombre && Date.now() - cachedClubTs < 60 * 60 * 1000) return cachedClubNombre;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/club_config?select=nombre&limit=1`, {
+      headers: snapHeaders
+    });
+    const rows = await r.json();
+    cachedClubNombre = Array.isArray(rows) && rows[0] ? String(rows[0].nombre || '') : '';
+  } catch {
+    cachedClubNombre = '';
+  }
+  cachedClubTs = Date.now();
+  return cachedClubNombre;
+}
+
+/** ¿El grupo contiene algún equipo del club? (desempate Alacant/València/…) */
+async function grupoTieneClub(codGrupo: string, clubNombre: string): Promise<boolean> {
+  if (!clubNombre) return false;
+  const clubToks = normTokens(clubNombre).filter(t => t.length >= 3);
+  if (!clubToks.length) return false;
+  try {
+    const jdata = await getJson(
+      `https://ffcv.es/competiciones/api/filtros/jornadas_fetch.php?cod_grupo=${encodeURIComponent(
+        codGrupo
+      )}&debug=1`
+    );
+    const jlist: any[] = Array.isArray(jdata?.jornadas) ? jdata.jornadas : [];
+    if (!jlist.length) return false;
+    const codJornada = digits(
+      pick(jlist[0], ['codjornada', 'cod_jornada', 'codigo_jornada'])
+    );
+    const data = await getJson(
+      `https://ffcv.es/competiciones/api/clasificaciones/clasificaciones_ajax.php?cod_grupo=${encodeURIComponent(
+        codGrupo
+      )}&cod_jornada=${encodeURIComponent(codJornada)}`
+    );
+    const rows: any[] = Array.isArray(data?.clasificacion) ? data.clasificacion : [];
+    return rows.some(r => {
+      const toks = normTokens(r?.nombre);
+      return clubToks.some(t => toks.includes(t));
+    });
+  } catch {
+    return false;
+  }
+}
+
 async function resolverCodGrupo(
   categoria: string,
   division: string,
   grupo: string,
-  letra: string
+  letra: string,
+  ano: string
 ): Promise<Resolucion | ResolucionError> {
-  const isErr = (x: any): x is ResolucionError => !!x?.error;
-
   const temps = await getJson('https://ffcv.es/competiciones/api/filtros/temporadas_fetch.php');
   const hoy = new Date();
   const lista: any[] = Array.isArray(temps?.temporadas) ? temps.temporadas : [];
@@ -316,73 +414,102 @@ async function resolverCodGrupo(
 
   let modo = 'categoria+division';
   let scored = comps
-    .map(c => ({ c, s: scoreComp(c, categoria, division, true) }))
+    .map(c => ({ c, s: scoreComp(c, categoria, division, true, ano) }))
     .filter(x => x.s > 0);
   if (!scored.length && division) {
     modo = 'solo-division';
     scored = comps
-      .map(c => ({ c, s: scoreComp(c, '', division, false) }))
+      .map(c => ({ c, s: scoreComp(c, '', division, false, ano) }))
       .filter(x => x.s > 0);
   }
   if (!scored.length && categoria) {
     modo = 'solo-categoria';
     scored = comps
-      .map(c => ({ c, s: scoreComp(c, categoria, '', true) }))
+      .map(c => ({ c, s: scoreComp(c, categoria, '', true, ano) }))
       .filter(x => x.s > 0);
   }
   if (!scored.length) return { error: 'liga_no_encontrada' };
 
   scored.sort((a, b) => b.s - a.s);
   const top = scored[0].s;
-  const empates = scored.filter(x => x.s === top);
-  if (empates.length > 1) {
-    return {
-      error: 'liga_ambigua',
-      detalle: modo,
-      candidatos: empates.map(
-        x =>
-          `${x.c.codigo}|${String(x.c.NombreCategoria || '').trim()}|${String(
-            x.c.nombre || ''
-          ).trim()}`
-      )
-    };
-  }
+  let empates = scored.filter(x => x.s === top);
 
-  const comp = scored[0].c;
-  const gdata = await getJson(
-    `https://ffcv.es/competiciones/api/filtros/grupos_fetch.php?cod_competicion=${encodeURIComponent(
-      String(comp.codigo)
-    )}`
-  );
-  const gs: any[] = Array.isArray(gdata?.grupos) ? gdata.grupos : [];
-  if (!gs.length) return { error: 'sin_grupos', detalle: String(comp.nombre || '') };
-
-  let hit: any[] = [];
   const num = (String(grupo).match(/(\d+)/) || [])[1] || '';
   const let_ = (letra || extractLetraGrupo(grupo)).toUpperCase();
-  if (num) hit = gs.filter(x => extractNumGrupo(String(x.nombre)) === num);
-  if (!hit.length && let_)
-    hit = gs.filter(x => extractLetraGrupo(String(x.nombre)) === let_);
-  if (!hit.length && gs.length === 1) hit = gs;
-  if (!hit.length) {
+
+  const buscarGrupos = async (comp: any): Promise<any[]> => {
+    const gdata = await getJson(
+      `https://ffcv.es/competiciones/api/filtros/grupos_fetch.php?cod_competicion=${encodeURIComponent(
+        String(comp.codigo)
+      )}`
+    );
+    const gs: any[] = Array.isArray(gdata?.grupos) ? gdata.grupos : [];
+    let hit: any[] = [];
+    if (num) hit = gs.filter(x => extractNumGrupo(String(x.nombre)) === num);
+    if (!hit.length && let_)
+      hit = gs.filter(x => extractLetraGrupo(String(x.nombre)) === let_);
+    if (!hit.length && gs.length === 1) hit = gs;
+    return hit.map(g => ({ comp, grupo: g, gs }));
+  };
+
+  // Varios empates (p. ej. misma liga en Alacant/Castelló/València):
+  // restringir a los que tengan el grupo pedido y, si sigue habiendo varios,
+  // desempatar por el nombre del club dentro de la clasificación.
+  let pares: { comp: any; grupo: any; gs: any[] }[] = [];
+  for (const x of empates.slice(0, 6)) {
+    pares = pares.concat(await buscarGrupos(x.c));
+  }
+  if (!pares.length) {
+    const comp0 = empates[0].c;
+    const gsAll: any[] = await (async () => {
+      const gdata = await getJson(
+        `https://ffcv.es/competiciones/api/filtros/grupos_fetch.php?cod_competicion=${encodeURIComponent(
+          String(comp0.codigo)
+        )}`
+      );
+      return Array.isArray(gdata?.grupos) ? gdata.grupos : [];
+    })();
+    if (!gsAll.length) return { error: 'sin_grupos', detalle: String(comp0.nombre || '') };
     return {
       error: num || let_ ? 'grupo_no_encontrado' : 'grupo_requerido',
-      detalle: String(comp.nombre || ''),
-      candidatos: gs.map(x => `${x.codigo}|${String(x.nombre || '').trim()}`)
-    };
-  }
-  if (hit.length > 1) {
-    return {
-      error: 'grupo_ambiguo',
-      detalle: String(comp.nombre || ''),
-      candidatos: hit.map(x => `${x.codigo}|${String(x.nombre || '').trim()}`)
+      detalle: String(comp0.nombre || ''),
+      candidatos: gsAll.map(x => `${x.codigo}|${String(x.nombre || '').trim()}`)
     };
   }
 
+  if (pares.length > 1) {
+    const club = await getClubNombre();
+    if (club) {
+      const conClub: typeof pares = [];
+      for (const p of pares) {
+        if (await grupoTieneClub(String(p.grupo.codigo || ''), club)) conClub.push(p);
+      }
+      if (conClub.length === 1) pares = conClub;
+      else if (conClub.length > 1) pares = conClub;
+    }
+    if (pares.length > 1) {
+      const unicos = new Set(pares.map(p => String(p.grupo.codigo || '')));
+      if (unicos.size > 1) {
+        const compsUnicas = new Set(pares.map(p => String(p.comp.codigo)));
+        return {
+          error: compsUnicas.size > 1 ? 'liga_ambigua' : 'grupo_ambiguo',
+          detalle: modo,
+          candidatos: pares.map(
+            p =>
+              `${String(p.grupo.codigo || '')}|${String(p.comp.NombreCategoria || p.comp.nombre || '').trim()}|${String(
+                p.comp.nombre || ''
+              ).trim()} ${String(p.grupo.nombre || '').trim()}`
+          )
+        };
+      }
+    }
+  }
+
+  const elegido = pares[0];
   return {
-    codGrupo: String(hit[0].codigo || ''),
-    competicion: String(comp.nombre || '').trim(),
-    grupo: String(hit[0].nombre || '').trim(),
+    codGrupo: String(elegido.grupo.codigo || ''),
+    competicion: String(elegido.comp.nombre || '').trim(),
+    grupo: String(elegido.grupo.nombre || '').trim(),
     temporada,
     modo
   };
@@ -519,6 +646,7 @@ export default async function handler(req: any, res: any): Promise<void> {
     const division = String(q.division || '').trim();
     const grupo = String(q.grupo || '').trim();
     const letra = String(q.letra || '').trim();
+    const ano = String(q.ano || '').trim();
     const codGrupoParam = digits(q.cod_grupo || '');
     const codigoEquipo = digits(q.codigo_equipo || '');
     const raw = String(q.url || '');
@@ -567,28 +695,32 @@ export default async function handler(req: any, res: any): Promise<void> {
     }
 
     if (!codGrupo && (categoria || division || grupo)) {
-      const r = await resolverCodGrupo(categoria, division, grupo, letra);
-      if ('error' in r) {
-        res.status(404).json({
-          error: r.error,
-          detalle: r.detalle || '',
-          candidatos: r.candidatos || []
+      const mapKey = grupoMapKey(categoria, division, grupo, letra, ano);
+      codGrupo = await getGrupoMap(mapKey);
+      if (!codGrupo) {
+        const r = await resolverCodGrupo(categoria, division, grupo, letra, ano);
+        if ('error' in r) {
+          res.status(404).json({
+            error: r.error,
+            detalle: r.detalle || '',
+            candidatos: r.candidatos || []
+          });
+          return;
+        }
+        resolucion = r;
+        codGrupo = r.codGrupo;
+        void saveGrupoMap({
+          key: mapKey,
+          categoria,
+          division,
+          grupo,
+          letra,
+          codGrupo: r.codGrupo,
+          competicion: r.competicion,
+          grupoFfcv: r.grupo,
+          temporada: r.temporada
         });
-        return;
       }
-      resolucion = r;
-      codGrupo = r.codGrupo;
-      void saveGrupoMap({
-        key: grupoMapKey(categoria, division, grupo, letra),
-        categoria,
-        division,
-        grupo,
-        letra,
-        codGrupo: r.codGrupo,
-        competicion: r.competicion,
-        grupoFfcv: r.grupo,
-        temporada: r.temporada
-      });
     }
 
     if (codGrupo) contextKey = snapshotKey(`codGrupo:${codGrupo}`);

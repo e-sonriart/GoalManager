@@ -37,6 +37,8 @@ export interface FfcvGrupoParams {
   division?: string;
   grupo?: string;
   letra?: string;
+  /** F8: '1er año' | '2do año' — distingue 1r. any / 2n. any en la FFCV */
+  ano?: string;
 }
 
 async function requestClasificacion(qs: string): Promise<FfcvClasificacion> {
@@ -70,6 +72,7 @@ export async function fetchFfcvClasificacionGrupo(params: FfcvGrupoParams): Prom
   if (params.division) qs.set('division', params.division);
   if (params.grupo) qs.set('grupo', params.grupo);
   if (params.letra) qs.set('letra', params.letra);
+  if (params.ano) qs.set('ano', params.ano);
   if (![...qs.keys()].length) throw new Error('sin_datos_equipo');
   return requestClasificacion(qs.toString());
 }
@@ -86,6 +89,7 @@ export function ffcvParamsDeEquipo(equipo: {
   division?: string;
   grupo?: string;
   letra?: string;
+  ano?: string;
 }):
   | { tipo: 'link'; url: string }
   | { tipo: 'equipo'; codigoEquipo: string }
@@ -103,7 +107,8 @@ export function ffcvParamsDeEquipo(equipo: {
     categoria: equipo.categoria?.trim(),
     division: equipo.division?.trim(),
     grupo: equipo.grupo?.trim(),
-    letra: equipo.letra?.trim()
+    letra: equipo.letra?.trim(),
+    ano: equipo.ano?.trim()
   };
   if (params.categoria || params.division) return { tipo: 'grupo', params };
   return null;
@@ -152,7 +157,7 @@ export function fetchFfcvClasificacionGrupoCached(
 ): Promise<FfcvClasificacion> {
   const key = `grupo:${params.categoria || ''}|${params.division || ''}|${
     params.grupo || ''
-  }|${params.letra || ''}`;
+  }|${params.letra || ''}|${params.ano || ''}`;
   return fetchClasificacionCached(key, () => fetchFfcvClasificacionGrupo(params), CACHE_TTL_GRUPO);
 }
 
@@ -209,6 +214,7 @@ interface EquipoLike {
   letra?: string;
   division?: string;
   grupo?: string;
+  ano?: string;
   linkClasificacion?: string;
 }
 
@@ -263,7 +269,7 @@ export async function fetchResumenClasificaciones(
 
   const pairs = groups.flatMap(g => g.equipos.map(e => ({ categoria: g.categoria, equipo: e })));
   const results = await runPool(pairs, 4, async ({ equipo }) => {
-    const meta = [equipo.division, equipo.grupo].filter(Boolean).join(' · ');
+    const meta = [equipo.division, equipo.grupo, equipo.ano].filter(Boolean).join(' · ');
     const origen = ffcvParamsDeEquipo(equipo);
     if (!origen) {
       return {

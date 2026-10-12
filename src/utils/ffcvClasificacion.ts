@@ -74,18 +74,31 @@ export async function fetchFfcvClasificacionGrupo(params: FfcvGrupoParams): Prom
   return requestClasificacion(qs.toString());
 }
 
-/** Devuelve la mejor vía FFCV de un equipo: link oficial o datos. */
+/** Clasificación por ficha de equipo (codigo_equipo del link real FFCV). */
+export async function fetchFfcvClasificacionEquipo(codigoEquipo: string): Promise<FfcvClasificacion> {
+  return requestClasificacion(`codigo_equipo=${encodeURIComponent(codigoEquipo)}`);
+}
+
+/** Devuelve la mejor vía FFCV de un equipo: link, ficha de equipo o datos. */
 export function ffcvParamsDeEquipo(equipo: {
   linkClasificacion?: string;
   categoria?: string;
   division?: string;
   grupo?: string;
   letra?: string;
-}): { tipo: 'link'; url: string } | { tipo: 'grupo'; params: FfcvGrupoParams } | null {
+}):
+  | { tipo: 'link'; url: string }
+  | { tipo: 'equipo'; codigoEquipo: string }
+  | { tipo: 'grupo'; params: FfcvGrupoParams }
+  | null {
   const link = equipo.linkClasificacion?.trim();
-  // Solo sirve como link de clasificación si trae cod_partido (ficha de partido);
-  // los enlaces de equipo/calendario no aportan el contexto de clasificación.
-  if (link && /[?&]cod_partido=\d+/.test(link)) return { tipo: 'link', url: link };
+  if (link) {
+    // Link real FFCV de la ficha de equipo: codigo_equipo resuelve el grupo en el server
+    const mEq = link.match(/[?&]codigo_equipo=(\d+)/);
+    if (mEq) return { tipo: 'equipo', codigoEquipo: mEq[1] };
+    // Ficha de partido con cod_partido (modo histórico)
+    if (/[?&]cod_partido=\d+/.test(link)) return { tipo: 'link', url: link };
+  }
   const params: FfcvGrupoParams = {
     categoria: equipo.categoria?.trim(),
     division: equipo.division?.trim(),
@@ -141,6 +154,16 @@ export function fetchFfcvClasificacionGrupoCached(
     params.grupo || ''
   }|${params.letra || ''}`;
   return fetchClasificacionCached(key, () => fetchFfcvClasificacionGrupo(params), CACHE_TTL_GRUPO);
+}
+
+export function fetchFfcvClasificacionEquipoCached(
+  codigoEquipo: string
+): Promise<FfcvClasificacion> {
+  return fetchClasificacionCached(
+    `equipo:${codigoEquipo}`,
+    () => fetchFfcvClasificacionEquipo(codigoEquipo),
+    CACHE_TTL_GRUPO
+  );
 }
 
 /** Vacia la caché local (tras una actualización manual del admin) */
@@ -201,6 +224,7 @@ const NOTAS_ERROR: Record<string, string> = {
   grupo_requerido: 'Falta el grupo del equipo para encontrar la clasificación.',
   sin_grupos: 'Esa liga no tiene grupos publicados.',
   sin_datos_equipo: 'El equipo no tiene link ni datos de liga/grupo.',
+  contexto_no_encontrado: 'No se pudo determinar la competición del equipo en la FFCV.',
   error_extraccion: 'No se pudo extraer la clasificación de la FFCV.'
 };
 
@@ -256,7 +280,9 @@ export async function fetchResumenClasificaciones(
       const data =
         origen.tipo === 'link'
           ? await fetchFfcvClasificacionLinkCached(origen.url)
-          : await fetchFfcvClasificacionGrupoCached(origen.params);
+          : origen.tipo === 'equipo'
+            ? await fetchFfcvClasificacionEquipoCached(origen.codigoEquipo)
+            : await fetchFfcvClasificacionGrupoCached(origen.params);
       const j = data.jornada.trim();
       return {
         estado: 'ok' as EstadoClasif,

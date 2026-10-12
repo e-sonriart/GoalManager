@@ -9,6 +9,7 @@ import { openStandingsPopup, openFfcvStandingsPopup } from '../utils/standingsPo
 import {
   fetchFfcvClasificacionLinkCached,
   fetchFfcvClasificacionGrupoCached,
+  fetchFfcvClasificacionEquipoCached,
   ffcvParamsDeEquipo
 } from '../utils/ffcvClasificacion';
 import { abrirPdf, pdfFechaCorta, pdfEstadoPartido, pdfEdad, PdfSeccion } from '../utils/pdfPrint';
@@ -543,7 +544,9 @@ export const EquiposClubView: React.FC = () => {
       const data =
         origen.tipo === 'link'
           ? await fetchFfcvClasificacionLinkCached(origen.url)
-          : await fetchFfcvClasificacionGrupoCached(origen.params);
+          : origen.tipo === 'equipo'
+            ? await fetchFfcvClasificacionEquipoCached(origen.codigoEquipo)
+            : await fetchFfcvClasificacionGrupoCached(origen.params);
       const j = data.jornada.trim();
       openFfcvStandingsPopup({
         title: [data.competicion, data.grupo].filter(Boolean).join(' · ') || 'Clasificación oficial',

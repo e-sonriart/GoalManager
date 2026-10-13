@@ -13,6 +13,7 @@ export type Permission =
   | 'view:convocatorias'
   | 'view:asistencias'
   | 'view:estadisticas'
+  | 'view:estadisticas_avanzadas'
   | 'view:entrenamientos'
   | 'view:admin'
   | 'manage:jugadores'
@@ -37,6 +38,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   'view:convocatorias',
   'view:asistencias',
   'view:estadisticas',
+  'view:estadisticas_avanzadas',
   'view:admin',
   'manage:jugadores',
   'manage:equipos',
@@ -58,6 +60,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'view:convocatorias': 'Ver convocatorias',
   'view:asistencias': 'Ver asistencias',
   'view:estadisticas': 'Ver estadísticas',
+  'view:estadisticas_avanzadas': 'Ver partidos jugados y titulares',
   'view:entrenamientos': 'Ver sesiones de entrenamiento',
   'view:admin': 'Acceder al panel de administración',
   'manage:jugadores': 'Gestionar jugadores',
@@ -81,6 +84,7 @@ export const VIEW_PERMISSIONS: Permission[] = [
   'view:convocatorias',
   'view:asistencias',
   'view:estadisticas',
+  'view:estadisticas_avanzadas',
   'view:entrenamientos',
   'view:admin'
 ];
@@ -129,6 +133,10 @@ const MANAGE_SPORT_TEAM: Permission[] = [
   'manage:estadisticas'
 ];
 
+// Cifras de participación (partidos jugados y veces titular): entrenadores,
+// coordinadores, directiva y admin. Jugadores y aficionados no las ven.
+const VIEW_ESTADISTICAS_AVANZADAS: Permission[] = ['view:estadisticas_avanzadas'];
+
 // Gestión de sesiones de entrenamiento: la ejercen quienes crean/corrige: admin, dirección deportiva
 // y entrenadores asignados. Los coordinadores solo las consultan (view), nunca las gestionan.
 const MANAGE_ENTRENAMIENTOS: Permission[] = ['manage:entrenamientos'];
@@ -139,6 +147,7 @@ const ROLE_PERMISSIONS: Record<RolUsuario, Permission[]> = {
 
   directiva: [
     ...VIEW_SPORT_READ_ONLY,
+    ...VIEW_ESTADISTICAS_AVANZADAS,
     'view:admin',
     'manage:jugadores',
     'manage:equipos',
@@ -152,12 +161,13 @@ const ROLE_PERMISSIONS: Record<RolUsuario, Permission[]> = {
 
   // Coordinadores: gestión deportiva completa de su área (filtrada a F8 / F11),
   // sin tocar estructura administrativa ni usuarios.
-  coordinador_f8: [...VIEW_SPORT_READ_ONLY, 'manage:jugadores', ...MANAGE_ENTRENAMIENTOS, ...MANAGE_SPORT_TEAM],
-  coordinador_f11: [...VIEW_SPORT_READ_ONLY, 'manage:jugadores', ...MANAGE_ENTRENAMIENTOS, ...MANAGE_SPORT_TEAM],
+  coordinador_f8: [...VIEW_SPORT_READ_ONLY, ...VIEW_ESTADISTICAS_AVANZADAS, 'manage:jugadores', ...MANAGE_ENTRENAMIENTOS, ...MANAGE_SPORT_TEAM],
+  coordinador_f11: [...VIEW_SPORT_READ_ONLY, ...VIEW_ESTADISTICAS_AVANZADAS, 'manage:jugadores', ...MANAGE_ENTRENAMIENTOS, ...MANAGE_SPORT_TEAM],
 
   // Entrenador: gestiona convocatorias, asistencias, partidos, estadísticas y su plantilla.
   entrenador: [
     ...VIEW_SPORT_READ_ONLY,
+    ...VIEW_ESTADISTICAS_AVANZADAS,
     'manage:jugadores',
     ...MANAGE_ENTRENAMIENTOS,
     ...MANAGE_SPORT_TEAM

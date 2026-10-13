@@ -43,7 +43,7 @@ type MatchDetail = {
   count: number;
 };
 
-type StatKind = 'pj' | 'goles' | 'asistencias';
+type StatKind = 'pj' | 'titulares' | 'goles' | 'asistencias';
 
 type StatItem = {
   jugadorId: string;
@@ -76,6 +76,10 @@ export const EstadisticasRankingView: React.FC = () => {
   const { jugadores, estadisticas, partidos, equipos, saveEstadistica, recalcularEstadisticas, exportSheet, getTeamEscudo, can, currentUser } = useClub();
 
   const canManage = can('manage:estadisticas');
+  // Cifras de participación (PJ y titulares): entrenadores, coordinadores, directiva y admin
+  const puedeVerTitulares = can('view:estadisticas_avanzadas');
+  /** Nº de columnas de la tabla de ranking (crece con la columna Titulares) */
+  const columnasRanking = puedeVerTitulares ? 10 : 9;
   // Exportar a CSV: excluido para jugadores y entrenadores
   const puedeExportar = currentUser?.rol !== 'jugador' && currentUser?.rol !== 'entrenador';
 
@@ -101,7 +105,8 @@ export const EstadisticasRankingView: React.FC = () => {
         goles: 0,
         asistencias: 0,
         tarjetas: 0,
-        partidosJugados: 0
+        partidosJugados: 0,
+        titular: 0
       };
 
       const golesPorPartido = stat.partidosJugados > 0
@@ -152,14 +157,16 @@ export const EstadisticasRankingView: React.FC = () => {
   }, [currentRanking, equipos]);
 
   /**
-   * Detalle por jugador de goles, asistencias y partidos jugados: una fila por
-   * partido con SOLO partido, resultado y fecha. Solo cuenta partidos finalizados
-   * con eventos (los mismos que alimentan las estadísticas).
+   * Detalle por jugador de goles, asistencias, partidos jugados y veces
+   * titular: una fila por partido con SOLO partido, resultado y fecha. Solo
+   * cuenta partidos finalizados con eventos (los mismos que alimentan las
+   * estadísticas).
    */
   const detailsByJugador = useMemo(() => {
     const goals = new Map<string, MatchDetail[]>();
     const assists = new Map<string, MatchDetail[]>();
     const matches = new Map<string, MatchDetail[]>();
+    const titulares = new Map<string, MatchDetail[]>();
 
     for (const p of partidos) {
       if (!isFinalizado(p.finalizado)) continue;
@@ -178,7 +185,11 @@ export const EstadisticasRankingView: React.FC = () => {
         resultado,
         count: 1
       };
-      roster.forEach(j => pushDetail(matches, j.id, base));
+      const titIds = new Set(idList(p.titulares));
+      roster.forEach(j => {
+        pushDetail(matches, j.id, base);
+        if (titIds.has(j.id)) pushDetail(titulares, j.id, base);
+      });
       for (const e of evs) {
         if (e.tipo !== 'gol' && e.tipo !== 'asistencia') continue;
         const jid = attributeJugadorId(e, roster, jugadores);
@@ -190,7 +201,8 @@ export const EstadisticasRankingView: React.FC = () => {
     sortDetails(goals);
     sortDetails(assists);
     sortDetails(matches);
-    return { goals, assists, matches };
+    sortDetails(titulares);
+    return { goals, assists, matches, titulares };
   }, [partidos, remoteClocks, jugadores]);
 
   /**
@@ -258,6 +270,7 @@ export const EstadisticasRankingView: React.FC = () => {
 
   const rowsFor = (jugadorId: string, kind: StatKind): MatchDetail[] | undefined => {
     if (kind === 'pj') return detailsByJugador.matches.get(jugadorId);
+    if (kind === 'titulares') return detailsByJugador.titulares.get(jugadorId);
     if (kind === 'asistencias') return detailsByJugador.assists.get(jugadorId);
     const j = jugadores.find(x => x.id === jugadorId);
     return j && isPortero(j)
@@ -270,6 +283,7 @@ export const EstadisticasRankingView: React.FC = () => {
 
   const labelFor = (kind: StatKind, jugador?: { posicion?: string }): string => {
     if (kind === 'pj') return 'Partidos';
+    if (kind === 'titulares') return 'Titular';
     if (kind === 'asistencias') return 'Asistencias';
     return jugador && isPortero(jugador) ? 'Goles encajados' : 'Goles';
   };
@@ -287,11 +301,13 @@ export const EstadisticasRankingView: React.FC = () => {
         <p className="py-2 text-xs text-gray-400">
           {kind === 'pj'
             ? 'Sin partidos registrados todavía.'
-            : esPorteroGoles
-              ? 'Sin goles encajados todavía.'
-              : kind === 'goles'
-                ? 'Sin goles registrados todavía.'
-                : 'Sin asistencias registradas todavía.'}
+            : kind === 'titulares'
+              ? 'Sin partidos como titular todavía.'
+              : esPorteroGoles
+                ? 'Sin goles encajados todavía.'
+                : kind === 'goles'
+                  ? 'Sin goles registrados todavía.'
+                  : 'Sin asistencias registradas todavía.'}
         </p>
       );
     }
@@ -579,7 +595,7 @@ export const EstadisticasRankingView: React.FC = () => {
       {/* Cifras desplegables: pulsa un equipo para ver sus jugadores, y las cifras para el detalle */}
       <p className="flex items-center gap-1.5 text-xs text-gray-500">
         <Info className="w-3.5 h-3.5 shrink-0 text-blue-500" />
-        Pulsa un equipo para desplegar sus jugadores; pulsa partidos, goles o asistencias de un jugador para ver el detalle con resultado y fecha.
+        Pulsa un equipo para desplegar sus jugadores; pulsa una cifra (partidos, titulares, goles o asistencias) para ver el detalle con resultado y fecha.
       </p>
 
       {/* Tabla de Ranking (escritorio) */}
@@ -591,6 +607,14 @@ export const EstadisticasRankingView: React.FC = () => {
               <th className="py-3 px-4 whitespace-nowrap">Jugador</th>
               <th className="py-3 px-4 whitespace-nowrap">Equipo</th>
               <th className="py-3 px-4 text-center whitespace-nowrap">Partidos</th>
+              {puedeVerTitulares && (
+                <th
+                  className="py-3 px-4 text-center whitespace-nowrap"
+                  title="Veces que ha salido de titular en partidos finalizados con acta"
+                >
+                  Titulares
+                </th>
+              )}
               <th
                 className="py-3 px-4 text-center whitespace-nowrap"
                 title="En porteros se muestran los goles encajados en lugar de los marcados"
@@ -610,7 +634,7 @@ export const EstadisticasRankingView: React.FC = () => {
                   className="bg-gray-50 cursor-pointer select-none hover:bg-gray-100 transition-colors"
                   onClick={() => toggleTeam(group.equipo)}
                 >
-                  <td colSpan={9} className="px-4 py-2">
+                  <td colSpan={columnasRanking} className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <TeamShield
                         escudoUrl={getTeamEscudo(group.equipo)}
@@ -661,6 +685,11 @@ export const EstadisticasRankingView: React.FC = () => {
                       <td className="py-3 px-4 text-center font-semibold text-gray-700">
                         {statCell(item.partidosJugados, item, 'pj', 'text-gray-700')}
                       </td>
+                      {puedeVerTitulares && (
+                        <td className="py-3 px-4 text-center font-semibold text-gray-700">
+                          {statCell(Number(item.titular) || 0, item, 'titulares', 'text-gray-700')}
+                        </td>
+                      )}
                       <td className="py-3 px-4 text-center font-black text-orange-600 font-athletic text-base">
                         {statCell(displayGoles(item), item, 'goles', 'text-orange-600 font-athletic text-base')}
                       </td>
@@ -684,7 +713,8 @@ export const EstadisticasRankingView: React.FC = () => {
                               goles: item.goles,
                               asistencias: item.asistencias,
                               tarjetas: item.tarjetas,
-                              partidosJugados: item.partidosJugados
+                              partidosJugados: item.partidosJugados,
+                              titular: Number(item.titular) || 0
                             })
                           }
                           className={`p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors ${canManage ? 'inline-flex' : 'hidden'}`}
@@ -696,7 +726,7 @@ export const EstadisticasRankingView: React.FC = () => {
                     </tr>
                     {expandedStat?.jugadorId === item.jugadorId && (
                       <tr className="bg-blue-50/50">
-                        <td colSpan={9} className="px-4 py-2">
+                        <td colSpan={columnasRanking} className="px-4 py-2">
                           {expandedHeader(item, expandedStat.kind)}
                           {renderStatDetail(item, expandedStat.kind)}
                         </td>
@@ -760,7 +790,8 @@ export const EstadisticasRankingView: React.FC = () => {
                               goles: item.goles,
                               asistencias: item.asistencias,
                               tarjetas: item.tarjetas,
-                              partidosJugados: item.partidosJugados
+                              partidosJugados: item.partidosJugados,
+                              titular: Number(item.titular) || 0
                             })
                           }
                           className={`w-9 h-9 shrink-0 items-center justify-center text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors ${canManage ? 'inline-flex' : 'hidden'}`}
@@ -769,11 +800,17 @@ export const EstadisticasRankingView: React.FC = () => {
                           <Edit2 className="w-4 h-4" />
                         </button>
                       </div>
-                      <div className="mt-2.5 grid grid-cols-5 gap-1 text-center">
+                      <div className={`mt-2.5 grid gap-1 text-center ${puedeVerTitulares ? 'grid-cols-6' : 'grid-cols-5'}`}>
                         <div className="rounded-lg bg-gray-50 py-1.5">
                           <p className="text-[9px] font-bold uppercase text-gray-400">PJ</p>
                           {statCell(item.partidosJugados, item, 'pj', 'text-sm text-gray-800 mx-auto')}
                         </div>
+                        {puedeVerTitulares && (
+                          <div className="rounded-lg bg-gray-50 py-1.5">
+                            <p className="text-[9px] font-bold uppercase text-gray-400">Tit.</p>
+                            {statCell(Number(item.titular) || 0, item, 'titulares', 'text-sm text-gray-800 mx-auto')}
+                          </div>
+                        )}
                         <div className="rounded-lg bg-orange-50 py-1.5">
                           <p className="text-[9px] font-bold uppercase text-orange-400">
                             {isPortero(item.jugador) ? 'Encaj.' : 'Goles'}
@@ -883,6 +920,24 @@ export const EstadisticasRankingView: React.FC = () => {
                     setEditingStat({
                       ...editingStat,
                       partidosJugados: parseInt(e.target.value) || 0
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm font-athletic font-bold text-gray-800 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Titulares
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={Number(editingStat.titular) || 0}
+                  onChange={e =>
+                    setEditingStat({
+                      ...editingStat,
+                      titular: parseInt(e.target.value) || 0
                     })
                   }
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm font-athletic font-bold text-gray-800 focus:ring-2 focus:ring-orange-500 focus:outline-none"

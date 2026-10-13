@@ -115,7 +115,8 @@ import {
   ChevronLeft,
   Play,
   ExternalLink,
-  FileDown
+  FileDown,
+  MapPin
 } from 'lucide-react';
 
 export const EquiposClubView: React.FC = () => {
@@ -202,6 +203,8 @@ export const EquiposClubView: React.FC = () => {
 
   // Estados para plantillas de equipo
   const [selectedEquipoForSquad, setSelectedEquipoForSquad] = useState<Equipo | null>(null);
+  // Ficha visual del equipo (escudo grande, nombre, letra y lugar)
+  const [equipoFicha, setEquipoFicha] = useState<Equipo | null>(null);
   const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Jugador | null>(null);
   const [playerNombre, setPlayerNombre] = useState('');
@@ -833,7 +836,8 @@ export const EquiposClubView: React.FC = () => {
                     return (
                       <div
                         key={eq.id}
-                        className={`bg-white p-4 sm:p-5 rounded-2xl border ${isUserTeam ? 'border-orange-500 shadow-md ring-1 ring-orange-500/20' : 'border-gray-150 shadow-sm hover:border-orange-200'} transition-all flex flex-col justify-between space-y-4 min-w-0 overflow-hidden`}
+                        onClick={() => setEquipoFicha(eq)}
+                        className={`bg-white p-4 sm:p-5 rounded-2xl border ${isUserTeam ? 'border-orange-500 shadow-md ring-1 ring-orange-500/20' : 'border-gray-150 shadow-sm hover:border-orange-200 hover:shadow-md'} transition-all flex flex-col justify-between space-y-4 min-w-0 overflow-hidden cursor-pointer`}
                       >
                         <div className="space-y-3 min-w-0">
                           <div className="flex items-start justify-between gap-2 min-w-0">
@@ -874,7 +878,7 @@ export const EquiposClubView: React.FC = () => {
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-1 shrink-0">
+                            <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
                               {eq.whatsapp ? (
                                 <a
                                   href={eq.whatsapp}
@@ -922,7 +926,10 @@ export const EquiposClubView: React.FC = () => {
                             </span>
                           </div>
                           <button
-                            onClick={() => setSelectedEquipoForSquad(eq)}
+                            onClick={e => {
+                              e.stopPropagation();
+                              setSelectedEquipoForSquad(eq);
+                            }}
                             className="w-full mt-2 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold rounded-xl border border-orange-200 transition-colors flex items-center justify-center gap-1.5 text-xs"
                           >
                             <Users className="w-4 h-4 text-orange-600" />
@@ -1375,6 +1382,48 @@ export const EquiposClubView: React.FC = () => {
       </Modal>
 
       {/* 1. Modal de Plantilla del Equipo */}
+      {/* Modal Ficha del Equipo (escudo grande, nombre, letra y lugar) */}
+      {equipoFicha && (
+        <Modal
+          isOpen={true}
+          onClose={() => setEquipoFicha(null)}
+          title={equipoFicha.nombre}
+          subtitle={equipoFicha.categoria}
+          maxWidth="max-w-sm"
+        >
+          <div className="flex flex-col items-center text-center space-y-4 py-2">
+            <div className="w-32 h-32 rounded-3xl bg-white border border-gray-200 shadow-md p-2 flex items-center justify-center shrink-0 overflow-hidden">
+              <TeamShield
+                escudoUrl={equipoFicha.escudo || clubConfig.escudo}
+                teamName={equipoFicha.nombre}
+                size="2xl"
+                className="w-full h-full"
+              />
+            </div>
+            <div className="space-y-1.5 min-w-0">
+              <h3 className="text-xl font-extrabold text-gray-900 font-athletic">{equipoFicha.nombre}</h3>
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-bold border border-orange-200">
+                  {equipoFicha.letra}
+                </span>
+                <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-semibold border border-gray-200">
+                  {equipoFicha.categoria}
+                </span>
+                {equipoFicha.ano && (
+                  <span className="px-3 py-1 bg-sky-50 text-sky-800 rounded-full text-sm font-semibold border border-sky-200">
+                    {equipoFicha.ano}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="w-full pt-3 border-t border-gray-100 flex items-center justify-center gap-2 text-sm text-gray-600 min-w-0">
+              <MapPin className="w-4 h-4 text-orange-500 shrink-0" />
+              <span className="truncate">{clubConfig.ubicacion || 'Sin ubicación'}</span>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {selectedEquipoForSquad && (
         <Modal
           isOpen={true}

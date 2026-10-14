@@ -133,7 +133,7 @@ export const EstadisticasRankingView: React.FC = () => {
     return [...playerStatsList].sort((a, b) => b.asistencias - a.asistencias || b.goles - a.goles);
   }, [playerStatsList]);
 
-  const top3Pichichi = rankingGoleadores.slice(0, 3);
+  const top5Pichichi = rankingGoleadores.slice(0, 5);
   const currentRanking = activeTab === 'asistencias' ? rankingAsistentes : rankingGoleadores;
 
   /** Posición global de cada jugador (se conserva al agrupar por equipos) */
@@ -431,127 +431,51 @@ export const EstadisticasRankingView: React.FC = () => {
         </div>
       </div>
 
-      {/* Top 3 Podium */}
-      {top3Pichichi.length >= 3 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Segundo Puesto */}
-          <div className="bg-white p-5 rounded-3xl border border-gray-200 shadow-sm flex flex-col justify-between order-2 md:order-1">
-            <div className="flex items-center justify-between">
-              <span className="text-2xl">🥈 2º Puesto</span>
-              <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-[11px] font-bold rounded-md">
-                Plata
-              </span>
-            </div>
-            <div className="my-4 text-center">
-              <span className="inline-block w-12 h-12 rounded-2xl bg-gray-100 text-gray-800 font-black font-athletic text-xl leading-[48px]">
-                #{top3Pichichi[1]?.jugador.dorsal}
-              </span>
-              <h3 className="font-bold text-base text-gray-900 mt-2 font-athletic">
-                {top3Pichichi[1]?.jugador.nombre}
-              </h3>
-              <p className="text-xs text-gray-500 flex items-center justify-center gap-1.5 mt-1">
-                <TeamShield
-                  escudoUrl={getTeamEscudo(top3Pichichi[1]?.jugador.equipo)}
-                  teamName={top3Pichichi[1]?.jugador.equipo}
-                  size="xs"
-                  className="w-3.5 h-3.5"
-                />
-                <span>{top3Pichichi[1]?.jugador.equipo}</span>
-              </p>
-            </div>
-            <div className="bg-gray-50 p-3 rounded-2xl flex justify-around text-center">
-              <div>
-                <span className="text-[10px] text-gray-400 font-bold uppercase">Goles</span>
-                <p className="text-xl font-bold font-athletic text-orange-600">{top3Pichichi[1]?.goles}</p>
-              </div>
-              <div className="w-px bg-gray-200" />
-              <div>
-                <span className="text-[10px] text-gray-400 font-bold uppercase">Asist.</span>
-                <p className="text-xl font-bold font-athletic text-gray-800">{top3Pichichi[1]?.asistencias}</p>
-              </div>
-            </div>
+      {/* Top 5 goleadores (compacto): los cinco primeros juntos */}
+      {top5Pichichi.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-gray-900">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-orange-400">
+              <Trophy className="w-3.5 h-3.5 text-amber-300" />
+              Top 5 goleadores
+            </span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+              Goles · Asist.
+            </span>
           </div>
-
-          {/* Primer Puesto (Oro - Pichichi) */}
-          <div className="bg-gradient-to-b from-gray-950 to-gray-900 text-white p-6 rounded-3xl border border-orange-500/40 shadow-xl flex flex-col justify-between order-1 md:order-2 ring-2 ring-orange-500/30">
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-orange-400 bg-orange-500/20 px-3 py-1 rounded-full border border-orange-500/30">
-                <Trophy className="w-3.5 h-3.5 text-amber-300" /> Pichichi Oficial
-              </span>
-              <span className="text-2xl">🥇</span>
-            </div>
-            <div className="my-4 text-center">
-              <span className="inline-block w-14 h-14 rounded-2xl bg-orange-500 text-white font-black font-athletic text-2xl leading-[56px] shadow-lg shadow-orange-500/30">
-                #{top3Pichichi[0]?.jugador.dorsal}
-              </span>
-              <h3 className="font-extrabold text-xl text-white mt-2 font-athletic tracking-wide">
-                {top3Pichichi[0]?.jugador.nombre}
-              </h3>
-              <p className="text-xs text-orange-200 flex items-center justify-center gap-1.5 mt-1">
-                <TeamShield
-                  escudoUrl={getTeamEscudo(top3Pichichi[0]?.jugador.equipo)}
-                  teamName={top3Pichichi[0]?.jugador.equipo}
-                  size="xs"
-                  className="w-3.5 h-3.5"
-                />
-                <span>{top3Pichichi[0]?.jugador.equipo}</span>
-              </p>
-            </div>
-            <div className="bg-white/10 backdrop-blur p-3.5 rounded-2xl flex justify-around text-center border border-white/10">
-              <div>
-                <span className="text-[10px] text-orange-200 font-bold uppercase">Goles</span>
-                <p className="text-3xl font-black font-athletic text-orange-400">{top3Pichichi[0]?.goles}</p>
-              </div>
-              <div className="w-px bg-white/20" />
-              <div>
-                <span className="text-[10px] text-orange-200 font-bold uppercase">Asist.</span>
-                <p className="text-2xl font-bold font-athletic text-white">{top3Pichichi[0]?.asistencias}</p>
-              </div>
-              <div className="w-px bg-white/20" />
-              <div>
-                <span className="text-[10px] text-orange-200 font-bold uppercase">Partidos</span>
-                <p className="text-2xl font-bold font-athletic text-white">{top3Pichichi[0]?.partidosJugados}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Tercer Puesto */}
-          <div className="bg-white p-5 rounded-3xl border border-gray-200 shadow-sm flex flex-col justify-between order-3">
-            <div className="flex items-center justify-between">
-              <span className="text-2xl">🥉 3º Puesto</span>
-              <span className="px-2 py-0.5 bg-amber-50 text-amber-800 text-[11px] font-bold rounded-md">
-                Bronce
-              </span>
-            </div>
-            <div className="my-4 text-center">
-              <span className="inline-block w-12 h-12 rounded-2xl bg-amber-100 text-amber-900 font-black font-athletic text-xl leading-[48px]">
-                #{top3Pichichi[2]?.jugador.dorsal}
-              </span>
-              <h3 className="font-bold text-base text-gray-900 mt-2 font-athletic">
-                {top3Pichichi[2]?.jugador.nombre}
-              </h3>
-              <p className="text-xs text-gray-500 flex items-center justify-center gap-1.5 mt-1">
-                <TeamShield
-                  escudoUrl={getTeamEscudo(top3Pichichi[2]?.jugador.equipo)}
-                  teamName={top3Pichichi[2]?.jugador.equipo}
-                  size="xs"
-                  className="w-3.5 h-3.5"
-                />
-                <span>{top3Pichichi[2]?.jugador.equipo}</span>
-              </p>
-            </div>
-            <div className="bg-gray-50 p-3 rounded-2xl flex justify-around text-center">
-              <div>
-                <span className="text-[10px] text-gray-400 font-bold uppercase">Goles</span>
-                <p className="text-xl font-bold font-athletic text-orange-600">{top3Pichichi[2]?.goles}</p>
-              </div>
-              <div className="w-px bg-gray-200" />
-              <div>
-                <span className="text-[10px] text-gray-400 font-bold uppercase">Asist.</span>
-                <p className="text-xl font-bold font-athletic text-gray-800">{top3Pichichi[2]?.asistencias}</p>
-              </div>
-            </div>
-          </div>
+          <ul className="divide-y divide-gray-100">
+            {top5Pichichi.map((item, i) => (
+              <li key={item.jugadorId} className="flex items-center gap-3 px-3 sm:px-4 py-2">
+                <span className="shrink-0">{getRankBadge(i)}</span>
+                <span className="shrink-0 w-8 text-center text-xs font-black font-athletic text-gray-400">
+                  #{item.jugador.dorsal}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-bold text-sm text-gray-900">{item.jugador.nombre}</p>
+                  <p className="flex items-center gap-1.5 text-[11px] text-gray-400">
+                    <TeamShield
+                      escudoUrl={getTeamEscudo(item.jugador.equipo)}
+                      teamName={item.jugador.equipo}
+                      size="xs"
+                      className="w-3.5 h-3.5 shrink-0"
+                    />
+                    <span className="truncate">{item.jugador.equipo}</span>
+                  </p>
+                </div>
+                <div className="shrink-0 flex items-center gap-3 text-center">
+                  <div>
+                    <p className="text-[9px] font-bold uppercase text-gray-400">Goles</p>
+                    <p className="text-base font-black font-athletic text-orange-600">{item.goles}</p>
+                  </div>
+                  <div className="w-px h-6 bg-gray-100" />
+                  <div>
+                    <p className="text-[9px] font-bold uppercase text-gray-400">Asist.</p>
+                    <p className="text-base font-bold font-athletic text-gray-800">{item.asistencias}</p>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

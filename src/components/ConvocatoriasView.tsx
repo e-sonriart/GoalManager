@@ -389,32 +389,15 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
 
           <div className="min-w-0">
             <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2 min-w-0">
-              <span className="truncate">{jugador.nombre}</span>
+              <span className="truncate min-w-0">{jugador.nombre}</span>
               <span className="shrink-0 text-[11px] font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
                 {jugador.posicion}
               </span>
-              {(() => {
-                const eq = (jugador.equipo || '').toLowerCase();
-                const teamLc = (clubTeamName || selectedPartido?.equipo || '').toLowerCase();
-                if (!eq) {
-                  return (
-                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md">
-                      Sin equipo
-                    </span>
-                  );
-                }
-                if (teamLc && eq !== teamLc) {
-                  return (
-                    <span
-                      className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-sky-800 bg-sky-100 border border-sky-300 px-2 py-0.5 rounded-md max-w-[140px] truncate"
-                      title={`Refuerzo de ${jugador.equipo}`}
-                    >
-                      {jugador.equipo}
-                    </span>
-                  );
-                }
-                return null;
-              })()}
+              {!jugador.equipo && (
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md">
+                  Sin equipo
+                </span>
+              )}
             </h4>
             <p className="text-xs text-gray-400 mt-0.5 truncate">
               {jugador.equipo || 'Sin equipo'} • {jugador.categoria}

@@ -20,6 +20,7 @@ import {
 import { compareTeams, getCategoryOrder } from '../utils/teamOrder';
 import { notifyTeam } from '../services/notifications';
 import { isPartidoSuspendido } from '../utils/partidoEstado';
+import { FfcvEquipo, loadFfcvEquipos, mapsUrlDeCampo } from '../services/ffcvEquipos';
 
 /** Mismos discos de color que la alineación (por posición). */
 const POS_DISK: Record<string, string> = {
@@ -79,7 +80,8 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     categorias,
     savePartido,
     getTeamEscudo,
-    can
+    can,
+    clubConfig
   } = useClub();
 
   const canManage = can('manage:convocatorias');
@@ -89,6 +91,23 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
   );
   // Lista corta: primero solo mi equipo; los refuerzos se muestran tras pulsar "Convocar más"
   const [showRefuerzos, setShowRefuerzos] = useState(false);
+
+  // Texto final opcional que se añade al mensaje de WhatsApp
+  const [mensajeExtra, setMensajeExtra] = useState('');
+
+  // Catálogo FFCV (link de ubicación cuando se juega fuera)
+  const [ffcvRows, setFfcvRows] = useState<FfcvEquipo[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    loadFfcvEquipos()
+      .then(rows => {
+        if (vivo) setFfcvRows(rows);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   // Selección local: NO se guarda hasta pulsar "Convocar" (aceptar)
   const [localConvocados, setLocalConvocados] = useState<Set<string>>(new Set());
@@ -129,6 +148,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
       const stored = partidos.find(p => p.id === selectedId);
       setLocalConvocados(new Set(stored?.convocados || []));
       setShowRefuerzos(false);
+      setMensajeExtra('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
@@ -340,6 +360,14 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
 
     const appUrl = `${window.location.origin}/?tab=convocatorias&partido=${selectedPartido.id}`;
 
+    // Cuando se juega fuera, se añade la ubicación con link de Google Maps
+    const esFuera =
+      (selectedPartido.condicion || (selectedPartido.local === clubTeamName ? 'casa' : 'fuera')) === 'fuera';
+    const mapsUrl =
+      esFuera && selectedPartido.campo
+        ? mapsUrlDeCampo(selectedPartido.campo, ffcvRows, clubConfig?.nombre)
+        : null;
+
     const lineas = [
       '⚽ *CONVOCATORIA OFICIAL*',
       `🏟️ *${selectedPartido.local} vs ${selectedPartido.visitante}*`,
@@ -348,6 +376,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
       ...(horaTxt ? [`🕓 *Hora:* ${horaTxt}`] : []),
       `${esAmistoso ? '🤝' : '🏆'} *${competicion || 'Partido'}*`,
       ...(selectedPartido.campo ? [`📍 *Lugar:* ${selectedPartido.campo}`] : []),
+      ...(mapsUrl ? [`🗺️ *Cómo llegar:* ${mapsUrl}`] : []),
       ...(selectedPartido.horaConvocatoria
         ? [`🕐 *Reunión:* ${selectedPartido.horaConvocatoria}`]
         : []),
@@ -356,7 +385,9 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
       ...(convocados.length > 0 ? convocados : ['— Aún no hay jugadores seleccionados —']),
       '',
       '✅ Confirma tu asistencia en la app:',
-      appUrl
+      appUrl,
+      // Texto final opcional añadido por el entrenador/gestor
+      ...(mensajeExtra.trim() ? ['', mensajeExtra.trim()] : [])
     ];
 
     window.open(`https://wa.me/?text=${encodeURIComponent(lineas.join('\n'))}`, '_blank', 'noopener,noreferrer');
@@ -703,14 +734,26 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
           </button>
         </div>
         {canManage && (
-          <button
-            onClick={handleSendWhatsApp}
-            title="Abre WhatsApp con la lista de convocados: día, hora, partido, jornada/amistoso y jugadores con su dorsal"
-            className="w-full py-3.5 bg-[#25D366] hover:bg-[#1EBE5A] text-white rounded-xl text-sm font-black tracking-wide transition-all shadow-lg shadow-[#25D366]/30 active:scale-[0.99] flex items-center justify-center gap-2"
-          >
-            <WhatsAppIcon className="w-5 h-5" />
-            Enviar convocatoria por WhatsApp
-          </button>
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              Texto final del mensaje (opcional)
+            </label>
+            <textarea
+              value={mensajeExtra}
+              onChange={e => setMensajeExtra(e.target.value)}
+              rows={2}
+              placeholder="Ej: Recordad llevar zapatillas de repuesto…"
+              className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-[#25D366] focus:border-[#25D366] focus:outline-none resize-y"
+            />
+            <button
+              onClick={handleSendWhatsApp}
+              title="Abre WhatsApp con la lista de convocados: día, hora, partido, jornada/amistoso, ubicación (si juegas fuera) y jugadores con su dorsal"
+              className="w-full py-3.5 bg-[#25D366] hover:bg-[#1EBE5A] text-white rounded-xl text-sm font-black tracking-wide transition-all shadow-lg shadow-[#25D366]/30 active:scale-[0.99] flex items-center justify-center gap-2"
+            >
+              <WhatsAppIcon className="w-5 h-5" />
+              Enviar convocatoria por WhatsApp
+            </button>
+          </div>
         )}
       </div>
     </div>

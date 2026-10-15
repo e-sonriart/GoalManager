@@ -142,8 +142,9 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     );
   }, [selectedPartido, equipos]);
 
-  // Plantilla elegible: todo mi equipo + refuerzos SOLO de categorías contiguas
-  // (inmediatamente superior e inferior a la del partido), agrupados por equipo.
+  // Plantilla elegible: todo mi equipo + refuerzos de la MISMA categoría (otros
+  // equipos, p. ej. Benjamín B para Benjamín A) y de categorías contiguas
+  // (inmediatamente superior e inferior), agrupados por equipo.
   const { teamPlayers, groupKeys, groups, eligibleJugadores, supName, infName } = useMemo(() => {
     const pool = allJugadores.length > 0 ? allJugadores : jugadores;
     const teamLc = (clubTeamName || selectedPartido?.equipo || '').toLowerCase();
@@ -159,9 +160,9 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     });
     const supName = categorias.find(c => getCategoryOrder(c.nombre) === supOrder)?.nombre || '';
     const infName = categorias.find(c => getCategoryOrder(c.nombre) === infOrder)?.nombre || '';
-    const isContiguous = (cat: string) => {
+    const isElegible = (cat: string) => {
       const o = getCategoryOrder(cat);
-      return o === supOrder || o === infOrder;
+      return o === matchOrder || o === supOrder || o === infOrder;
     };
 
     const byNameAsc = (a: (typeof pool)[number], b: (typeof pool)[number]) =>
@@ -172,7 +173,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
       .sort(byNameAsc);
 
     const mineIds = new Set(mine.map(j => j.id));
-    const others = pool.filter(j => !mineIds.has(j.id) && isContiguous(j.categoria));
+    const others = pool.filter(j => !mineIds.has(j.id) && isElegible(j.categoria));
 
     const groups = new Map<string, typeof pool>();
     others.forEach(j => {
@@ -596,8 +597,9 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
             </span>
           </div>
           <p className="text-[11px] text-gray-500 mt-1">
-            Refuerzos de otras categorías: solo <strong className="text-gray-700">{supName || '—'}</strong>{' '}
-            (superior) e <strong className="text-gray-700">{infName || '—'}</strong> (inferior).
+            Refuerzos: otros equipos de tu misma categoría y de categorías contiguas —{' '}
+            <strong className="text-gray-700">{supName || '—'}</strong> (superior) e{' '}
+            <strong className="text-gray-700">{infName || '—'}</strong> (inferior).
           </p>
         </div>
 
@@ -626,7 +628,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
           )}
           {teamPlayers.map(renderRow)}
 
-          {/* Acción: mostrar los refuerzos de otras categorías (lista corta por defecto) */}
+          {/* Acción: mostrar los refuerzos (misma categoría + contiguas; lista corta por defecto) */}
           {refuerzosCount > 0 && !showRefuerzos && (
             <div className="p-3 bg-gray-50">
               <button
@@ -645,7 +647,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
             </div>
           )}
 
-          {/* Refuerzos: resto de jugadores agrupados por equipo (solo categorías contiguas) */}
+          {/* Refuerzos: resto de jugadores agrupados por equipo (misma categoría y contiguas) */}
           {showRefuerzos && groupKeys.map(key => {
             const isFree = key === 'Sin equipo';
             const team = equipos.find(e => e.nombre === key);

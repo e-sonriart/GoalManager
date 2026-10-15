@@ -26,14 +26,15 @@ import {
   Star,
   Play,
   Ban,
-  FileDown
+  FileDown,
+  ExternalLink
 } from 'lucide-react';
 import { ActiveTab } from './Navbar';
 import { notifyTeam } from '../services/notifications';
 import { isPartidoSuspendido } from '../utils/partidoEstado';
 import { abrirPdf, pdfFechaCorta, pdfEstadoPartido, pdfEdad, PdfSeccion } from '../utils/pdfPrint';
 import { BuscadorRivalModal } from './BuscadorRivalModal';
-import { FfcvEquipo, ffcvUbicacion } from '../services/ffcvEquipos';
+import { FfcvEquipo, ffcvUbicacion, loadFfcvEquipos, mapsUrlDeCampo } from '../services/ffcvEquipos';
 import { leerPrefNotificarPartido, guardarPrefNotificarPartido } from '../utils/prefNotificarPartido';
 
 interface PartidosViewProps {
@@ -98,6 +99,24 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
 
   // Ficha ampliada del partido (escudos, fecha/hora y ubicación en grande)
   const [partidoFicha, setPartidoFicha] = useState<Partido | null>(null);
+
+  // Catálogo FFCV (ubicaciones con coordenadas/dirección para el link de Maps)
+  const [ffcvRows, setFfcvRows] = useState<FfcvEquipo[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    loadFfcvEquipos()
+      .then(rows => {
+        if (vivo) setFfcvRows(rows);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  /** Link de Google Maps del campo de un partido (catálogo FFCV > búsqueda por texto). */
+  const mapsUrlDe = (campo?: string): string | null =>
+    mapsUrlDeCampo(campo, ffcvRows, clubConfig?.nombre);
 
   // ¿Avisar al equipo al grabar? (se recuerda la última elección)
   const [formNotificar, setFormNotificar] = useState(leerPrefNotificarPartido());
@@ -533,10 +552,17 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
               </div>
             )}
             {partido.campo && (
-              <div className="text-[9px] text-gray-400 mt-0.5 flex items-center justify-center gap-0.5 font-medium max-w-[90px] sm:max-w-[120px] truncate mx-auto" title={partido.campo}>
+              <a
+                href={mapsUrlDe(partido.campo) || undefined}
+                target="_blank"
+                rel="noreferrer"
+                onClick={e => e.stopPropagation()}
+                title={`Abrir ${partido.campo} en Google Maps`}
+                className="text-[9px] text-gray-400 mt-0.5 flex items-center justify-center gap-0.5 font-medium max-w-[90px] sm:max-w-[120px] truncate mx-auto hover:text-orange-400 transition-colors"
+              >
                 <MapPin className="w-2.5 h-2.5 text-orange-400 shrink-0" />
-                <span className="truncate">{partido.campo}</span>
-              </div>
+                <span className="truncate underline decoration-dotted underline-offset-2">{partido.campo}</span>
+              </a>
             )}
           </div>
 
@@ -973,9 +999,22 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
                   <MapPin className="w-3.5 h-3.5" />
                   Ubicación
                 </div>
-                <p className="text-base sm:text-lg font-black font-athletic text-white leading-tight break-words">
-                  {partidoFicha.campo || 'Sin ubicación'}
-                </p>
+                {partidoFicha.campo ? (
+                  <a
+                    href={mapsUrlDe(partidoFicha.campo) || undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Abrir en Google Maps"
+                    className="text-base sm:text-lg font-black font-athletic text-white leading-tight break-words inline-flex items-center gap-1.5 hover:text-orange-400 transition-colors underline decoration-dotted underline-offset-4 decoration-gray-600"
+                  >
+                    <span>{partidoFicha.campo}</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                  </a>
+                ) : (
+                  <p className="text-base sm:text-lg font-black font-athletic text-white leading-tight break-words">
+                    Sin ubicación
+                  </p>
+                )}
                 <p className="text-xs font-bold text-gray-400">{fichaEsCasa ? 'En casa' : 'Juega fuera'}</p>
               </div>
             </div>

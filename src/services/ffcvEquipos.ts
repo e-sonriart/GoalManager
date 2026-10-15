@@ -99,6 +99,65 @@ export const ffcvUbicacion = (row: FfcvEquipo): string => {
   return row.campo || dir;
 };
 
+/** URL de Google Maps para una fila del catálogo (coordenadas > dirección > texto). */
+export const ffcvMapsUrl = (row: FfcvEquipo): string | null => {
+  const lat = Number(row.lat);
+  const lng = Number(row.lng);
+  if (row.lat != null && row.lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+  }
+  const dir = [row.direccion, row.cp, row.localidad, row.provincia].filter(Boolean).join(', ');
+  const q = dir || row.campo || '';
+  return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : null;
+};
+
+/** Clave de comparación: minúsculas, sin acentos ni puntuación. */
+const clave = (s: string): string => norm(s).replace(/[^a-z0-9]+/g, '');
+
+/**
+ * Localiza la fila del catálogo a partir del texto del `campo` de un partido.
+ * Orden: ubicación exacta > nombre del campo > dirección > nombre del club (casa).
+ */
+export const findFfcvRowPorCampo = (
+  campo: string,
+  rows: FfcvEquipo[],
+  clubNombre?: string
+): FfcvEquipo | null => {
+  if (!rows.length) return null;
+  const c = norm(campo);
+  if (c) {
+    let hit = rows.find(r => norm(ffcvUbicacion(r)) === c);
+    if (!hit)
+      hit = rows.find(r => !!r.campo && (c.includes(norm(r.campo)) || norm(r.campo).includes(c)));
+    if (!hit) hit = rows.find(r => !!r.direccion && c.includes(norm(r.direccion)));
+    if (hit) return hit;
+  }
+  const k = clave(clubNombre || '');
+  if (k) {
+    const hit =
+      rows.find(r => clave(r.club || '') === k) ||
+      rows.find(r => {
+        const rc = clave(r.club || '');
+        return !!rc && (rc.includes(k) || k.includes(rc));
+      });
+    if (hit) return hit;
+  }
+  return null;
+};
+
+/** URL de Maps para el campo de un partido: catálogo FFCV si hay fila, si no búsqueda por texto. */
+export const mapsUrlDeCampo = (
+  campo: string | undefined,
+  rows: FfcvEquipo[],
+  clubNombre?: string
+): string | null => {
+  const c = (campo || '').trim();
+  if (!c) return null;
+  const row = findFfcvRowPorCampo(c, rows, clubNombre);
+  const url = row ? ffcvMapsUrl(row) : null;
+  return url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c)}`;
+};
+
 /**
  * Busca por nombre (club), campo o localidad. Todos los términos deben coincidir.
  * Orden: coincidencia exacta del club > empieza por > contiene > campo > localidad > dirección.

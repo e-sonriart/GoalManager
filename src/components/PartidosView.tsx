@@ -96,6 +96,9 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
   // Buscador de rival en el catálogo FFCV (escudo + ubicación)
   const [isBuscadorRivalOpen, setIsBuscadorRivalOpen] = useState(false);
 
+  // Ficha ampliada del partido (escudos, fecha/hora y ubicación en grande)
+  const [partidoFicha, setPartidoFicha] = useState<Partido | null>(null);
+
   // ¿Avisar al equipo al grabar? (se recuerda la última elección)
   const [formNotificar, setFormNotificar] = useState(leerPrefNotificarPartido());
 
@@ -486,7 +489,11 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
         </div>
 
         {/* Scoreboard visual con escudos */}
-        <div className="bg-gray-950 text-white rounded-2xl p-3.5 flex items-center justify-between shadow-inner border border-gray-800/80 min-w-0">
+        <div
+          onClick={() => setPartidoFicha(partido)}
+          className="bg-gray-950 text-white rounded-2xl p-3.5 flex items-center justify-between shadow-inner border border-gray-800/80 min-w-0 cursor-pointer hover:border-orange-500/50 hover:ring-1 hover:ring-orange-500/30 transition-all"
+          title="Ampliar ficha del partido"
+        >
           {/* Equipo Local */}
           <div className="flex flex-col items-center text-center flex-1 min-w-0 px-1">
             <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/10 p-1 flex items-center justify-center border shadow-sm mb-1.5 overflow-hidden shrink-0 ${
@@ -873,6 +880,109 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
           )}
         </div>
       )}
+
+      {/* Modal Ficha ampliada del partido (escudos, fecha/hora y ubicación en grande) */}
+      {partidoFicha && (() => {
+        const fichaClubTeam = partidoFicha.equipo || (equipos.some(e => e.nombre === partidoFicha.local) ? partidoFicha.local : partidoFicha.visitante);
+        const fichaEsCasa = partidoFicha.condicion ? partidoFicha.condicion === 'casa' : partidoFicha.local === fichaClubTeam;
+        return (
+        <Modal
+          isOpen={true}
+          onClose={() => setPartidoFicha(null)}
+          title={`${partidoFicha.local} vs ${partidoFicha.visitante}`}
+          subtitle={`${partidoFicha.categoria}${partidoFicha.tipo ? ` · ${partidoFicha.tipo}${(!partidoFicha.tipo || partidoFicha.tipo === 'Liga') && partidoFicha.jornada ? ` J.${partidoFicha.jornada}` : ''}` : ''}`}
+          maxWidth="max-w-lg"
+        >
+          <div className="bg-gray-950 text-white rounded-3xl p-5 sm:p-7 border border-gray-800 shadow-inner space-y-5">
+            <div className="flex items-center justify-between gap-3">
+              {/* Local */}
+              <div className="flex flex-col items-center text-center flex-1 min-w-0">
+                <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-white/10 p-1.5 flex items-center justify-center border shadow-sm mb-2 overflow-hidden shrink-0 ${
+                  partidoFicha.local === fichaClubTeam
+                    ? 'border-orange-500 ring-2 ring-orange-500/40 bg-orange-950/30'
+                    : 'border-white/20'
+                }`}>
+                  <TeamShield
+                    escudoUrl={partidoFicha.local === fichaClubTeam ? getTeamEscudo(partidoFicha.local) : resolveVisitorShield(partidoFicha)}
+                    teamName={partidoFicha.local}
+                    size="2xl"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <p className="font-bold text-sm sm:text-base line-clamp-2 break-words leading-tight w-full font-athletic tracking-wide" title={partidoFicha.local}>
+                  {partidoFicha.local}
+                </p>
+              </div>
+
+              {/* Marcador central */}
+              <div className="px-2 text-center shrink-0">
+                {partidoFicha.golesLocal !== '' && partidoFicha.golesLocal !== undefined ? (
+                  <div className="text-3xl sm:text-4xl font-black font-athletic text-orange-400 tracking-wider whitespace-nowrap">
+                    {partidoFicha.golesLocal} - {partidoFicha.golesVisitante}
+                  </div>
+                ) : (
+                  <div className="text-2xl sm:text-3xl font-black font-athletic text-gray-400">VS</div>
+                )}
+              </div>
+
+              {/* Visitante */}
+              <div className="flex flex-col items-center text-center flex-1 min-w-0">
+                <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-white/10 p-1.5 flex items-center justify-center border shadow-sm mb-2 overflow-hidden shrink-0 ${
+                  partidoFicha.visitante === fichaClubTeam
+                    ? 'border-orange-500 ring-2 ring-orange-500/40 bg-orange-950/30'
+                    : 'border-white/20'
+                }`}>
+                  <TeamShield
+                    escudoUrl={partidoFicha.visitante === fichaClubTeam ? getTeamEscudo(partidoFicha.visitante) : resolveVisitorShield(partidoFicha)}
+                    teamName={partidoFicha.visitante}
+                    size="2xl"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <p className="font-bold text-sm sm:text-base line-clamp-2 break-words leading-tight w-full font-athletic tracking-wide" title={partidoFicha.visitante}>
+                  {partidoFicha.visitante}
+                </p>
+              </div>
+            </div>
+
+            {/* Día, hora e ubicación en grande */}
+            <div className="pt-4 border-t border-gray-800 grid grid-cols-1 sm:grid-cols-2 gap-3 text-center">
+              <div className="bg-black/40 border border-gray-800 rounded-2xl px-4 py-3 space-y-1">
+                <div className="flex items-center justify-center gap-1.5 text-orange-400 text-[10px] font-bold uppercase tracking-wider">
+                  <Calendar className="w-3.5 h-3.5" />
+                  Día y hora
+                </div>
+                <p className="text-lg sm:text-xl font-black font-athletic text-white leading-tight">
+                  {!isNaN(new Date(partidoFicha.fecha).getTime())
+                    ? new Date(partidoFicha.fecha).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })
+                    : partidoFicha.fecha}
+                </p>
+                <p className="text-xl sm:text-2xl font-black font-athletic text-orange-400 tabular-nums">
+                  {!isNaN(new Date(partidoFicha.fecha).getTime())
+                    ? new Date(partidoFicha.fecha).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+                    : ''}
+                </p>
+                {partidoFicha.horaConvocatoria && (
+                  <p className="text-xs font-bold text-gray-400">
+                    Convocatoria: {partidoFicha.horaConvocatoria}
+                  </p>
+                )}
+              </div>
+              <div className="bg-black/40 border border-gray-800 rounded-2xl px-4 py-3 space-y-1">
+                <div className="flex items-center justify-center gap-1.5 text-orange-400 text-[10px] font-bold uppercase tracking-wider">
+                  <MapPin className="w-3.5 h-3.5" />
+                  Ubicación
+                </div>
+                <p className="text-base sm:text-lg font-black font-athletic text-white leading-tight break-words">
+                  {partidoFicha.campo || 'Sin ubicación'}
+                </p>
+                <p className="text-xs font-bold text-gray-400">{fichaEsCasa ? 'En casa' : 'Juega fuera'}</p>
+              </div>
+            </div>
+          </div>
+        </Modal>
+        );
+      })()}
 
       {/* Modal Añadir / Editar Partido - Nuestro Equipo como Protagonista */}
       <Modal

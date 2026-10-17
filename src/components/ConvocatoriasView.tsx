@@ -378,7 +378,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
       ...(selectedPartido.campo ? [`📍 *Lugar:* ${selectedPartido.campo}`] : []),
       ...(mapsUrl ? [`🗺️ *Cómo llegar:* ${mapsUrl}`] : []),
       ...(selectedPartido.horaConvocatoria
-        ? [`🕐 *Reunión:* ${selectedPartido.horaConvocatoria}`]
+        ? [`🕐 *Convocados:* ${selectedPartido.horaConvocatoria}`]
         : []),
       '',
       `👥 *Convocados (${convocados.length})*`,

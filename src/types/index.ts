@@ -15,10 +15,12 @@ export interface Jugador {
   numeroCamiseta?: string; // Número impreso en la camiseta
 }
 
-/** Prenda del vestuario del club (catálogo gestionado por el rol serigrafía). */
+/** Prenda del vestuario del club (catálogo gestionado por el rol vestuario). */
 export interface VestuarioTipo {
   id: string;
   nombre: string; // Ej: "Camiseta", "Pantalón", "Chandal", "Ropa de paseo"
+  /** Tallas disponibles de esta prenda, separadas por comas (ej: "S, M, L, XL"). */
+  tallasDisponibles?: string;
   orden?: number;
   activo?: boolean;
 }
@@ -70,6 +72,7 @@ export interface ClubConfig {
   colorPrimario?: string; // Color principal de la app (hex), derivado del escudo del club
   colorSecundario?: string; // Color secundario/acento (hex)
   ubicacion?: string; // Dirección / ubicación de las instalaciones del club
+  vestuarioFechaLimite?: string; // Último día (YYYY-MM-DD) en que los jugadores pueden editar su hoja
   ts?: number; // Marca de última edición (sincronización entre dispositivos)
 }
 
@@ -211,7 +214,8 @@ export type RolUsuario =
   | 'coordinador_f11'
   | 'jugador'
   | 'directiva'
-  | 'serigrafia'
+  | 'vestuario'
+  | 'caja'
   | 'aficionado';
 
 /**

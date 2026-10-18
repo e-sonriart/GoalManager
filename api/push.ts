@@ -25,6 +25,8 @@ interface PushBody {
   equipo?: string;
   refId?: string;
   jugadorIds?: string[];
+  /** true = solo los jugadores indicados (sin avisar al staff) */
+  soloJugadores?: boolean;
   titulo?: string;
   cuerpo?: string;
   url?: string;
@@ -48,8 +50,15 @@ export async function restGet(path: string): Promise<any[]> {
   return (await r.json()) as any[];
 }
 
-/** Resuelve destinatarios: jugadores (convocados o del equipo) + staff (del equipo o global) */
-function resolveTargets(jugadores: any[], usuarios: any[], equipo: string, jugadorIds: string[]): Map<string, Target> {
+/** Resuelve destinatarios: jugadores (convocados o del equipo) + staff (del equipo o global).
+ *  Con `soloJugadores` el objetivo son únicamente los jugadores indicados (sin staff). */
+function resolveTargets(
+  jugadores: any[],
+  usuarios: any[],
+  equipo: string,
+  jugadorIds: string[],
+  soloJugadores = false
+): Map<string, Target> {
   const eq = (equipo || '').trim().toLowerCase();
   const targets = new Map<string, Target>();
   const add = (t: string, id: string) => {
@@ -63,6 +72,8 @@ function resolveTargets(jugadores: any[], usuarios: any[], equipo: string, jugad
       if (eq && String(j.equipo || '').trim().toLowerCase() === eq) add('jugador', j.id);
     }
   }
+
+  if (soloJugadores) return targets;
 
   for (const u of usuarios) {
     const rol = String(u.rol || '').toLowerCase();
@@ -97,7 +108,7 @@ export async function dispatchNotification(body: PushBody): Promise<{ notified: 
     restGet('push_subscriptions?select=endpoint,p256dh,auth,user_tipo,user_id')
   ]);
 
-  const targets = resolveTargets(jugadores, usuarios, equipo, jugadorIds);
+  const targets = resolveTargets(jugadores, usuarios, equipo, jugadorIds, !!body.soloJugadores);
   if (!targets.size) return { notified: 0, sent: 0 };
 
   const rows = Array.from(targets.values()).map(t => ({

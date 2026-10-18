@@ -60,6 +60,20 @@ alter table jugadores add column if not exists "nombreCamiseta" text;
 alter table jugadores add column if not exists "numeroCamiseta" text;
 
 -- ------------------------------------------------------------
+-- 3b) Tallas disponibles de cada prenda (las elige el jugador)
+--     y fecha límite (YYYY-MM-DD) hasta la que puede editar su hoja
+-- ------------------------------------------------------------
+alter table vestuario_tipos add column if not exists "tallasDisponibles" text default '';
+
+do $$
+begin
+  alter table club_config add column if not exists "vestuarioFechaLimite" text default '';
+exception
+  when undefined_table then null;   -- la tabla club_config aún no existe
+  when duplicate_column then null;  -- ya añadida en una ejecución anterior
+end $$;
+
+-- ------------------------------------------------------------
 -- 4) Prendas iniciales
 -- ------------------------------------------------------------
 insert into vestuario_tipos (id, nombre, orden) values

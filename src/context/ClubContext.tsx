@@ -34,7 +34,7 @@ import { partidoRespuestasService } from '../services/partidoRespuestas';
 import { asistenciasService } from '../services/asistencias';
 import { estadisticasService } from '../services/estadisticas';
 import { usuariosService } from '../services/usuarios';
-import { vestuarioService, vestuarioTiposService } from '../services/vestuario';
+import { vestuarioService, vestuarioTiposService, vestuarioCerrado } from '../services/vestuario';
 import { clubConfigService } from '../services/clubConfig';
 import { apiClient, getGasUrl, setGasUrl as setGasUrlStore } from '../services/apiClient';
 import { getSupabaseUrl, getSupabaseAnonKey } from '../services/supabaseClient';
@@ -140,9 +140,11 @@ interface ClubContextType {
   vestuarioTipos: VestuarioTipo[];
   /** Guarda filas de la hoja: nombre/número de camiseta y tallaje por prenda (talla vacía = quitar). */
   saveHojaVestuario: (filas: FilaVestuario[]) => Promise<boolean>;
-  /** Añade o modifica una prenda del catálogo (rol serigrafía). */
+  /** Añade o modifica una prenda del catálogo (rol vestuario). */
   saveVestuarioTipo: (tipo: Partial<VestuarioTipo>) => Promise<boolean>;
   deleteVestuarioTipo: (id: string) => Promise<boolean>;
+  /** Último día (YYYY-MM-DD) en que los jugadores pueden editar su hoja. */
+  saveVestuarioFechaLimite: (fecha: string) => Promise<boolean>;
 
   // Respuestas de jugadores a sesiones (¿voy / no voy?)
   sesionRespuestas: RespuestaSesion[];
@@ -530,6 +532,10 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Cuentas antiguas guardadas sin contraseña: se les asigna la temporal por defecto
         if (!next.password) {
           next = { ...next, password: '123456' };
+        }
+        // Cuentas creadas con el nombre anterior del rol de vestuario (serigrafia)
+        if (String(next.rol) === 'serigrafia') {
+          next = { ...next, rol: 'vestuario' };
         }
         return next;
       });
@@ -1086,6 +1092,17 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         addToast({ type: 'info', title: 'Sin cambios', message: 'No hay modificaciones que guardar.' });
         return true;
       }
+
+      // Fuera de plazo solo el rol vestuario (y quienes gestionan la hoja) pueden modificar datos
+      if (currentUser?.rol === 'jugador' && vestuarioCerrado(clubConfig?.vestuarioFechaLimite)) {
+        addToast({
+          type: 'error',
+          title: 'Plazo cerrado',
+          message: 'Ha pasado la fecha límite: tus tallas y el nombre de la camiseta ya no se pueden modificar.'
+        });
+        return false;
+      }
+
       try {
         const temporada = clubConfig?.temporada || '';
         const ahora = new Date().toISOString();
@@ -1140,7 +1157,43 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return false;
       }
     },
-    [vestuario, jugadores, clubConfig?.temporada, addToast]
+    [vestuario, jugadores, currentUser?.rol, clubConfig?.temporada, clubConfig?.vestuarioFechaLimite, addToast]
+  );
+
+  /** Fecha límite (YYYY-MM-DD) hasta la que los jugadores pueden editar su hoja. */
+  const saveVestuarioFechaLimite = useCallback(
+    async (fecha: string): Promise<boolean> => {
+      try {
+        const merged: ClubConfig = {
+          ...clubConfig,
+          vestuarioFechaLimite: (fecha || '').trim(),
+          ts: Date.now()
+        };
+        setClubConfig(merged);
+        try {
+          localStorage.setItem('cf_club_config', JSON.stringify(merged));
+        } catch {
+          // ignore
+        }
+        await clubConfigService.save(merged);
+        addToast({
+          type: 'success',
+          title: 'Fecha límite guardada',
+          message: merged.vestuarioFechaLimite
+            ? `Los jugadores podrán editar hasta el ${merged.vestuarioFechaLimite.slice(8, 10)}/${merged.vestuarioFechaLimite.slice(5, 7)}/${merged.vestuarioFechaLimite.slice(0, 4)}.`
+            : 'Se ha retirado la fecha límite: la hoja vuelve a estar abierta.'
+        });
+        return true;
+      } catch {
+        addToast({
+          type: 'error',
+          title: 'Error',
+          message: 'No se pudo guardar la fecha límite. Comprueba que exista la columna vestuarioFechaLimite (vestuario.sql).'
+        });
+        return false;
+      }
+    },
+    [clubConfig, addToast]
   );
 
   // Catálogo de prendas de la hoja (lo gestiona el rol serigrafía)
@@ -1711,6 +1764,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     saveHojaVestuario,
     saveVestuarioTipo,
     deleteVestuarioTipo,
+    saveVestuarioFechaLimite,
 
     sesionRespuestas,
     jugadorActual,
@@ -1758,6 +1812,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     saveJugador, deleteJugador, saveEquipo, deleteEquipo, saveCategoria, deleteCategoria,
     saveEntrenador, deleteEntrenador, savePartido, deletePartido, saveSesion, deleteSesion,
     vestuario, vestuarioTipos, saveHojaVestuario, saveVestuarioTipo, deleteVestuarioTipo,
+    saveVestuarioFechaLimite,
     sesionRespuestas, jugadorActual, refreshRespuestas, responderSesion,
     partidoRespuestas, responderPartido,
     toggleConvocatoria, setConvocatoriaEstado, batchSetConvocatoriaEstado,

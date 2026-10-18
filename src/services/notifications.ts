@@ -15,6 +15,8 @@ export interface NotifyPayload {
   refId?: string;
   /** Si se indican, solo esos jugadores (además del staff del equipo) */
   jugadorIds?: string[];
+  /** true = no avisar también al staff: solo los jugadores indicados */
+  soloJugadores?: boolean;
   titulo: string;
   cuerpo?: string;
   url?: string;

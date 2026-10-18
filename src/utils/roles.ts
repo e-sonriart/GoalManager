@@ -88,16 +88,30 @@ export const ROLE_INFO: Record<RolUsuario, RoleInfo> = {
     dotClass: 'bg-orange-500'
   },
 
-  serigrafia: {
-    rol: 'serigrafia',
-    label: 'Serigrafía',
-    shortLabel: 'Serigrafía',
-    description: 'Prepara los pedidos de equipación: añade las prendas y gestiona tallas, nombre y número de camiseta.',
+  vestuario: {
+    rol: 'vestuario',
+    label: 'Vestuario',
+    shortLabel: 'Vestuario',
+    description:
+      'Gestiona la hoja de vestuario: prendas, tallas disponibles, fecha límite y avisos. Corrige tallas y nombres de la plantilla.',
     scope: 'externo',
     requiresTeam: false,
     avatarBg: 'bg-fuchsia-600 text-white',
     badgeClass: 'bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200',
     dotClass: 'bg-fuchsia-500'
+  },
+
+  caja: {
+    rol: 'caja',
+    label: 'Caja',
+    shortLabel: 'Caja',
+    description:
+      'Acceso de caja del club: consulta el panel y la hoja de vestuario (permisos ampliables).',
+    scope: 'externo',
+    requiresTeam: false,
+    avatarBg: 'bg-cyan-700 text-white',
+    badgeClass: 'bg-cyan-50 text-cyan-700 border border-cyan-200',
+    dotClass: 'bg-cyan-700'
   },
 
   aficionado: {
@@ -120,10 +134,20 @@ export const ROLE_ORDER: RolUsuario[] = [
   'coordinador_f8',
   'coordinador_f11',
   'entrenador',
-  'serigrafia',
+  'vestuario',
+  'caja',
   'jugador',
   'aficionado'
 ];
+
+/** Cuentas creadas con el nombre antiguo del rol de vestuario. */
+const ROLE_ALIASES: Record<string, RolUsuario> = { serigrafia: 'vestuario' };
+
+/** Normaliza el rol leído de datos guardados (alias históricos). */
+export function normalizeRol(rol?: string | null): RolUsuario {
+  const key = String(rol || '').trim();
+  return (ROLE_ALIASES[key] || key) as RolUsuario;
+}
 
 export const SCOPE_LABELS: Record<RoleScope, string> = {
   total: 'Acceso total',
@@ -135,7 +159,8 @@ export const SCOPE_LABELS: Record<RoleScope, string> = {
 };
 
 export function getRoleInfo(rol?: RolUsuario | null): RoleInfo {
-  if (rol && ROLE_INFO[rol]) return ROLE_INFO[rol];
+  const key = normalizeRol(rol);
+  if (key && ROLE_INFO[key]) return ROLE_INFO[key];
   return ROLE_INFO.aficionado;
 }
 

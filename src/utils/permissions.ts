@@ -150,8 +150,8 @@ const VIEW_ESTADISTICAS_AVANZADAS: Permission[] = ['view:estadisticas_avanzadas'
 // y entrenadores asignados. Los coordinadores solo las consultan (view), nunca las gestionan.
 const MANAGE_ENTRENAMIENTOS: Permission[] = ['manage:entrenamientos'];
 
-// Hoja de vestuario: todo el cuerpo del club la consulta; el tallaje y el catálogo de prendas
-// los gestiona serigrafía (más admin y directiva).
+// Hoja de vestuario: todo el cuerpo del club la consulta; el catálogo de prendas, las tallas
+// disponibles, la fecha límite y los avisos los gestiona el rol vestuario (más admin y directiva).
 const VIEW_VESTUARIO: Permission[] = ['view:vestuario'];
 const MANAGE_VESTUARIO: Permission[] = ['manage:vestuario'];
 
@@ -193,10 +193,13 @@ const ROLE_PERMISSIONS: Record<RolUsuario, Permission[]> = {
   // Jugador: solo lectura deportiva de su equipo + su propia hoja de vestuario.
   // En la pestaña de vestuario marca sus tallas, su nombre y su número de camiseta.
   jugador: [...VIEW_SPORT_READ_ONLY, ...VIEW_VESTUARIO],
+  // Vestuario: externo que prepara los pedidos de equipación. Consulta el club y gestiona la
+  // hoja de vestuario (prendas, tallas disponibles, fecha límite, tallas y nombres de la plantilla).
+  vestuario: [...VIEW_SPORT_READ_ONLY, ...VIEW_VESTUARIO, ...MANAGE_VESTUARIO],
 
-  // Serigrafía: externo que prepara los pedidos. Consulta el club y gestiona la hoja
-  // de vestuario (prendas, tallaje, nombre y número de camiseta), nada más.
-  serigrafia: [...VIEW_SPORT_READ_ONLY, ...VIEW_VESTUARIO, ...MANAGE_VESTUARIO],
+  // Caja: acceso provisional de solo lectura (panel + hoja de vestuario).
+  // Su detalle de permisos se ampliará cuando se defina su cometido.
+  caja: ['view:dashboard', 'view:partidos', 'view:vestuario'],
 
   // Perfiles externos: solo información general y calendario.
   aficionado: ['view:dashboard', 'view:partidos']

@@ -17,7 +17,10 @@ import {
   RespuestaSesion,
   RespuestaPartido,
   EstadoRespuestaSesion,
-  AppTab
+  AppTab,
+  VestuarioItem,
+  VestuarioTipo,
+  FilaVestuario
 } from '../types';
 import { DEFAULT_CLUB_SHIELD } from '../utils/shieldPresets';
 import { jugadoresService } from '../services/jugadores';
@@ -31,6 +34,7 @@ import { partidoRespuestasService } from '../services/partidoRespuestas';
 import { asistenciasService } from '../services/asistencias';
 import { estadisticasService } from '../services/estadisticas';
 import { usuariosService } from '../services/usuarios';
+import { vestuarioService, vestuarioTiposService } from '../services/vestuario';
 import { clubConfigService } from '../services/clubConfig';
 import { apiClient, getGasUrl, setGasUrl as setGasUrlStore } from '../services/apiClient';
 import { getSupabaseUrl, getSupabaseAnonKey } from '../services/supabaseClient';
@@ -131,6 +135,15 @@ interface ClubContextType {
   saveSesion: (sesion: Partial<SesionEntrenamiento>) => Promise<SesionEntrenamiento | null>;
   deleteSesion: (id: string) => Promise<boolean>;
 
+  // Hoja de vestuario (tallas por prenda + nombre y número de camiseta)
+  vestuario: VestuarioItem[];
+  vestuarioTipos: VestuarioTipo[];
+  /** Guarda filas de la hoja: nombre/número de camiseta y tallaje por prenda (talla vacía = quitar). */
+  saveHojaVestuario: (filas: FilaVestuario[]) => Promise<boolean>;
+  /** Añade o modifica una prenda del catálogo (rol serigrafía). */
+  saveVestuarioTipo: (tipo: Partial<VestuarioTipo>) => Promise<boolean>;
+  deleteVestuarioTipo: (id: string) => Promise<boolean>;
+
   // Respuestas de jugadores a sesiones (¿voy / no voy?)
   sesionRespuestas: RespuestaSesion[];
   jugadorActual: Jugador | null;
@@ -221,6 +234,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [sesiones, setSesiones] = useState<SesionEntrenamiento[]>([]);
   const [sesionRespuestas, setSesionRespuestas] = useState<RespuestaSesion[]>([]);
   const [partidoRespuestas, setPartidoRespuestas] = useState<RespuestaPartido[]>([]);
+  const [vestuario, setVestuario] = useState<VestuarioItem[]>([]);
+  const [vestuarioTipos, setVestuarioTipos] = useState<VestuarioTipo[]>([]);
   const [users, setUsers] = useState<Usuario[]>([]);
 
   // Configuración e Identidad del Club
@@ -465,6 +480,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         sessResps,
         partResps,
         usrs,
+        vestItems,
+        vestTipos,
         remoteConfig
       ] = await Promise.all([
         jugadoresService.getAll(),
@@ -478,6 +495,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         sesionRespuestasService.getAll(),
         partidoRespuestasService.getAll(),
         usuariosService.getAll(),
+        vestuarioService.getAll(),
+        vestuarioTiposService.getAll(),
         clubConfigService.get()
       ]);
 
@@ -491,6 +510,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setSesiones(sesses);
       setSesionRespuestas(sessResps);
       setPartidoRespuestas(partResps);
+      setVestuario(vestItems);
+      setVestuarioTipos(vestTipos);
       // Asegurar que jugadores y entrenadores tengan un equipo asignado de los registrados
       const defaultTeam = eqs[0]?.nombre || 'Club Naranja Principal';
       const sanitizedUsrs = usrs.map(u => {
@@ -1057,6 +1078,132 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [addToast]);
 
+  // Hoja de vestuario: tallas por prenda + nombre y número de camiseta.
+  // Una talla vacía elimina la fila de esa prenda; las filas sin cambios no se tocan.
+  const saveHojaVestuario = useCallback(
+    async (filas: FilaVestuario[]): Promise<boolean> => {
+      if (!filas.length) {
+        addToast({ type: 'info', title: 'Sin cambios', message: 'No hay modificaciones que guardar.' });
+        return true;
+      }
+      try {
+        const temporada = clubConfig?.temporada || '';
+        const ahora = new Date().toISOString();
+
+        for (const fila of filas) {
+          const jug = jugadores.find(j => j.id === fila.jugadorId);
+
+          // Nombre y número impresos en la camiseta (se guardan en la ficha del jugador)
+          if (jug && (fila.nombreCamiseta !== undefined || fila.numeroCamiseta !== undefined)) {
+            const nombre = fila.nombreCamiseta !== undefined ? fila.nombreCamiseta.trim() : jug.nombreCamiseta || '';
+            const numero = fila.numeroCamiseta !== undefined ? fila.numeroCamiseta.trim() : jug.numeroCamiseta || '';
+            if (nombre !== (jug.nombreCamiseta || '') || numero !== (jug.numeroCamiseta || '')) {
+              const upd = await jugadoresService.update({
+                ...jug,
+                nombreCamiseta: nombre,
+                numeroCamiseta: numero
+              });
+              setJugadores(prev => prev.map(j => (j.id === upd.id ? upd : j)));
+            }
+          }
+
+          // Tallaje por prenda
+          for (const [tipoPrenda, valor] of Object.entries(fila.tallas || {})) {
+            const talla = (valor || '').trim();
+            const existente = vestuario.find(
+              v => v.jugadorId === fila.jugadorId && v.tipoPrenda === tipoPrenda
+            );
+            if (talla) {
+              const row = { jugadorId: fila.jugadorId, tipoPrenda, talla, temporada, actualizadoEn: ahora };
+              if (existente) {
+                const upd = await vestuarioService.update({ ...existente, ...row });
+                setVestuario(prev => prev.map(v => (v.id === upd.id ? upd : v)));
+              } else {
+                const created = await vestuarioService.create(row);
+                setVestuario(prev => [...prev, created]);
+              }
+            } else if (existente) {
+              await vestuarioService.delete(existente.id);
+              setVestuario(prev => prev.filter(v => v.id !== existente.id));
+            }
+          }
+        }
+
+        addToast({
+          type: 'success',
+          title: 'Vestuario guardado',
+          message: filas.length === 1 ? 'Datos actualizados en la hoja.' : `${filas.length} fichas actualizadas.`
+        });
+        return true;
+      } catch {
+        addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar la hoja de vestuario.' });
+        return false;
+      }
+    },
+    [vestuario, jugadores, clubConfig?.temporada, addToast]
+  );
+
+  // Catálogo de prendas de la hoja (lo gestiona el rol serigrafía)
+  const saveVestuarioTipo = useCallback(
+    async (tipo: Partial<VestuarioTipo>): Promise<boolean> => {
+      try {
+        const nombre = (tipo.nombre || '').trim();
+        if (!nombre) return false;
+        const repetida = vestuarioTipos.some(
+          t => t.id !== tipo.id && (t.nombre || '').trim().toLowerCase() === nombre.toLowerCase()
+        );
+        if (repetida) {
+          addToast({ type: 'error', title: 'Prenda repetida', message: `"${nombre}" ya está en el catálogo.` });
+          return false;
+        }
+        if (tipo.id) {
+          const updated = await vestuarioTiposService.update({ ...tipo, nombre } as VestuarioTipo);
+          setVestuarioTipos(prev => prev.map(t => (t.id === updated.id ? updated : t)));
+          addToast({ type: 'success', title: 'Prenda actualizada', message: `El catálogo usa "${nombre}".` });
+        } else {
+          const orden = Math.max(0, ...vestuarioTipos.map(t => Number(t.orden) || 0)) + 1;
+          const created = await vestuarioTiposService.create({ nombre, orden, activo: true });
+          setVestuarioTipos(prev => [...prev, created]);
+          addToast({ type: 'success', title: 'Prenda añadida', message: `${nombre} ya se puede pedir.` });
+        }
+        return true;
+      } catch {
+        addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar la prenda.' });
+        return false;
+      }
+    },
+    [vestuarioTipos, addToast]
+  );
+
+  const deleteVestuarioTipo = useCallback(
+    async (id: string): Promise<boolean> => {
+      try {
+        const tipo = vestuarioTipos.find(t => t.id === id);
+        // Al quitar la prenda se limpian también sus tallas de la hoja
+        const huerfanos = vestuario.filter(v => tipo && v.tipoPrenda === tipo.nombre);
+        for (const item of huerfanos) {
+          await vestuarioService.delete(item.id);
+        }
+        if (huerfanos.length) {
+          const ids = new Set(huerfanos.map(h => h.id));
+          setVestuario(prev => prev.filter(v => !ids.has(v.id)));
+        }
+        await vestuarioTiposService.delete(id);
+        setVestuarioTipos(prev => prev.filter(t => t.id !== id));
+        addToast({
+          type: 'info',
+          title: 'Prenda eliminada',
+          message: tipo ? `${tipo.nombre} se ha quitado del catálogo.` : 'Prenda retirada del catálogo.'
+        });
+        return true;
+      } catch {
+        addToast({ type: 'error', title: 'Error', message: 'No se pudo eliminar la prenda.' });
+        return false;
+      }
+    },
+    [vestuarioTipos, vestuario, addToast]
+  );
+
   // Estadísticas
   const saveEstadistica = useCallback(async (stat: Partial<Estadistica> & { jugadorId: string }): Promise<boolean> => {
     try {
@@ -1559,6 +1706,12 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     saveSesion,
     deleteSesion,
 
+    vestuario,
+    vestuarioTipos,
+    saveHojaVestuario,
+    saveVestuarioTipo,
+    deleteVestuarioTipo,
+
     sesionRespuestas,
     jugadorActual,
     refreshRespuestas,
@@ -1604,6 +1757,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     toasts, addToast, removeToast,
     saveJugador, deleteJugador, saveEquipo, deleteEquipo, saveCategoria, deleteCategoria,
     saveEntrenador, deleteEntrenador, savePartido, deletePartido, saveSesion, deleteSesion,
+    vestuario, vestuarioTipos, saveHojaVestuario, saveVestuarioTipo, deleteVestuarioTipo,
     sesionRespuestas, jugadorActual, refreshRespuestas, responderSesion,
     partidoRespuestas, responderPartido,
     toggleConvocatoria, setConvocatoriaEstado, batchSetConvocatoriaEstado,

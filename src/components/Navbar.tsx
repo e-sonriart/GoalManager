@@ -19,6 +19,7 @@ import {
   Radio,
   ExternalLink,
   Dumbbell,
+  Shirt,
   LogOut
 } from 'lucide-react';
 
@@ -54,6 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'equipos', label: 'Equipos', icon: Shield },
     { id: 'convocatorias', label: 'Convocatorias', icon: ClipboardList },
     { id: 'estadisticas', label: 'Estadísticas', icon: Trophy },
+    { id: 'vestuario', label: 'Vestuario', icon: Shirt },
     { id: 'admin', label: 'Admin', icon: Settings }
   ];
   const navItems = allNavItems.filter(item => allowedTabs.includes(item.id));

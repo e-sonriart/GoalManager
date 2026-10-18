@@ -11,6 +11,35 @@ export interface Jugador {
   fechaAlta: string;
   fechaNacimiento?: string; // Fecha de nacimiento (YYYY-MM-DD)
   pass?: string; // Contraseña de acceso del jugador
+  nombreCamiseta?: string; // Nombre impreso en la espalda de la camiseta
+  numeroCamiseta?: string; // Número impreso en la camiseta
+}
+
+/** Prenda del vestuario del club (catálogo gestionado por el rol serigrafía). */
+export interface VestuarioTipo {
+  id: string;
+  nombre: string; // Ej: "Camiseta", "Pantalón", "Chandal", "Ropa de paseo"
+  orden?: number;
+  activo?: boolean;
+}
+
+/** Selección de talla de un jugador para una prenda de la hoja de vestuario. */
+export interface VestuarioItem {
+  id: string;
+  jugadorId: string;
+  temporada?: string;
+  tipoPrenda: string; // Nombre de la prenda (unión con VestuarioTipo.nombre)
+  talla?: string;
+  actualizadoEn?: string;
+}
+
+/** Fila a guardar en la hoja de vestuario: datos de camiseta + tallaje por prenda. */
+export interface FilaVestuario {
+  jugadorId: string;
+  nombreCamiseta?: string;
+  numeroCamiseta?: string;
+  /** prenda -> talla. Una talla vacía elimina la fila de esa prenda. */
+  tallas?: Record<string, string>;
 }
 
 export type TipoFutbol = 'F8' | 'F11';
@@ -175,7 +204,15 @@ export interface Estadistica {
   historico?: HistorialEstadisticaTemporada[];
 }
 
-export type RolUsuario = 'admin' | 'entrenador' | 'coordinador_f8' | 'coordinador_f11' | 'jugador' | 'directiva' | 'aficionado';
+export type RolUsuario =
+  | 'admin'
+  | 'entrenador'
+  | 'coordinador_f8'
+  | 'coordinador_f11'
+  | 'jugador'
+  | 'directiva'
+  | 'serigrafia'
+  | 'aficionado';
 
 /**
  * Pestañas de navegación de la aplicación.
@@ -190,6 +227,7 @@ export type AppTab =
   | 'eventos'
   | 'estadisticas'
   | 'entrenamientos'
+  | 'vestuario'
   | 'admin';
 
 export interface Usuario {

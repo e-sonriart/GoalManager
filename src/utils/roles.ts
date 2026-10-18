@@ -88,6 +88,18 @@ export const ROLE_INFO: Record<RolUsuario, RoleInfo> = {
     dotClass: 'bg-orange-500'
   },
 
+  serigrafia: {
+    rol: 'serigrafia',
+    label: 'Serigrafía',
+    shortLabel: 'Serigrafía',
+    description: 'Prepara los pedidos de equipación: añade las prendas y gestiona tallas, nombre y número de camiseta.',
+    scope: 'externo',
+    requiresTeam: false,
+    avatarBg: 'bg-fuchsia-600 text-white',
+    badgeClass: 'bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200',
+    dotClass: 'bg-fuchsia-500'
+  },
+
   aficionado: {
     rol: 'aficionado',
     label: 'Aficionado',
@@ -108,6 +120,7 @@ export const ROLE_ORDER: RolUsuario[] = [
   'coordinador_f8',
   'coordinador_f11',
   'entrenador',
+  'serigrafia',
   'jugador',
   'aficionado'
 ];

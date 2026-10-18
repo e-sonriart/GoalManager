@@ -44,6 +44,7 @@ const ConvocatoriasView = lazyView(() => import('./components/ConvocatoriasView'
 const AlineacionView = lazyView(() => import('./components/AlineacionView').then(m => ({ default: m.AlineacionView })));
 const EventosPartidoView = lazyView(() => import('./components/EventosPartidoView').then(m => ({ default: m.EventosPartidoView })));
 const EstadisticasRankingView = lazyView(() => import('./components/EstadisticasRankingView').then(m => ({ default: m.EstadisticasRankingView })));
+const VestuarioView = lazyView(() => import('./components/VestuarioView').then(m => ({ default: m.VestuarioView })));
 const AdminPanel = lazyView(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
 
 const VIEW_FALLBACK: React.FC<{ label?: string }> = ({ label }) => (
@@ -58,7 +59,7 @@ const MainContent: React.FC = () => {
 
   // Tab inicial: permite deep-link desde notificaciones (?tab=eventos&partido=123)
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
-    const TABS: ActiveTab[] = ['dashboard', 'equipos', 'partidos', 'convocatorias', 'alineacion', 'eventos', 'estadisticas', 'entrenamientos', 'admin'];
+    const TABS: ActiveTab[] = ['dashboard', 'equipos', 'partidos', 'convocatorias', 'alineacion', 'eventos', 'estadisticas', 'entrenamientos', 'vestuario', 'admin'];
     const t = new URLSearchParams(window.location.search).get('tab') as ActiveTab | null;
     return t && TABS.includes(t) ? t : 'dashboard';
   });
@@ -191,6 +192,10 @@ const MainContent: React.FC = () => {
 
             {activeTab === 'entrenamientos' && (
               <EntrenamientosView />
+            )}
+
+            {activeTab === 'vestuario' && (
+              <VestuarioView />
             )}
 
             {activeTab === 'convocatorias' && (

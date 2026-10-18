@@ -16,6 +16,7 @@ import {
   Sparkles,
   RefreshCw,
   Dumbbell,
+  Shirt,
   LogOut
 } from 'lucide-react';
 
@@ -72,6 +73,13 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
           desc: 'Pichichi, asistencias, tarjetas y valoración',
           icon: Trophy,
           badge: 'Top'
+        },
+        {
+          id: 'vestuario' as ActiveTab,
+          label: 'Vestuario',
+          desc: 'Tallas y nombre/número de camiseta',
+          icon: Shirt,
+          badge: null
         }
       ]
     },

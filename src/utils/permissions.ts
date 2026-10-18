@@ -15,6 +15,7 @@ export type Permission =
   | 'view:estadisticas'
   | 'view:estadisticas_avanzadas'
   | 'view:entrenamientos'
+  | 'view:vestuario'
   | 'view:admin'
   | 'manage:jugadores'
   | 'manage:equipos'
@@ -25,6 +26,7 @@ export type Permission =
   | 'manage:asistencias'
   | 'manage:estadisticas'
   | 'manage:entrenamientos'
+  | 'manage:vestuario'
   | 'manage:usuarios'
   | 'manage:sincronizacion'
   | 'manage:identidad';
@@ -39,6 +41,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   'view:asistencias',
   'view:estadisticas',
   'view:estadisticas_avanzadas',
+  'view:vestuario',
   'view:admin',
   'manage:jugadores',
   'manage:equipos',
@@ -48,6 +51,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   'manage:convocatorias',
   'manage:asistencias',
   'manage:estadisticas',
+  'manage:vestuario',
   'manage:usuarios',
   'manage:sincronizacion',
   'manage:identidad'
@@ -62,6 +66,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'view:estadisticas': 'Ver estadísticas',
   'view:estadisticas_avanzadas': 'Ver partidos jugados y titulares',
   'view:entrenamientos': 'Ver sesiones de entrenamiento',
+  'view:vestuario': 'Ver la hoja de vestuario',
   'view:admin': 'Acceder al panel de administración',
   'manage:jugadores': 'Gestionar jugadores',
   'manage:equipos': 'Gestionar equipos',
@@ -72,6 +77,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'manage:asistencias': 'Gestionar asistencias',
   'manage:estadisticas': 'Gestionar estadísticas',
   'manage:entrenamientos': 'Gestionar sesiones de entrenamiento',
+  'manage:vestuario': 'Gestionar prendas y tallaje del vestuario',
   'manage:usuarios': 'Gestionar usuarios y roles',
   'manage:sincronizacion': 'Sincronizar y restablecer datos',
   'manage:identidad': 'Editar identidad del club'
@@ -86,6 +92,7 @@ export const VIEW_PERMISSIONS: Permission[] = [
   'view:estadisticas',
   'view:estadisticas_avanzadas',
   'view:entrenamientos',
+  'view:vestuario',
   'view:admin'
 ];
 
@@ -99,6 +106,7 @@ export const MANAGE_PERMISSIONS: Permission[] = [
   'manage:convocatorias',
   'manage:asistencias',
   'manage:estadisticas',
+  'manage:vestuario',
   'manage:usuarios',
   'manage:sincronizacion',
   'manage:identidad'
@@ -113,6 +121,7 @@ const TABS_VISIBLES: Record<AppTab, Permission> = {
   eventos: 'view:partidos',
   estadisticas: 'view:estadisticas',
   entrenamientos: 'view:entrenamientos',
+  vestuario: 'view:vestuario',
   admin: 'view:admin'
 };
 
@@ -141,6 +150,11 @@ const VIEW_ESTADISTICAS_AVANZADAS: Permission[] = ['view:estadisticas_avanzadas'
 // y entrenadores asignados. Los coordinadores solo las consultan (view), nunca las gestionan.
 const MANAGE_ENTRENAMIENTOS: Permission[] = ['manage:entrenamientos'];
 
+// Hoja de vestuario: todo el cuerpo del club la consulta; el tallaje y el catálogo de prendas
+// los gestiona serigrafía (más admin y directiva).
+const VIEW_VESTUARIO: Permission[] = ['view:vestuario'];
+const MANAGE_VESTUARIO: Permission[] = ['manage:vestuario'];
+
 const ROLE_PERMISSIONS: Record<RolUsuario, Permission[]> = {
   // Acceso total: puede verlo y gestionarlo todo.
   admin: ALL_PERMISSIONS,
@@ -148,6 +162,7 @@ const ROLE_PERMISSIONS: Record<RolUsuario, Permission[]> = {
   directiva: [
     ...VIEW_SPORT_READ_ONLY,
     ...VIEW_ESTADISTICAS_AVANZADAS,
+    ...VIEW_VESTUARIO,
     'view:admin',
     'manage:jugadores',
     'manage:equipos',
@@ -155,26 +170,33 @@ const ROLE_PERMISSIONS: Record<RolUsuario, Permission[]> = {
     'manage:entrenadores',
     ...MANAGE_SPORT_TEAM,
     ...MANAGE_ENTRENAMIENTOS,
+    ...MANAGE_VESTUARIO,
     'manage:sincronizacion',
     'manage:identidad'
   ],
 
   // Coordinadores: gestión deportiva completa de su área (filtrada a F8 / F11),
   // sin tocar estructura administrativa ni usuarios.
-  coordinador_f8: [...VIEW_SPORT_READ_ONLY, ...VIEW_ESTADISTICAS_AVANZADAS, 'manage:jugadores', ...MANAGE_ENTRENAMIENTOS, ...MANAGE_SPORT_TEAM],
-  coordinador_f11: [...VIEW_SPORT_READ_ONLY, ...VIEW_ESTADISTICAS_AVANZADAS, 'manage:jugadores', ...MANAGE_ENTRENAMIENTOS, ...MANAGE_SPORT_TEAM],
+  coordinador_f8: [...VIEW_SPORT_READ_ONLY, ...VIEW_ESTADISTICAS_AVANZADAS, ...VIEW_VESTUARIO, 'manage:jugadores', ...MANAGE_ENTRENAMIENTOS, ...MANAGE_SPORT_TEAM],
+  coordinador_f11: [...VIEW_SPORT_READ_ONLY, ...VIEW_ESTADISTICAS_AVANZADAS, ...VIEW_VESTUARIO, 'manage:jugadores', ...MANAGE_ENTRENAMIENTOS, ...MANAGE_SPORT_TEAM],
 
   // Entrenador: gestiona convocatorias, asistencias, partidos, estadísticas y su plantilla.
   entrenador: [
     ...VIEW_SPORT_READ_ONLY,
     ...VIEW_ESTADISTICAS_AVANZADAS,
+    ...VIEW_VESTUARIO,
     'manage:jugadores',
     ...MANAGE_ENTRENAMIENTOS,
     ...MANAGE_SPORT_TEAM
   ],
 
-  // Jugador: solo lectura deportiva de su equipo.
-  jugador: VIEW_SPORT_READ_ONLY,
+  // Jugador: solo lectura deportiva de su equipo + su propia hoja de vestuario.
+  // En la pestaña de vestuario marca sus tallas, su nombre y su número de camiseta.
+  jugador: [...VIEW_SPORT_READ_ONLY, ...VIEW_VESTUARIO],
+
+  // Serigrafía: externo que prepara los pedidos. Consulta el club y gestiona la hoja
+  // de vestuario (prendas, tallaje, nombre y número de camiseta), nada más.
+  serigrafia: [...VIEW_SPORT_READ_ONLY, ...VIEW_VESTUARIO, ...MANAGE_VESTUARIO],
 
   // Perfiles externos: solo información general y calendario.
   aficionado: ['view:dashboard', 'view:partidos']

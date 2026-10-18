@@ -34,7 +34,7 @@ import { partidoRespuestasService } from '../services/partidoRespuestas';
 import { asistenciasService } from '../services/asistencias';
 import { estadisticasService } from '../services/estadisticas';
 import { usuariosService } from '../services/usuarios';
-import { vestuarioService, vestuarioTiposService, vestuarioCerrado } from '../services/vestuario';
+import { vestuarioService, vestuarioTiposService, vestuarioCerrado, hoyISO } from '../services/vestuario';
 import { clubConfigService } from '../services/clubConfig';
 import { apiClient, getGasUrl, setGasUrl as setGasUrlStore } from '../services/apiClient';
 import { getSupabaseUrl, getSupabaseAnonKey } from '../services/supabaseClient';
@@ -1146,12 +1146,20 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               }
               continue;
             }
+            // Fechas automáticas: solicitud = día en que se crea la fila,
+            // entrega = día en que se marca "Entregado" (se limpia si vuelve a pendiente).
+            const hoy = hoyISO();
+            const fechaSolicitud = (existente?.fechaSolicitud || '').trim() || hoy;
+            const fechaEntrega =
+              estado === 'entregado' ? (existente?.fechaEntrega || '').trim() || hoy : '';
             const row = {
               jugadorId: fila.jugadorId,
               tipoPrenda,
               talla,
               estado,
               pagado,
+              fechaSolicitud,
+              fechaEntrega,
               temporada,
               actualizadoEn: ahora
             };
@@ -1234,7 +1242,12 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           addToast({ type: 'success', title: 'Prenda actualizada', message: `El catálogo usa "${nombre}".` });
         } else {
           const orden = Math.max(0, ...vestuarioTipos.map(t => Number(t.orden) || 0)) + 1;
-          const created = await vestuarioTiposService.create({ nombre, orden, activo: true });
+          const created = await vestuarioTiposService.create({
+            nombre,
+            orden,
+            activo: true,
+            precio: (tipo.precio ?? '').trim()
+          });
           setVestuarioTipos(prev => [...prev, created]);
           addToast({ type: 'success', title: 'Prenda añadida', message: `${nombre} ya se puede pedir.` });
         }

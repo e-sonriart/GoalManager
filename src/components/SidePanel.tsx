@@ -19,6 +19,7 @@ import {
   Database,
   Dumbbell,
   Shirt,
+  Wallet,
   Monitor,
   LogOut,
   KeyRound
@@ -69,6 +70,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     { id: 'convocatorias', label: 'Convocatorias', icon: ClipboardList },
     { id: 'estadisticas', label: 'Estadísticas', icon: Trophy },
     { id: 'vestuario', label: 'Vestuario', icon: Shirt },
+    { id: 'caja', label: 'Caja', icon: Wallet },
     {
       id: 'admin',
       label: 'Administración',

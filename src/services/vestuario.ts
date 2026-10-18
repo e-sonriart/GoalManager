@@ -4,6 +4,30 @@ import { FilaVestuario, VestuarioItem, VestuarioTipo } from '../types';
 const SHEET_ITEMS = 'vestuario';
 const SHEET_TIPOS = 'vestuario_tipos';
 
+/** Día de hoy en local (YYYY-MM-DD): fechas de solicitud y entrega de la hoja. */
+export const hoyISO = (): string => {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+/** "12/10" a partir de "2026-10-12" (vacío si no hay fecha). */
+export const fechaCorta = (fecha?: string): string => {
+  const raw = (fecha || '').trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${Number(m[3])}/${Number(m[2])}` : '';
+};
+
+/** "12/10/2026" a partir de "2026-10-12" (vacío si no hay fecha). */
+export const fechaLarga = (fecha?: string): string => {
+  const raw = (fecha || '').trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${Number(m[3])}/${Number(m[2])}/${m[1]}` : '';
+};
+
+/** Precio de una prenda en euros, como texto ("12,50"). */
+export const precioDe = (tipo?: VestuarioTipo): string => String(tipo?.precio || '').trim();
+
 /**
  * ¿Está cerrado el plazo para que los jugadores editen su hoja?
  * `fechaLimite` es un día (YYYY-MM-DD): durante ese día aún se puede modificar.

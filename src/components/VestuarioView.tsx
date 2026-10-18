@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useClub } from '../context/ClubContext';
-import { FilaVestuario, Jugador, VestuarioTipo } from '../types';
+import { FechasPrenda, FilaVestuario, Jugador, VestuarioTipo } from '../types';
 import {
   Shirt,
   Plus,
@@ -12,7 +12,8 @@ import {
   CalendarClock,
   CheckCircle2,
   AlertCircle,
-  Banknote
+  Banknote,
+  Euro
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { sendNotify } from '../services/notifications';
@@ -24,7 +25,10 @@ import {
   estadoInfo,
   pagadoDe,
   unidadesDe,
-  pagosDe
+  pagosDe,
+  hoyISO,
+  fechaCorta,
+  precioDe
 } from '../services/vestuario';
 
 /** Opciones de talla por defecto (si la prenda no define sus propias tallas). */
@@ -41,22 +45,22 @@ const INPUT_TEXTO =
   'rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 ' +
   'focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-200 placeholder:text-gray-300';
 
-const hoyISO = (): string => new Date().toISOString().slice(0, 10);
-
 interface CeldaPrendaProps {
   prenda: VestuarioTipo;
   fila: FilaVestuario;
   canManage: boolean;
+  puedePago: boolean;
   onTalla: (valor: string) => void;
   onEstado: (valor: string) => void;
   onPagado: () => void;
 }
 
-/** Una celda de prenda: talla + estado de entrega (entregado/pendiente/sin stock) + pago. */
+/** Una celda de prenda: talla + estado de entrega + pago + fechas de solicitud/entrega. */
 const CeldaPrenda: React.FC<CeldaPrendaProps> = ({
   prenda,
   fila,
   canManage,
+  puedePago,
   onTalla,
   onEstado,
   onPagado
@@ -64,6 +68,9 @@ const CeldaPrenda: React.FC<CeldaPrendaProps> = ({
   const talla = fila.tallas?.[prenda.nombre] || '';
   const estado = estadoInfo(fila.estados?.[prenda.nombre]);
   const pagado = !!fila.pagados?.[prenda.nombre];
+  const fechas = fila.fechas?.[prenda.nombre];
+  const fSol = fechaCorta(fechas?.solicitud);
+  const fEnt = fechaCorta(fechas?.entrega);
 
   return (
     <div className="flex flex-col gap-1 items-start">
@@ -108,19 +115,33 @@ const CeldaPrenda: React.FC<CeldaPrendaProps> = ({
 
         <button
           type="button"
-          disabled={!canManage}
-          title={pagado ? 'Pagado' : 'No pagado'}
+          disabled={!puedePago}
+          title={
+            pagado
+              ? 'Pagado: la caja lo ha cobrado'
+              : puedePago
+                ? 'Sin pagar: marca el cobro en Caja'
+                : 'Lo marca el rol Caja'
+          }
           aria-label={pagado ? 'Pagado' : 'No pagado'}
           onClick={onPagado}
           className={`rounded-md border p-1 transition-colors ${
             pagado
               ? 'bg-yellow-100 border-yellow-300 text-yellow-600'
               : 'bg-gray-100 border-gray-200 text-gray-400'
-          } ${canManage ? 'hover:scale-105' : 'cursor-default'}`}
+          } ${puedePago ? 'hover:scale-105' : 'cursor-default'}`}
         >
           <Banknote className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      {(fSol || fEnt) && (
+        <span className="flex flex-wrap items-center gap-x-1.5 text-[10px] font-semibold text-gray-400">
+          {fSol && <span title="Fecha de solicitud">S {fSol}</span>}
+          {fSol && fEnt && <span>·</span>}
+          {fEnt && <span title="Fecha de entrega">E {fEnt}</span>}
+        </span>
+      )}
 
       <datalist id={`tallas-${prenda.id}`}>
         {tallasDePrenda(prenda, TALLAS_PRESET).map(t => (
@@ -149,6 +170,11 @@ export const VestuarioView: React.FC = () => {
   } = useClub();
 
   const canManage = can('manage:vestuario');
+  /** La caja pone el precio a cada prenda y marca la ropa pagada. */
+  const puedePago = can('manage:caja');
+  const puedePrecios = puedePago;
+  /** Quien gestiona la hoja o cobra en caja puede guardar. */
+  const puedeGuardarHoja = canManage || puedePago;
   const fechaLimite = (clubConfig?.vestuarioFechaLimite || '').trim();
   const plazoCerrado = vestuarioCerrado(fechaLimite);
 
@@ -164,7 +190,9 @@ export const VestuarioView: React.FC = () => {
   const [busqueda, setBusqueda] = useState('');
   const [nuevaPrenda, setNuevaPrenda] = useState('');
   const [nuevasTallas, setNuevasTallas] = useState('');
-  const [tipoDraft, setTipoDraft] = useState<Record<string, { nombre: string; tallasDisponibles: string }>>({});
+  const [tipoDraft, setTipoDraft] = useState<
+    Record<string, { nombre: string; tallasDisponibles: string; precio: string }>
+  >({});
   const [fechaDraft, setFechaDraft] = useState(fechaLimite);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [notifyEnviando, setNotifyEnviando] = useState<string | null>(null);
@@ -188,16 +216,20 @@ export const VestuarioView: React.FC = () => {
     return actual && !base.includes(actual) ? [actual, ...base] : base;
   };
 
-  /** Datos ya guardados de un jugador (camiseta + tallas/estados/pagos por prenda). */
+  /** Datos ya guardados de un jugador (camiseta + tallas/estados/pagos/fechas por prenda). */
   const baseRow = (j: Jugador): FilaVestuario => {
     const tallas: Record<string, string> = {};
     const estados: Record<string, string> = {};
     const pagados: Record<string, boolean> = {};
+    const fechas: Record<string, FechasPrenda> = {};
     for (const v of vestuario) {
       if (v.jugadorId !== j.id) continue;
       tallas[v.tipoPrenda] = v.talla || '';
       estados[v.tipoPrenda] = v.estado || 'pendiente';
       pagados[v.tipoPrenda] = pagadoDe(v);
+      const sol = (v.fechaSolicitud || '').trim();
+      const ent = (v.fechaEntrega || '').trim();
+      if (sol || ent) fechas[v.tipoPrenda] = { solicitud: sol, entrega: ent };
     }
     return {
       jugadorId: j.id,
@@ -205,7 +237,8 @@ export const VestuarioView: React.FC = () => {
       numeroCamiseta: j.numeroCamiseta || '',
       tallas,
       estados,
-      pagados
+      pagados,
+      fechas
     };
   };
 
@@ -219,7 +252,8 @@ export const VestuarioView: React.FC = () => {
       ...d,
       tallas: { ...b.tallas, ...(d.tallas || {}) },
       estados: { ...b.estados, ...(d.estados || {}) },
-      pagados: { ...b.pagados, ...(d.pagados || {}) }
+      pagados: { ...b.pagados, ...(d.pagados || {}) },
+      fechas: { ...b.fechas, ...(d.fechas || {}) }
     };
   };
 
@@ -356,6 +390,7 @@ export const VestuarioView: React.FC = () => {
       id: tipo.id,
       nombre: d.nombre,
       tallasDisponibles: d.tallasDisponibles,
+      precio: d.precio,
       orden: tipo.orden
     });
     if (ok)
@@ -371,8 +406,20 @@ export const VestuarioView: React.FC = () => {
     if (!d) return false;
     return (
       d.nombre.trim() !== (tipo.nombre || '') ||
-      d.tallasDisponibles.trim() !== (tipo.tallasDisponibles || '').trim()
+      d.tallasDisponibles.trim() !== (tipo.tallasDisponibles || '').trim() ||
+      d.precio.trim() !== precioDe(tipo)
     );
+  };
+
+  /** Solo caja puede guardar cambios de precio (tallas/nombre los hace vestuario). */
+  const puedeGuardarTipo = (tipo: VestuarioTipo): boolean => {
+    const d = tipoDraft[tipo.id];
+    if (!d) return false;
+    const soloPrecio =
+      d.precio.trim() !== precioDe(tipo) &&
+      d.nombre.trim() === (tipo.nombre || '') &&
+      d.tallasDisponibles.trim() === (tipo.tallasDisponibles || '').trim();
+    return soloPrecio ? puedePrecios : canManage;
   };
 
   const guardarFechaLimite = async () => {
@@ -476,10 +523,12 @@ export const VestuarioView: React.FC = () => {
           </h1>
           <p className="text-sm text-gray-500">
             {canManage
-              ? 'Gestiona prendas, tallas, entregas, pagos, fecha límite y avisos de la plantilla.'
-              : soyJugador
-                ? 'Indica tus tallas y los datos impresos en tu camiseta.'
-                : 'Consulta de tallas, entregas y pagos de la plantilla.'}
+              ? 'Gestiona prendas, tallas, entregas, fecha límite y avisos de la plantilla.'
+              : puedePago
+                ? 'Consulta la hoja, pon precio a las prendas y marca la ropa cobrada en Caja.'
+                : soyJugador
+                  ? 'Indica tus tallas y los datos impresos en tu camiseta.'
+                  : 'Consulta de tallas, entregas y pagos de la plantilla.'}
           </p>
         </div>
       </div>
@@ -494,7 +543,7 @@ export const VestuarioView: React.FC = () => {
             Notificar
           </button>
         )}
-        {canManage && (
+        {puedeGuardarHoja && (
           <button
             type="button"
             onClick={guardar}
@@ -607,15 +656,27 @@ export const VestuarioView: React.FC = () => {
               const est = estadoInfo(fila.estados?.[p.nombre]);
               const pagado = !!fila.pagados?.[p.nombre];
               const sinTalla = !actual;
+              const f = fila.fechas?.[p.nombre];
+              const fSol = fechaCorta(f?.solicitud);
+              const fEnt = fechaCorta(f?.entrega);
+              const precio = precioDe(p);
               return (
                 <div
                   key={p.id}
                   className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-gray-150 bg-gray-50/60 px-4 py-3"
                 >
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-gray-800">{p.nombre}</span>
+                    <span className="flex items-center gap-2 text-sm font-bold text-gray-800">
+                      {p.nombre}
+                      {precio && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-white border border-gray-200 px-1.5 py-0.5 text-[11px] font-bold text-gray-600">
+                          <Euro className="w-3 h-3" />
+                          {precio}
+                        </span>
+                      )}
+                    </span>
                     {!sinTalla && (
-                      <span className="flex items-center gap-1.5 text-[11px] font-semibold">
+                      <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">
                         <span className={`rounded-md px-1.5 py-0.5 font-bold ${est.chip}`}>{est.label}</span>
                         <Banknote
                           className={`w-3.5 h-3.5 ${pagado ? 'text-yellow-500' : 'text-gray-300'}`}
@@ -623,6 +684,13 @@ export const VestuarioView: React.FC = () => {
                         <span className={pagado ? 'text-yellow-600' : 'text-gray-400'}>
                           {pagado ? 'Pagado' : 'Pendiente de pago'}
                         </span>
+                      </span>
+                    )}
+                    {(fSol || fEnt) && (
+                      <span className="flex flex-wrap items-center gap-x-1.5 text-[10px] font-semibold text-gray-400">
+                        {fSol && <span>Solicitado el {fSol}</span>}
+                        {fSol && fEnt && <span>·</span>}
+                        {fEnt && <span>Entregado el {fEnt}</span>}
                       </span>
                     )}
                   </div>
@@ -668,13 +736,16 @@ export const VestuarioView: React.FC = () => {
     <div className="space-y-5">
       {cabecera}
 
-      {canManage && (
+      {(canManage || puedePrecios) && (
         <div className="bg-white rounded-2xl border border-gray-150 shadow-sm p-4 sm:p-5 space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-black font-athletic text-gray-900">Prendas del club</h2>
               <p className="text-xs text-gray-500">
-                Cada prenda define sus propias tallas: son las que el jugador podrá elegir.
+                {canManage
+                  ? 'Cada prenda define sus propias tallas: son las que el jugador podrá elegir.'
+                  : 'Añade el precio de cada prenda: se usa para avisar a caja de lo pendiente de cobrar.'}
+                {!canManage && puedePrecios && ' El nombre y las tallas los gestiona el rol vestuario.'}
               </p>
             </div>
             <div className="flex flex-wrap items-end gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
@@ -713,7 +784,8 @@ export const VestuarioView: React.FC = () => {
             {prendas.map(p => {
               const d = tipoDraft[p.id] || {
                 nombre: p.nombre,
-                tallasDisponibles: p.tallasDisponibles || ''
+                tallasDisponibles: p.tallasDisponibles || '',
+                precio: precioDe(p)
               };
               const sucio = tipoSucio(p);
               return (
@@ -723,81 +795,110 @@ export const VestuarioView: React.FC = () => {
                 >
                   <input
                     type="text"
-                    className={`${INPUT_TEXTO} sm:w-56`}
+                    className={`${INPUT_TEXTO} sm:w-56 disabled:bg-gray-50 disabled:text-gray-500`}
                     value={d.nombre}
+                    disabled={!canManage}
                     onChange={e =>
                       setTipoDraft(prev => ({ ...prev, [p.id]: { ...d, nombre: e.target.value } }))
                     }
                   />
                   <input
                     type="text"
-                    className={`${INPUT_TEXTO} flex-1`}
+                    className={`${INPUT_TEXTO} flex-1 disabled:bg-gray-50 disabled:text-gray-500`}
                     value={d.tallasDisponibles}
+                    disabled={!canManage}
                     placeholder="Tallas disponibles, separadas por comas (S, M, L, XL)"
                     onChange={e =>
                       setTipoDraft(prev => ({ ...prev, [p.id]: { ...d, tallasDisponibles: e.target.value } }))
                     }
                   />
+                  <label className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1">
+                    <Euro className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className={`w-20 bg-transparent py-1 text-sm font-bold text-gray-900 focus:outline-none placeholder:font-normal placeholder:text-gray-300 ${
+                        puedePrecios ? '' : 'cursor-not-allowed text-gray-500'
+                      }`}
+                      value={d.precio}
+                      disabled={!puedePrecios}
+                      placeholder="Precio"
+                      aria-label={`Precio de ${p.nombre}`}
+                      onChange={e =>
+                        setTipoDraft(prev => ({ ...prev, [p.id]: { ...d, precio: e.target.value } }))
+                      }
+                    />
+                  </label>
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       title="Guardar prenda"
                       onClick={() => guardarTipo(p)}
-                      disabled={!sucio || !d.nombre.trim()}
+                      disabled={!sucio || !d.nombre.trim() || !puedeGuardarTipo(p)}
                       className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-gray-700 disabled:opacity-30"
                     >
                       Guardar
                     </button>
-                    <button
-                      type="button"
-                      title={`Quitar ${p.nombre}`}
-                      onClick={() => quitarPrenda(p.id, p.nombre)}
-                      className="rounded-lg p-2 text-gray-400 transition-colors hover:text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {canManage && (
+                      <button
+                        type="button"
+                        title={`Quitar ${p.nombre}`}
+                        onClick={() => quitarPrenda(p.id, p.nombre)}
+                        className="rounded-lg p-2 text-gray-400 transition-colors hover:text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
             })}
             {!prendas.length && (
               <p className="px-3.5 py-3 text-sm text-gray-400">
-                Sin prendas todavía. Añade la primera o ejecuta{' '}
-                <code className="font-mono">vestuario.sql</code>.
+                {canManage ? (
+                  <>
+                    Sin prendas todavía. Añade la primera o ejecuta{' '}
+                    <code className="font-mono">vestuario.sql</code>.
+                  </>
+                ) : (
+                  'Aún no hay prendas en el catálogo: las publica el rol vestuario.'
+                )}
               </p>
             )}
           </div>
 
-          <form onSubmit={añadirPrenda} className="flex flex-wrap items-end gap-2">
-            <label className="block space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Prenda</span>
-              <input
-                type="text"
-                className={`${INPUT_TEXTO} w-48`}
-                value={nuevaPrenda}
-                placeholder="Ej: Media alta"
-                onChange={e => setNuevaPrenda(e.target.value)}
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Tallas</span>
-              <input
-                type="text"
-                className={`${INPUT_TEXTO} w-64`}
-                value={nuevasTallas}
-                placeholder="S, M, L, XL"
-                onChange={e => setNuevasTallas(e.target.value)}
-              />
-            </label>
-            <button
-              type="submit"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3.5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
-              disabled={!nuevaPrenda.trim()}
-            >
-              <Plus className="w-4 h-4" />
-              Añadir prenda
-            </button>
-          </form>
+          {canManage && (
+            <form onSubmit={añadirPrenda} className="flex flex-wrap items-end gap-2">
+              <label className="block space-y-1">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Prenda</span>
+                <input
+                  type="text"
+                  className={`${INPUT_TEXTO} w-48`}
+                  value={nuevaPrenda}
+                  placeholder="Ej: Media alta"
+                  onChange={e => setNuevaPrenda(e.target.value)}
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Tallas</span>
+                <input
+                  type="text"
+                  className={`${INPUT_TEXTO} w-64`}
+                  value={nuevasTallas}
+                  placeholder="S, M, L, XL"
+                  onChange={e => setNuevasTallas(e.target.value)}
+                />
+              </label>
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3.5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
+                disabled={!nuevaPrenda.trim()}
+              >
+                <Plus className="w-4 h-4" />
+                Añadir prenda
+              </button>
+            </form>
+          )}
         </div>
       )}
 
@@ -829,9 +930,14 @@ export const VestuarioView: React.FC = () => {
         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 text-emerald-700 px-2.5 py-1 text-xs font-bold">
           {completos.length} pedidos
         </span>
-        {!canManage && (
+        {!puedeGuardarHoja && (
           <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-400">
             <Lock className="w-3.5 h-3.5" /> Solo lectura
+          </span>
+        )}
+        {puedePago && !canManage && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-50 text-cyan-700 px-2.5 py-1 text-xs font-bold">
+            <Banknote className="w-3.5 h-3.5" /> Marcas los pagos
           </span>
         )}
       </div>
@@ -844,11 +950,17 @@ export const VestuarioView: React.FC = () => {
                 <th className="px-4 py-3">Jugador</th>
                 <th className="px-3 py-3">Nombre camiseta</th>
                 <th className="px-3 py-3">Nº</th>
-                {prendas.map(p => (
-                  <th key={p.id} className="px-3 py-3 whitespace-nowrap">
-                    {p.nombre}
-                  </th>
-                ))}
+                {prendas.map(p => {
+                  const precio = precioDe(p);
+                  return (
+                    <th key={p.id} className="px-3 py-3 whitespace-nowrap">
+                      {p.nombre}
+                      {precio && (
+                        <span className="block text-[10px] font-bold text-gray-400">{precio} €</span>
+                      )}
+                    </th>
+                  );
+                })}
                 <th className="px-3 py-3">Estado</th>
               </tr>
             </thead>
@@ -928,6 +1040,7 @@ export const VestuarioView: React.FC = () => {
                                 prenda={p}
                                 fila={row}
                                 canManage={canManage}
+                                puedePago={puedePago}
                                 onTalla={v => setTalla(j.id, p.nombre, v)}
                                 onEstado={v => setEstado(j.id, p.nombre, v)}
                                 onPagado={() =>
@@ -978,10 +1091,13 @@ export const VestuarioView: React.FC = () => {
         <span className="font-semibold text-gray-500">Pendiente</span> (azul),{' '}
         <span className="font-semibold text-gray-500">Sin stock</span> (rojo) ·{' '}
         <Banknote className="w-3 h-3 inline -mt-0.5 text-gray-400" /> gris = no pagado,{' '}
-        <Banknote className="w-3 h-3 inline -mt-0.5 text-yellow-500" /> amarillo = pagado.
+        <Banknote className="w-3 h-3 inline -mt-0.5 text-yellow-500" /> amarillo = pagado ·{' '}
+        <span className="font-semibold text-gray-500">S</span> = fecha de solicitud y{' '}
+        <span className="font-semibold text-gray-500">E</span> = fecha de entrega (automáticas) ·
+        el precio lo pone y el pago lo marca el rol Caja; la entrega la marca el rol Vestuario.
       </p>
 
-      {canManage && (
+      {puedeGuardarHoja && (
         <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-150 shadow-sm">
           <span className="text-sm text-gray-500">
             {pendientes.length

@@ -21,6 +21,8 @@ export interface VestuarioTipo {
   nombre: string; // Ej: "Camiseta", "Pantalón", "Chandal", "Ropa de paseo"
   /** Tallas disponibles de esta prenda, separadas por comas (ej: "S, M, L, XL"). */
   tallasDisponibles?: string;
+  /** Precio de la prenda en euros (lo añade el rol caja). Ej: "12,50" */
+  precio?: string;
   orden?: number;
   activo?: boolean;
 }
@@ -36,7 +38,17 @@ export interface VestuarioItem {
   estado?: string;
   /** true = pagado */
   pagado?: boolean | string;
+  /** Día en que el jugador pidió la prenda (YYYY-MM-DD, automática). */
+  fechaSolicitud?: string;
+  /** Día en que vestuario la entregó (YYYY-MM-DD, automática al marcar Entregado). */
+  fechaEntrega?: string;
   actualizadoEn?: string;
+}
+
+/** Fechas guardadas de una prenda dentro de la fila de la hoja. */
+export interface FechasPrenda {
+  solicitud?: string;
+  entrega?: string;
 }
 
 /** Fila a guardar en la hoja de vestuario: datos de camiseta + tallaje por prenda. */
@@ -50,6 +62,26 @@ export interface FilaVestuario {
   estados?: Record<string, string>;
   /** prenda -> pagado */
   pagados?: Record<string, boolean>;
+  /** prenda -> fechas de solicitud y entrega (solo lectura: las calcula el servidor de datos) */
+  fechas?: Record<string, FechasPrenda>;
+}
+
+/** Hoja de caja: importes de matrícula, temporada y ropa por jugador (rol caja). */
+export interface CajaJugador {
+  /** Se usa el id del jugador (una ficha de caja por jugador). */
+  id: string;
+  jugadorId: string;
+  /** Cuota de matrícula en euros (texto libre: "60" o "60,50"). */
+  matricula?: string;
+  /** Cuota de la temporada en euros. */
+  temporada?: string;
+  /** Importe de ropa nueva en euros. */
+  ropaNuevo?: string;
+  /** Importe de ropa de renovación en euros. */
+  ropaRenovacion?: string;
+  /** Suma de los cuatro importes (se recalcula al guardar). */
+  total?: string;
+  actualizadoEn?: string;
 }
 
 export type TipoFutbol = 'F8' | 'F11';
@@ -240,6 +272,7 @@ export type AppTab =
   | 'estadisticas'
   | 'entrenamientos'
   | 'vestuario'
+  | 'caja'
   | 'admin';
 
 export interface Usuario {

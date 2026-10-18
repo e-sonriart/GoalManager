@@ -1,6 +1,7 @@
 -- ============================================================
--- Hoja de datos de VESTUARIO (tallas por prenda + nombre/número
--- de camiseta) y su catálogo de prendas gestionado por SERIGRAFÍA.
+-- Hoja de datos de VESTUARIO (tallas por prenda, nombre/número
+-- de camiseta, fechas de solicitud/entrega y pago) y su catálogo
+-- de prendas (tallas y precio), más la hoja de CAJA.
 -- Ejecutar en el SQL Editor de Supabase (una sola vez).
 -- ============================================================
 
@@ -67,9 +68,45 @@ alter table jugadores add column if not exists "numeroCamiseta" text;
 -- ------------------------------------------------------------
 alter table vestuario_tipos add column if not exists "tallasDisponibles" text default '';
 
+-- Precio de cada prenda en euros (lo añade el rol caja)
+alter table vestuario_tipos add column if not exists precio text default '';
+
 -- Estado de entrega y pago por prenda (si la tabla ya existía)
 alter table vestuario add column if not exists estado text default 'pendiente';
 alter table vestuario add column if not exists pagado boolean default false;
+
+-- Fechas automáticas de la hoja: solicitud (cuando se pide) y entrega (al marcar Entregado)
+alter table vestuario add column if not exists "fechaSolicitud" text default '';
+alter table vestuario add column if not exists "fechaEntrega" text default '';
+
+-- ------------------------------------------------------------
+-- 3c) Hoja de CAJA: importes por jugador (solo rol caja)
+--     matrícula, temporada, ropa nuevo, ropa renovación y total
+-- ------------------------------------------------------------
+create table if not exists caja (
+  id text primary key,
+  "jugadorId" text not null,
+  matricula text default '',
+  temporada text default '',
+  "ropaNuevo" text default '',
+  "ropaRenovacion" text default '',
+  total text default '',
+  "actualizadoEn" text default '',
+  created_at timestamptz not null default now()
+);
+
+alter table caja enable row level security;
+
+do $$
+begin
+  create policy "rw caja" on caja
+    for all using (true) with check (true);
+exception when duplicate_object then null;
+end $$;
+
+-- Una sola ficha de caja por jugador
+create unique index if not exists caja_jugador
+  on caja ("jugadorId");
 
 do $$
 begin
@@ -93,4 +130,5 @@ on conflict (id) do nothing;
 -- Comprobación:
 --   select * from vestuario_tipos order by orden;
 --   select * from vestuario;
+--   select * from caja;
 -- ============================================================

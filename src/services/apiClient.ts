@@ -299,7 +299,7 @@ const SHEETS = [
   'categorias', 'entrenadores', 'equipos', 'jugadores',
   'estadisticas', 'partidos', 'asistencias', 'sesiones', 'usuarios',
   'club_config', 'sesion_respuestas', 'partido_respuestas',
-  'vestuario', 'vestuario_tipos'
+  'vestuario', 'vestuario_tipos', 'caja'
 ] as const;
 
 const SEEDS: Record<string, unknown[]> = {

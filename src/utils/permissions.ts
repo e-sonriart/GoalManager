@@ -16,6 +16,7 @@ export type Permission =
   | 'view:estadisticas_avanzadas'
   | 'view:entrenamientos'
   | 'view:vestuario'
+  | 'view:caja'
   | 'view:admin'
   | 'manage:jugadores'
   | 'manage:equipos'
@@ -27,6 +28,7 @@ export type Permission =
   | 'manage:estadisticas'
   | 'manage:entrenamientos'
   | 'manage:vestuario'
+  | 'manage:caja'
   | 'manage:usuarios'
   | 'manage:sincronizacion'
   | 'manage:identidad';
@@ -42,6 +44,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   'view:estadisticas',
   'view:estadisticas_avanzadas',
   'view:vestuario',
+  'view:caja',
   'view:admin',
   'manage:jugadores',
   'manage:equipos',
@@ -52,6 +55,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   'manage:asistencias',
   'manage:estadisticas',
   'manage:vestuario',
+  'manage:caja',
   'manage:usuarios',
   'manage:sincronizacion',
   'manage:identidad'
@@ -67,6 +71,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'view:estadisticas_avanzadas': 'Ver partidos jugados y titulares',
   'view:entrenamientos': 'Ver sesiones de entrenamiento',
   'view:vestuario': 'Ver la hoja de vestuario',
+  'view:caja': 'Ver la hoja de caja',
   'view:admin': 'Acceder al panel de administración',
   'manage:jugadores': 'Gestionar jugadores',
   'manage:equipos': 'Gestionar equipos',
@@ -78,6 +83,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'manage:estadisticas': 'Gestionar estadísticas',
   'manage:entrenamientos': 'Gestionar sesiones de entrenamiento',
   'manage:vestuario': 'Gestionar prendas y tallaje del vestuario',
+  'manage:caja': 'Gestionar importes de caja y pagos de la equipación',
   'manage:usuarios': 'Gestionar usuarios y roles',
   'manage:sincronizacion': 'Sincronizar y restablecer datos',
   'manage:identidad': 'Editar identidad del club'
@@ -93,6 +99,7 @@ export const VIEW_PERMISSIONS: Permission[] = [
   'view:estadisticas_avanzadas',
   'view:entrenamientos',
   'view:vestuario',
+  'view:caja',
   'view:admin'
 ];
 
@@ -107,6 +114,7 @@ export const MANAGE_PERMISSIONS: Permission[] = [
   'manage:asistencias',
   'manage:estadisticas',
   'manage:vestuario',
+  'manage:caja',
   'manage:usuarios',
   'manage:sincronizacion',
   'manage:identidad'
@@ -122,6 +130,7 @@ const TABS_VISIBLES: Record<AppTab, Permission> = {
   estadisticas: 'view:estadisticas',
   entrenamientos: 'view:entrenamientos',
   vestuario: 'view:vestuario',
+  caja: 'view:caja',
   admin: 'view:admin'
 };
 
@@ -197,9 +206,11 @@ const ROLE_PERMISSIONS: Record<RolUsuario, Permission[]> = {
   // hoja de vestuario (prendas, tallas disponibles, fecha límite, tallas y nombres de la plantilla).
   vestuario: [...VIEW_SPORT_READ_ONLY, ...VIEW_VESTUARIO, ...MANAGE_VESTUARIO],
 
-  // Caja: acceso provisional de solo lectura (panel + hoja de vestuario).
-  // Su detalle de permisos se ampliará cuando se defina su cometido.
-  caja: ['view:dashboard', 'view:partidos', 'view:vestuario'],
+  // Caja: consulta el panel, la hoja de vestuario y su propia hoja de caja.
+  // En la hoja de vestuario pone el precio a cada prenda y marca la ropa pagada;
+  // en la hoja de caja registra matrícula, temporada y ropa (nuevo / renovación).
+  // Solo este rol (y el admin, de serie) pueden ver la información de caja.
+  caja: ['view:dashboard', 'view:partidos', 'view:vestuario', 'view:caja', 'manage:caja'],
 
   // Perfiles externos: solo información general y calendario.
   aficionado: ['view:dashboard', 'view:partidos']

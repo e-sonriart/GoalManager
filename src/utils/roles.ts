@@ -106,7 +106,7 @@ export const ROLE_INFO: Record<RolUsuario, RoleInfo> = {
     label: 'Caja',
     shortLabel: 'Caja',
     description:
-      'Acceso de caja del club: consulta el panel y la hoja de vestuario (permisos ampliables).',
+      'Gestiona la hoja de caja (matrícula, temporada y ropa) y los pagos de la equipación: pone precio a las prendas y marca lo cobrado.',
     scope: 'externo',
     requiresTeam: false,
     avatarBg: 'bg-cyan-700 text-white',

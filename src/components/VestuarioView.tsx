@@ -13,7 +13,10 @@ import {
   CheckCircle2,
   AlertCircle,
   Banknote,
-  Euro
+  Euro,
+  ChevronRight,
+  ChevronsDown,
+  ChevronsUp
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { sendNotify } from '../services/notifications';
@@ -196,6 +199,8 @@ export const VestuarioView: React.FC = () => {
   const [fechaDraft, setFechaDraft] = useState(fechaLimite);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [notifyEnviando, setNotifyEnviando] = useState<string | null>(null);
+  /** Equipos contraídos en la parrilla (minimizados por defecto). */
+  const [equiposAbiertos, setEquiposAbiertos] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setFechaDraft(fechaLimite);
@@ -348,6 +353,22 @@ export const VestuarioView: React.FC = () => {
   const pendientes = filasVisibles.filter(filaCambiada);
   const incompletos = filasVisibles.filter(j => !estaCompleto(j));
   const completos = filasVisibles.filter(j => estaCompleto(j));
+
+  // ------------------------------------------------- Equipos plegables (minimizados)
+  const claveEquipo = (cat: string, eq: string) => `${cat}||${eq}`;
+  /** Con un filtro activo todos los equipos se abren para enseñar los resultados. */
+  const filtrando = !!equipoSel || !!busqueda.trim();
+  const equipoAbierto = (clave: string): boolean => filtrando || !!equiposAbiertos[clave];
+  const toggleEquipo = (clave: string) =>
+    setEquiposAbiertos(prev => ({ ...prev, [clave]: !prev[clave] }));
+  const marcarTodos = (abierto: boolean) => {
+    const next: Record<string, boolean> = {};
+    for (const cat of grupos) for (const eq of cat.equipos) next[claveEquipo(cat.nombre, eq.nombre)] = abierto;
+    setEquiposAbiertos(next);
+  };
+  const todosAbiertos = grupos.every(cat =>
+    cat.equipos.every(eq => equipoAbierto(claveEquipo(cat.nombre, eq.nombre)))
+  );
 
   const guardar = async () => {
     if (saving) return;
@@ -924,6 +945,22 @@ export const VestuarioView: React.FC = () => {
           placeholder="Buscar jugador…"
           onChange={e => setBusqueda(e.target.value)}
         />
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => marcarTodos(!todosAbiertos)}
+            disabled={!!filtrando}
+            title={
+              filtrando
+                ? 'Con un filtro activo los equipos ya están desplegados'
+                : 'Mostrar u ocultar las filas de todos los equipos'
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-200 px-2.5 py-1.5 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {todosAbiertos ? <ChevronsUp className="w-3.5 h-3.5" /> : <ChevronsDown className="w-3.5 h-3.5" />}
+            {todosAbiertos ? 'Contraer equipos' : 'Expandir equipos'}
+          </button>
+        </div>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 text-red-600 px-2.5 py-1 text-xs font-bold">
           {incompletos.length} sin datos
         </span>
@@ -987,23 +1024,44 @@ export const VestuarioView: React.FC = () => {
                   </td>
                 </tr>
 
-                {cat.equipos.map(eq => (
-                  <React.Fragment key={`${cat.nombre}_${eq.nombre}`}>
-                    {/* Cabecera de equipo */}
-                    <tr className="bg-gray-100">
+                {cat.equipos.map(eq => {
+                  const clave = claveEquipo(cat.nombre, eq.nombre);
+                  const abierto = equipoAbierto(clave);
+                  const rowsEq = filasDe(eq.jugadores);
+                  const unidadesEq = nombresP.reduce((suma, p) => suma + unidadesDe(rowsEq, p), 0);
+                  const pagosEq = pagosDe(rowsEq, nombresP);
+                  return (
+                  <React.Fragment key={clave}>
+                    {/* Cabecera de equipo: clic para minimizar o desplegar */}
+                    <tr
+                      className="bg-gray-100 cursor-pointer select-none transition-colors hover:bg-gray-200"
+                      onClick={() => toggleEquipo(clave)}
+                      title={abierto ? 'Contraer equipo' : 'Desplegar equipo'}
+                    >
                       <td
                         colSpan={columnas}
                         className="px-4 py-1.5 text-xs font-black text-gray-700 uppercase tracking-wide"
                       >
-                        {eq.nombre}
-                        <span className="ml-2 font-semibold text-gray-400 normal-case tracking-normal">
-                          {eq.jugadores.length} jugadores
+                        <span className="flex flex-wrap items-center gap-2">
+                          <ChevronRight
+                            className={`w-4 h-4 shrink-0 text-gray-500 transition-transform ${abierto ? 'rotate-90' : ''}`}
+                          />
+                          {eq.nombre}
+                          <span className="font-semibold text-gray-400 normal-case tracking-normal">
+                            {eq.jugadores.length} jugadores
+                          </span>
+                          {!abierto && (
+                            <span className="font-semibold text-gray-500 normal-case tracking-normal">
+                              · {unidadesEq} ud. · {pagosEq} pagos
+                            </span>
+                          )}
                         </span>
                       </td>
                     </tr>
 
                     {/* Jugadores del equipo */}
-                    {eq.jugadores.map(j => {
+                    {abierto &&
+                      eq.jugadores.map(j => {
                       const row = rowOf(j);
                       const cambiada = filaCambiada(j);
                       const completo = estaCompleto(j);
@@ -1070,10 +1128,11 @@ export const VestuarioView: React.FC = () => {
                       );
                     })}
 
-                    {/* Totales del equipo: unidades de ropa y pagos */}
-                    {filaTotales(`Total ${eq.nombre}`, eq.jugadores, `${cat.nombre}_${eq.nombre}`)}
+                    {/* Totales del equipo: unidades de ropa y pagos (solo desplegado) */}
+                    {abierto && filaTotales(`Total ${eq.nombre}`, eq.jugadores, clave)}
                   </React.Fragment>
-                ))}
+                  );
+                })}
               </tbody>
             ))}
 
@@ -1094,7 +1153,8 @@ export const VestuarioView: React.FC = () => {
         <Banknote className="w-3 h-3 inline -mt-0.5 text-yellow-500" /> amarillo = pagado ·{' '}
         <span className="font-semibold text-gray-500">S</span> = fecha de solicitud y{' '}
         <span className="font-semibold text-gray-500">E</span> = fecha de entrega (automáticas) ·
-        el precio lo pone y el pago lo marca el rol Caja; la entrega la marca el rol Vestuario.
+        el precio lo pone y el pago lo marca el rol Caja; la entrega la marca el rol Vestuario ·
+        pulsa la cabecera de un equipo para desplegarlo o minimizarlo.
       </p>
 
       {puedeGuardarHoja && (

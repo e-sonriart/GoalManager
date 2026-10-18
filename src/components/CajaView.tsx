@@ -1,33 +1,161 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useClub } from '../context/ClubContext';
-import { CajaJugador, Jugador, VestuarioTipo } from '../types';
+import { CajaJugador, Jugador, PagoCaja, VestuarioTipo } from '../types';
 import { Wallet, Save, Euro, AlertTriangle, Lock } from 'lucide-react';
-import { cajaService, formatEuros, parseImporte, totalDe, pendienteCobroDe } from '../services/caja';
-import { precioDe } from '../services/vestuario';
+import {
+  CAMPOS,
+  CampoImporte,
+  CajaDefaults,
+  METODOS_PAGO,
+  cajaService,
+  cobradoDe,
+  cobroDe,
+  defaultsDe,
+  estadoDe,
+  faltanteDe,
+  formatEuros,
+  parseImporte,
+  pagoDe,
+  pendienteCobroDe,
+  totalDe
+} from '../services/caja';
+import { fechaCorta, hoyISO, precioDe } from '../services/vestuario';
 
 const INPUT_IMPORTE =
-  'w-24 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-900 ' +
-  'focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200 placeholder:text-gray-300 ' +
+  'w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm font-semibold text-gray-900 ' +
+  'text-right focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200 placeholder:text-gray-300 ' +
+  'disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500';
+
+const INPUT_PEQUENO =
+  'w-full rounded-md border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-900 ' +
+  'focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-200 placeholder:text-gray-300 ' +
   'disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500';
 
 const INPUT_FILTRO =
   'rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 ' +
   'focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-200 placeholder:text-gray-300';
 
-const CAMPOS = [
-  { campo: 'matricula', label: 'Matrícula' },
-  { campo: 'temporada', label: 'Temporada' },
-  { campo: 'ropaNuevo', label: 'Ropa nuevo' },
-  { campo: 'ropaRenovacion', label: 'Ropa renovación' }
-] as const;
-
-type CampoImporte = (typeof CAMPOS)[number]['campo'];
-
 interface FilaTabla {
   jugador: Jugador;
   importes: Partial<CajaJugador>;
   sucia: boolean;
 }
+
+/** Casilla de un apartado: importe, casilla de pagado, día, tipo de pago y cobro fraccionado. */
+const CeldaPago: React.FC<{
+  jugador: string;
+  concepto: string;
+  deuda: string;
+  pago: PagoCaja;
+  editable: boolean;
+  onDeuda: (valor: string) => void;
+  onPago: (cambios: Partial<PagoCaja>) => void;
+}> = ({ jugador, concepto, deuda, pago, editable, onDeuda, onPago }) => {
+  const deudaNum = parseImporte(deuda);
+  const estado = estadoDe(deudaNum, pago);
+  const cobrado = cobradoDe(deudaNum, pago);
+  const faltante = faltanteDe(deudaNum, pago);
+  const anillo =
+    estado === 'pagado'
+      ? 'border-emerald-300 bg-emerald-50/70'
+      : estado === 'parcial'
+        ? 'border-amber-300 bg-amber-50/70'
+        : 'border-gray-200 bg-white';
+
+  const etiqueta = (texto: string, tono: string) => (
+    <span className={`block text-right text-[10px] font-black ${tono}`}>{texto}</span>
+  );
+
+  if (!editable) {
+    const metodo = METODOS_PAGO.find(m => m.valor === String(pago.metodo || ''));
+    return (
+      <div className={`space-y-0.5 rounded-xl border p-2 ${anillo}`}>
+        <span className="block text-right text-xs font-bold text-gray-900">
+          {deudaNum ? formatEuros(deudaNum) : '—'}
+        </span>
+        <span className="block text-[11px] text-gray-500">{metodo?.label || 'Sin método'}</span>
+        <span className="block text-[11px] text-gray-500">
+          {(pago.fecha || '').trim() ? `Pagado el ${fechaCorta(pago.fecha)}` : 'Sin día'}
+        </span>
+        {estado === 'parcial' &&
+          etiqueta(
+            faltante > 0 ? `Faltan ${formatEuros(faltante)}` : `Cobrado ${formatEuros(cobrado)}`,
+            'text-amber-600'
+          )}
+        {estado === 'pagado' && etiqueta('Pagado ✓', 'text-emerald-600')}
+        {estado === 'pendiente' && (
+          <span className="block text-right text-[10px] font-bold text-gray-400">Pendiente</span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`space-y-1.5 rounded-xl border p-2 transition-colors ${anillo}`}>
+      <input
+        type="text"
+        inputMode="decimal"
+        className={INPUT_IMPORTE}
+        value={deuda}
+        placeholder="0"
+        aria-label={`${concepto} de ${jugador} (importe)`}
+        onChange={e => onDeuda(e.target.value)}
+      />
+      <div className="flex items-center gap-1.5">
+        <input
+          type="checkbox"
+          className="h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-gray-300 text-emerald-600 focus:ring-emerald-400"
+          checked={!!pago.pagado}
+          title="Marcar el apartado como pagado"
+          aria-label={`Pagado: ${concepto} de ${jugador}`}
+          onChange={e =>
+            onPago(
+              e.target.checked
+                ? { pagado: true, fecha: (pago.fecha || '').trim() || hoyISO() }
+                : { pagado: false }
+            )
+          }
+        />
+        <input
+          type="date"
+          className={`${INPUT_PEQUENO} min-w-0 flex-1`}
+          value={String(pago.fecha || '')}
+          aria-label={`Día del pago de ${concepto} de ${jugador}`}
+          onChange={e => onPago({ fecha: e.target.value })}
+        />
+      </div>
+      <select
+        className={INPUT_PEQUENO}
+        value={String(pago.metodo || '')}
+        aria-label={`Tipo de pago de ${concepto} de ${jugador}`}
+        onChange={e => onPago({ metodo: e.target.value as PagoCaja['metodo'] })}
+      >
+        <option value="">Método de pago…</option>
+        {METODOS_PAGO.map(m => (
+          <option key={m.valor} value={m.valor}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+      <input
+        type="text"
+        inputMode="decimal"
+        className={INPUT_PEQUENO}
+        value={String(pago.importe ?? '')}
+        placeholder="Cobrado €"
+        title="Importe cobrado hasta la fecha (admite pagos fraccionados)"
+        aria-label={`Importe cobrado de ${concepto} de ${jugador}`}
+        onChange={e => onPago({ importe: e.target.value })}
+      />
+      {estado === 'parcial' &&
+        etiqueta(
+          faltante > 0 ? `Faltan ${formatEuros(faltante)}` : `Cobrado ${formatEuros(cobrado)}`,
+          'text-amber-600'
+        )}
+      {estado === 'pagado' && etiqueta('Pagado ✓', 'text-emerald-600')}
+    </div>
+  );
+};
 
 export const CajaView: React.FC = () => {
   const {
@@ -36,6 +164,7 @@ export const CajaView: React.FC = () => {
     vestuario,
     vestuarioTipos,
     saveVestuarioTipo,
+    saveCajaDefaults,
     clubConfig,
     can,
     addToast
@@ -52,6 +181,8 @@ export const CajaView: React.FC = () => {
   const [busqueda, setBusqueda] = useState('');
   const [preciosDraft, setPreciosDraft] = useState<Record<string, string>>({});
   const [guardandoPrecios, setGuardandoPrecios] = useState(false);
+  const [defsDraft, setDefsDraft] = useState<CajaDefaults | null>(null);
+  const [guardandoDefs, setGuardandoDefs] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -68,20 +199,63 @@ export const CajaView: React.FC = () => {
   const filaGuardada = (jugadorId: string): Partial<CajaJugador> =>
     filas.find(f => f.jugadorId === jugadorId || f.id === jugadorId) || {};
 
-  const filaDe = (j: Jugador): Partial<CajaJugador> => ({
-    ...filaGuardada(j.id),
-    ...(draft[j.id] || {})
-  });
+  // ---------------------------------------------------- Importes por defecto
+  const defaults: CajaDefaults = defaultsDe(clubConfig);
+  const defs: CajaDefaults = defsDraft ?? defaults;
+  const defsSucios = CAMPOS.some(c => defs[c.campo] !== defaults[c.campo]);
+
+  const guardarDefaults = async () => {
+    if (guardandoDefs || !defsSucios) return;
+    setGuardandoDefs(true);
+    try {
+      if (await saveCajaDefaults(defs)) setDefsDraft(null);
+    } finally {
+      setGuardandoDefs(false);
+    }
+  };
+
+  const filaDe = (j: Jugador): Partial<CajaJugador> => {
+    const guardada = filaGuardada(j.id);
+    const d = draft[j.id] || {};
+    const merged: Partial<CajaJugador> = { ...guardada, ...d };
+    // Filas todavía sin importe → se muestran los importes por defecto del club
+    // (se guardan al tocar cualquier casilla de la fila).
+    for (const c of CAMPOS) {
+      if (!(c.campo in d) && !String(guardada[c.campo] ?? '').trim() && defaults[c.campo]) {
+        merged[c.campo] = defaults[c.campo];
+      }
+    }
+    return merged;
+  };
 
   const sucia = (j: Jugador): boolean => {
     const b = filaGuardada(j.id);
     const d = draft[j.id];
     if (!d) return false;
-    return CAMPOS.some(c => String(d[c.campo] ?? '') !== String(b[c.campo] ?? ''));
+    const importesIguales = CAMPOS.every(c => String(d[c.campo] ?? '') === String(b[c.campo] ?? ''));
+    const pagosIguales = JSON.stringify(d.pagos ?? {}) === JSON.stringify(b.pagos ?? {});
+    return !importesIguales || !pagosIguales;
   };
 
   const setImporte = (jugadorId: string, campo: CampoImporte, valor: string) =>
     setDraft(prev => ({ ...prev, [jugadorId]: { ...prev[jugadorId], [campo]: valor } }));
+
+  /** Cambia el cobro (pagado, método, día o importe fraccionado) de un apartado. */
+  const setPago = (jugadorId: string, campo: CampoImporte, cambios: Partial<PagoCaja>) =>
+    setDraft(prev => {
+      const actual: Partial<CajaJugador> = { ...prev[jugadorId] };
+      const base: Partial<Record<CampoImporte, PagoCaja>> = {
+        ...(filaGuardada(jugadorId).pagos || {}),
+        ...(actual.pagos || {})
+      };
+      return {
+        ...prev,
+        [jugadorId]: {
+          ...actual,
+          pagos: { ...base, [campo]: { ...base[campo], ...cambios } }
+        }
+      };
+    });
 
   const filasVisibles: FilaTabla[] = useMemo(() => {
     let lista = jugadores;
@@ -98,11 +272,11 @@ export const CajaView: React.FC = () => {
       )
       .map(j => ({ jugador: j, importes: filaDe(j), sucia: sucia(j) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jugadores, equipoSel, busqueda, draft, filas]);
+  }, [jugadores, equipoSel, busqueda, draft, filas, clubConfig]);
 
   const pendientes = filasVisibles.filter(f => f.sucia);
 
-  /** Suma de cada columna sobre lo que se ve en pantalla. */
+  /** Suma de cada columna sobre lo que se ve en pantalla (y cobro total). */
   const totales = useMemo(() => {
     const t: Record<CampoImporte, number> = {
       matricula: 0,
@@ -110,10 +284,32 @@ export const CajaView: React.FC = () => {
       ropaNuevo: 0,
       ropaRenovacion: 0
     };
+    const cobrados: Record<CampoImporte, number> = {
+      matricula: 0,
+      temporada: 0,
+      ropaNuevo: 0,
+      ropaRenovacion: 0
+    };
+    let cobrado = 0;
+    let faltante = 0;
     for (const f of filasVisibles) {
-      for (const c of CAMPOS) t[c.campo] += parseImporte(f.importes[c.campo]);
+      for (const c of CAMPOS) {
+        const deuda = parseImporte(f.importes[c.campo]);
+        const pago = pagoDe(f.importes, c.campo);
+        t[c.campo] += deuda;
+        cobrados[c.campo] += cobradoDe(deuda, pago);
+      }
+      const co = cobroDe(f.importes);
+      cobrado += co.cobrado;
+      faltante += co.faltante;
     }
-    return { ...t, total: t.matricula + t.temporada + t.ropaNuevo + t.ropaRenovacion };
+    return {
+      ...t,
+      cobrados,
+      cobrado,
+      faltante,
+      total: t.matricula + t.temporada + t.ropaNuevo + t.ropaRenovacion
+    };
   }, [filasVisibles]);
 
   /** Ropa entregada y sin pagar de toda la lista visible (aviso a caja). */
@@ -143,6 +339,7 @@ export const CajaView: React.FC = () => {
           ropaNuevo: String(f.importes.ropaNuevo ?? '').trim(),
           ropaRenovacion: String(f.importes.ropaRenovacion ?? '').trim(),
           total: String(totalDe(f.importes)),
+          pagos: f.importes.pagos || {},
           actualizadoEn: ahora
         };
         const existe = filas.some(x => x.jugadorId === j.id || x.id === j.id);
@@ -318,6 +515,53 @@ export const CajaView: React.FC = () => {
     </div>
   );
 
+  // ------------------------------------------------------- Importes por defecto
+  const bloqueDefaults = (
+    <div className="bg-white rounded-2xl border border-gray-150 shadow-sm p-4 sm:p-5 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-black font-athletic text-gray-900">Importes por defecto</h2>
+          <p className="text-xs text-gray-500">
+            Rellenan las casillas vacías de matrícula, temporada y ropa; después cada casilla se
+            puede editar a mano.{puedeEditar ? '' : ' Solo el rol Caja puede modificarlo.'}
+          </p>
+        </div>
+        {puedeEditar && (
+          <button
+            type="button"
+            onClick={guardarDefaults}
+            disabled={guardandoDefs || !defsSucios}
+            className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-3.5 py-2 text-xs font-bold text-white transition-colors hover:bg-gray-700 disabled:opacity-40"
+          >
+            <Save className="w-3.5 h-3.5" />
+            {guardandoDefs ? 'Guardando…' : 'Guardar importes'}
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {CAMPOS.map(c => (
+          <label
+            key={c.campo}
+            className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-1.5"
+          >
+            <span className="text-sm font-semibold text-gray-700">{c.label}</span>
+            <Euro className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <input
+              type="text"
+              inputMode="decimal"
+              className="w-20 bg-transparent text-sm font-bold text-gray-900 focus:outline-none placeholder:font-normal placeholder:text-gray-300 disabled:cursor-not-allowed"
+              value={defs[c.campo]}
+              disabled={!puedeEditar}
+              placeholder="0"
+              aria-label={`Importe por defecto de ${c.label}`}
+              onChange={e => setDefsDraft({ ...defs, [c.campo]: e.target.value })}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+
   // ------------------------------------------------------------------- Tabla
   const columnas = 7;
   let ultimoEquipo = '';
@@ -325,7 +569,10 @@ export const CajaView: React.FC = () => {
   return (
     <div className="space-y-5">
       {cabecera}
-      {bloquePrecios}
+      <div className="grid gap-5 lg:grid-cols-2">
+        {bloquePrecios}
+        {bloqueDefaults}
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         {equipos.length > 1 && (
@@ -358,13 +605,18 @@ export const CajaView: React.FC = () => {
 
       <div className="bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-sm">
+          <table className="w-full min-w-[1320px] text-sm">
             <thead>
               <tr className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-500">
                 <th className="px-4 py-3">Jugador</th>
                 {CAMPOS.map(c => (
-                  <th key={c.campo} className="px-3 py-3 text-right">
+                  <th key={c.campo} className="px-2 py-3 text-center align-bottom min-w-[176px]">
                     {c.label}
+                    {defaults[c.campo] && (
+                      <span className="block text-[10px] font-semibold normal-case text-gray-400">
+                        por defecto {formatEuros(parseImporte(defaults[c.campo]))}
+                      </span>
+                    )}
                   </th>
                 ))}
                 <th className="px-3 py-3 text-right">Total</th>
@@ -390,6 +642,7 @@ export const CajaView: React.FC = () => {
                 ultimoEquipo = equipo;
                 const pendiente = pendienteCobroDe(j.id, vestuario, vestuarioTipos);
                 const total = totalDe(f.importes);
+                const filaCobro = cobroDe(f.importes);
                 return (
                   <React.Fragment key={j.id}>
                     {mostrarEquipo && (
@@ -407,24 +660,16 @@ export const CajaView: React.FC = () => {
                         </span>
                       </td>
                       {CAMPOS.map(c => (
-                        <td key={c.campo} className="px-3 py-2.5 text-right align-top">
-                          {puedeEditar ? (
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              className={`${INPUT_IMPORTE} ml-auto`}
-                              value={String(f.importes[c.campo] ?? '')}
-                              placeholder="0"
-                              aria-label={`${c.label} de ${j.nombre}`}
-                              onChange={e => setImporte(j.id, c.campo, e.target.value)}
-                            />
-                          ) : (
-                            <span className="text-xs font-semibold text-gray-700">
-                              {String(f.importes[c.campo] ?? '').trim()
-                                ? formatEuros(parseImporte(f.importes[c.campo]))
-                                : '—'}
-                            </span>
-                          )}
+                        <td key={c.campo} className="px-2 py-2 align-top">
+                          <CeldaPago
+                            jugador={j.nombre}
+                            concepto={c.label}
+                            deuda={String(f.importes[c.campo] ?? '')}
+                            pago={pagoDe(f.importes, c.campo)}
+                            editable={puedeEditar}
+                            onDeuda={valor => setImporte(j.id, c.campo, valor)}
+                            onPago={cambios => setPago(j.id, c.campo, cambios)}
+                          />
                         </td>
                       ))}
                       <td className="px-3 py-2.5 text-right align-top">
@@ -432,6 +677,17 @@ export const CajaView: React.FC = () => {
                           <Euro className="w-3.5 h-3.5 text-cyan-600" />
                           {formatEuros(total)}
                         </span>
+                        {filaCobro.cobrado > 0 && (
+                          <span
+                            className={`block text-[11px] font-bold ${
+                              filaCobro.faltante > 0 ? 'text-amber-600' : 'text-emerald-600'
+                            }`}
+                          >
+                            {filaCobro.faltante > 0
+                              ? `Faltan ${formatEuros(filaCobro.faltante)}`
+                              : `Cobrado ${formatEuros(filaCobro.cobrado)}`}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 align-top">
                         {pendiente.prendas ? (
@@ -467,8 +723,13 @@ export const CajaView: React.FC = () => {
                     </span>
                   </td>
                   {CAMPOS.map(c => (
-                    <td key={c.campo} className="px-3 py-2.5 text-right text-sm font-black">
-                      {formatEuros(totales[c.campo])}
+                    <td key={c.campo} className="px-2 py-2.5 text-right">
+                      <span className="block text-sm font-black">{formatEuros(totales[c.campo])}</span>
+                      {totales.cobrados[c.campo] > 0 && (
+                        <span className="block text-[10px] font-semibold text-emerald-300">
+                          cobrado {formatEuros(totales.cobrados[c.campo])}
+                        </span>
+                      )}
                     </td>
                   ))}
                   <td className="px-3 py-2.5 text-right text-sm font-black">{formatEuros(totales.total)}</td>
@@ -476,6 +737,10 @@ export const CajaView: React.FC = () => {
                     {pendienteCobro.prendas
                       ? `${pendienteCobro.prendas} ud. sin pagar${pendienteCobro.euros ? ` · ${formatEuros(pendienteCobro.euros)}` : ''}`
                       : 'Al día'}
+                    <span className="block text-emerald-300">
+                      Cobrado {formatEuros(totales.cobrado)}
+                      {totales.faltante > 0 ? ` · Pendiente ${formatEuros(totales.faltante)}` : ''}
+                    </span>
                   </td>
                 </tr>
               </tbody>
@@ -486,10 +751,15 @@ export const CajaView: React.FC = () => {
 
       <p className="text-[11px] text-gray-400">
         Solo el rol <span className="font-semibold text-gray-500">Caja</span> (y el administrador) ve
-        esta hoja. La columna <span className="font-semibold text-gray-500">Entregado sin pagar</span>{' '}
-        sale de la hoja de vestuario: prendas marcadas como entregadas cuyo icono de dinero sigue en
-        gris. El importe lo cobra caja y lo marca como pagado en{' '}
-        <span className="font-semibold text-gray-500">Vestuario</span>.
+        esta hoja. Cada apartado (matrícula, temporada y ropa) tiene su{' '}
+        <span className="font-semibold text-gray-500">tipo de pago</span> (efectivo, transferencia o
+        tarjeta), la casilla de <span className="font-semibold text-gray-500">pagado</span> con su
+        día y el importe cobrado para{' '}
+        <span className="font-semibold text-gray-500">pagos fraccionados</span> (el borde se pone
+        ámbar mientras falte dinero y verde cuando esté cobrado). Los importes por defecto se
+        aplican a las casillas vacías. La columna{' '}
+        <span className="font-semibold text-gray-500">Entregado sin pagar</span> sale de la hoja de
+        vestuario.
       </p>
 
       {puedeEditar && (
@@ -497,7 +767,7 @@ export const CajaView: React.FC = () => {
           <span className="text-sm text-gray-500">
             {pendientes.length
               ? `${pendientes.length} ficha${pendientes.length > 1 ? 's' : ''} sin guardar`
-              : 'Todo guardado. Las filas resaltadas tienen importes sin guardar.'}
+              : 'Todo guardado. Las filas resaltadas tienen importes o cobros sin guardar.'}
           </span>
           <button
             type="button"

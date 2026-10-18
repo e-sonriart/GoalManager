@@ -35,6 +35,7 @@ import { asistenciasService } from '../services/asistencias';
 import { estadisticasService } from '../services/estadisticas';
 import { usuariosService } from '../services/usuarios';
 import { vestuarioService, vestuarioTiposService, vestuarioCerrado, hoyISO } from '../services/vestuario';
+import { CajaDefaults } from '../services/caja';
 import { clubConfigService } from '../services/clubConfig';
 import { apiClient, getGasUrl, setGasUrl as setGasUrlStore } from '../services/apiClient';
 import { getSupabaseUrl, getSupabaseAnonKey } from '../services/supabaseClient';
@@ -145,6 +146,8 @@ interface ClubContextType {
   deleteVestuarioTipo: (id: string) => Promise<boolean>;
   /** Último día (YYYY-MM-DD) en que los jugadores pueden editar su hoja. */
   saveVestuarioFechaLimite: (fecha: string) => Promise<boolean>;
+  /** Importes por defecto de la hoja de caja (matrícula, temporada y ropa). */
+  saveCajaDefaults: (defs: CajaDefaults) => Promise<boolean>;
 
   // Respuestas de jugadores a sesiones (¿voy / no voy?)
   sesionRespuestas: RespuestaSesion[];
@@ -1223,6 +1226,43 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     [clubConfig, addToast]
   );
 
+  /** Importes por defecto de la hoja de caja (matrícula, temporada, ropa nuevo y renovación). */
+  const saveCajaDefaults = useCallback(
+    async (defs: CajaDefaults): Promise<boolean> => {
+      try {
+        const merged: ClubConfig = {
+          ...clubConfig,
+          cajaDefMatricula: (defs.matricula || '').trim(),
+          cajaDefTemporada: (defs.temporada || '').trim(),
+          cajaDefRopaNuevo: (defs.ropaNuevo || '').trim(),
+          cajaDefRopaRenovacion: (defs.ropaRenovacion || '').trim(),
+          ts: Date.now()
+        };
+        setClubConfig(merged);
+        try {
+          localStorage.setItem('cf_club_config', JSON.stringify(merged));
+        } catch {
+          // ignore
+        }
+        await clubConfigService.save(merged);
+        addToast({
+          type: 'success',
+          title: 'Importes por defecto guardados',
+          message: 'Se aplican a las casillas vacías de matrícula, temporada y ropa; cada una puede editarse a mano.'
+        });
+        return true;
+      } catch {
+        addToast({
+          type: 'error',
+          title: 'Error',
+          message: 'No se pudieron guardar los importes por defecto. Comprueba las columnas cajaDef* (vestuario.sql).'
+        });
+        return false;
+      }
+    },
+    [clubConfig, addToast]
+  );
+
   // Catálogo de prendas de la hoja (lo gestiona el rol serigrafía)
   const saveVestuarioTipo = useCallback(
     async (tipo: Partial<VestuarioTipo>): Promise<boolean> => {
@@ -1797,6 +1837,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     saveVestuarioTipo,
     deleteVestuarioTipo,
     saveVestuarioFechaLimite,
+    saveCajaDefaults,
 
     sesionRespuestas,
     jugadorActual,
@@ -1845,6 +1886,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     saveEntrenador, deleteEntrenador, savePartido, deletePartido, saveSesion, deleteSesion,
     vestuario, vestuarioTipos, saveHojaVestuario, saveVestuarioTipo, deleteVestuarioTipo,
     saveVestuarioFechaLimite,
+    saveCajaDefaults,
     sesionRespuestas, jugadorActual, refreshRespuestas, responderSesion,
     partidoRespuestas, responderPartido,
     toggleConvocatoria, setConvocatoriaEstado, batchSetConvocatoriaEstado,

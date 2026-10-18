@@ -66,6 +66,24 @@ export interface FilaVestuario {
   fechas?: Record<string, FechasPrenda>;
 }
 
+/** Conceptos que se cobran en la hoja de caja. */
+export type CampoCaja = 'matricula' | 'temporada' | 'ropaNuevo' | 'ropaRenovacion';
+
+/** Forma de pago de un apartado de la hoja de caja. */
+export type MetodoPago = '' | 'efectivo' | 'transferencia' | 'tarjeta';
+
+/** Cobro de un apartado: tipo de pago, casilla de pagado, día y pago fraccionado. */
+export interface PagoCaja {
+  /** true = apartado cobrado por completo */
+  pagado?: boolean | string;
+  /** efectivo | transferencia | tarjeta */
+  metodo?: MetodoPago | string;
+  /** Día del cobro (YYYY-MM-DD) */
+  fecha?: string;
+  /** Importe cobrado hasta la fecha (para pagos fraccionados) */
+  importe?: string;
+}
+
 /** Hoja de caja: importes de matrícula, temporada y ropa por jugador (rol caja). */
 export interface CajaJugador {
   /** Se usa el id del jugador (una ficha de caja por jugador). */
@@ -81,6 +99,8 @@ export interface CajaJugador {
   ropaRenovacion?: string;
   /** Suma de los cuatro importes (se recalcula al guardar). */
   total?: string;
+  /** Cobro por apartado: tipo de pago, pagado, día e importe fraccionado. */
+  pagos?: Partial<Record<CampoCaja, PagoCaja>>;
   actualizadoEn?: string;
 }
 
@@ -113,6 +133,11 @@ export interface ClubConfig {
   colorSecundario?: string; // Color secundario/acento (hex)
   ubicacion?: string; // Dirección / ubicación de las instalaciones del club
   vestuarioFechaLimite?: string; // Último día (YYYY-MM-DD) en que los jugadores pueden editar su hoja
+  // Importes por defecto de la hoja de caja (los fija el rol Caja)
+  cajaDefMatricula?: string;
+  cajaDefTemporada?: string;
+  cajaDefRopaNuevo?: string;
+  cajaDefRopaRenovacion?: string;
   ts?: number; // Marca de última edición (sincronización entre dispositivos)
 }
 

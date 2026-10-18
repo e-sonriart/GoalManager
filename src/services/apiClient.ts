@@ -257,6 +257,9 @@ const normalizeRow = <T>(sheet: string, row: Record<string, unknown>): T => {
   if (sheet === 'equipos' && 'entrenadores' in item) {
     item.entrenadores = parseJsonField<string[]>(item.entrenadores) || [];
   }
+  if (sheet === 'caja' && 'pagos' in item) {
+    item.pagos = parseJsonField(item.pagos) || {};
+  }
   if (sheet === 'estadisticas') {
     item.goles = Number(item.goles) || 0;
     item.asistencias = Number(item.asistencias) || 0;
@@ -291,6 +294,9 @@ const prepareRow = <T>(sheet: string, item: Partial<T>): Record<string, unknown>
   }
   if (sheet === 'estadisticas' && 'historico' in row) {
     row.historico = JSON.stringify(row.historico ?? []);
+  }
+  if (sheet === 'caja' && 'pagos' in row) {
+    row.pagos = JSON.stringify(row.pagos ?? {});
   }
   return row;
 };

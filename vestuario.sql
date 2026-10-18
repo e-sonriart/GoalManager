@@ -81,7 +81,9 @@ alter table vestuario add column if not exists "fechaEntrega" text default '';
 
 -- ------------------------------------------------------------
 -- 3c) Hoja de CAJA: importes por jugador (solo rol caja)
---     matrícula, temporada, ropa nuevo, ropa renovación y total
+--     matrícula, temporada, ropa nuevo, ropa renovación y total,
+--     más el cobro de cada apartado (pagos) y los importes
+--     por defecto (cajaDef* en club_config)
 -- ------------------------------------------------------------
 create table if not exists caja (
   id text primary key,
@@ -107,6 +109,32 @@ end $$;
 -- Una sola ficha de caja por jugador
 create unique index if not exists caja_jugador
   on caja ("jugadorId");
+
+-- Cobro por apartado: tipo de pago (efectivo/transferencia/tarjeta), casilla de
+-- pagado, día e importe cobrado (JSON con la clave del apartado: matricula,
+-- temporada, ropaNuevo, ropaRenovacion)
+alter table caja add column if not exists pagos text default '';
+
+-- Importes por defecto de la hoja de caja (los fija el rol Caja)
+do $$
+begin
+  begin
+    alter table club_config add column if not exists "cajaDefMatricula" text default '';
+  exception when undefined_table then null; when duplicate_column then null;
+  end;
+  begin
+    alter table club_config add column if not exists "cajaDefTemporada" text default '';
+  exception when undefined_table then null; when duplicate_column then null;
+  end;
+  begin
+    alter table club_config add column if not exists "cajaDefRopaNuevo" text default '';
+  exception when undefined_table then null; when duplicate_column then null;
+  end;
+  begin
+    alter table club_config add column if not exists "cajaDefRopaRenovacion" text default '';
+  exception when undefined_table then null; when duplicate_column then null;
+  end;
+end $$;
 
 do $$
 begin

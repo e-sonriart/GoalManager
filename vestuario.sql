@@ -33,6 +33,8 @@ create table if not exists vestuario (
   temporada text default '',
   "tipoPrenda" text not null,
   talla text default '',
+  estado text default 'pendiente',   -- pendiente | entregado | sin_stock
+  pagado boolean default false,      -- icono de dinero: gris = no pagado, amarillo = pagado
   "actualizadoEn" text default '',
   created_at timestamptz not null default now()
 );
@@ -64,6 +66,10 @@ alter table jugadores add column if not exists "numeroCamiseta" text;
 --     y fecha límite (YYYY-MM-DD) hasta la que puede editar su hoja
 -- ------------------------------------------------------------
 alter table vestuario_tipos add column if not exists "tallasDisponibles" text default '';
+
+-- Estado de entrega y pago por prenda (si la tabla ya existía)
+alter table vestuario add column if not exists estado text default 'pendiente';
+alter table vestuario add column if not exists pagado boolean default false;
 
 do $$
 begin

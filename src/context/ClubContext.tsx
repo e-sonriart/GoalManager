@@ -1124,24 +1124,43 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           }
 
-          // Tallaje por prenda
-          for (const [tipoPrenda, valor] of Object.entries(fila.tallas || {})) {
-            const talla = (valor || '').trim();
+          // Tallaje, estado de entrega y pago por prenda
+          const clavesPrendas = new Set([
+            ...Object.keys(fila.tallas || {}),
+            ...Object.keys(fila.estados || {}),
+            ...Object.keys(fila.pagados || {})
+          ]);
+          for (const tipoPrenda of clavesPrendas) {
+            const talla = (fila.tallas?.[tipoPrenda] || '').trim();
+            const estado = String(fila.estados?.[tipoPrenda] || 'pendiente').trim() || 'pendiente';
+            const pagado = !!fila.pagados?.[tipoPrenda];
             const existente = vestuario.find(
               v => v.jugadorId === fila.jugadorId && v.tipoPrenda === tipoPrenda
             );
-            if (talla) {
-              const row = { jugadorId: fila.jugadorId, tipoPrenda, talla, temporada, actualizadoEn: ahora };
+            // Sin talla y sin marcas → no hay nada que guardar para esa prenda
+            const vacia = !talla && estado === 'pendiente' && !pagado;
+            if (vacia) {
               if (existente) {
-                const upd = await vestuarioService.update({ ...existente, ...row });
-                setVestuario(prev => prev.map(v => (v.id === upd.id ? upd : v)));
-              } else {
-                const created = await vestuarioService.create(row);
-                setVestuario(prev => [...prev, created]);
+                await vestuarioService.delete(existente.id);
+                setVestuario(prev => prev.filter(v => v.id !== existente.id));
               }
-            } else if (existente) {
-              await vestuarioService.delete(existente.id);
-              setVestuario(prev => prev.filter(v => v.id !== existente.id));
+              continue;
+            }
+            const row = {
+              jugadorId: fila.jugadorId,
+              tipoPrenda,
+              talla,
+              estado,
+              pagado,
+              temporada,
+              actualizadoEn: ahora
+            };
+            if (existente) {
+              const upd = await vestuarioService.update({ ...existente, ...row });
+              setVestuario(prev => prev.map(v => (v.id === upd.id ? upd : v)));
+            } else {
+              const created = await vestuarioService.create(row);
+              setVestuario(prev => [...prev, created]);
             }
           }
         }

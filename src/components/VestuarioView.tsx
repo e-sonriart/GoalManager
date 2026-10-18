@@ -11,11 +11,21 @@ import {
   BellRing,
   CalendarClock,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Banknote
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { sendNotify } from '../services/notifications';
-import { vestuarioCerrado, formatFechaLimite, tallasDePrenda } from '../services/vestuario';
+import {
+  vestuarioCerrado,
+  formatFechaLimite,
+  tallasDePrenda,
+  ESTADOS_ENTREGA,
+  estadoInfo,
+  pagadoDe,
+  unidadesDe,
+  pagosDe
+} from '../services/vestuario';
 
 /** Opciones de talla por defecto (si la prenda no define sus propias tallas). */
 const TALLAS_PRESET = [
@@ -33,10 +43,99 @@ const INPUT_TEXTO =
 
 const hoyISO = (): string => new Date().toISOString().slice(0, 10);
 
+interface CeldaPrendaProps {
+  prenda: VestuarioTipo;
+  fila: FilaVestuario;
+  canManage: boolean;
+  onTalla: (valor: string) => void;
+  onEstado: (valor: string) => void;
+  onPagado: () => void;
+}
+
+/** Una celda de prenda: talla + estado de entrega (entregado/pendiente/sin stock) + pago. */
+const CeldaPrenda: React.FC<CeldaPrendaProps> = ({
+  prenda,
+  fila,
+  canManage,
+  onTalla,
+  onEstado,
+  onPagado
+}) => {
+  const talla = fila.tallas?.[prenda.nombre] || '';
+  const estado = estadoInfo(fila.estados?.[prenda.nombre]);
+  const pagado = !!fila.pagados?.[prenda.nombre];
+
+  return (
+    <div className="flex flex-col gap-1 items-start">
+      {canManage ? (
+        <input
+          type="text"
+          list={`tallas-${prenda.id}`}
+          className={INPUT_TALLA}
+          value={talla}
+          placeholder="—"
+          onChange={e => onTalla(e.target.value)}
+        />
+      ) : (
+        <span
+          className={`inline-block rounded-lg px-2 py-1 text-xs font-bold ${
+            talla ? 'bg-gray-900 text-white' : 'text-gray-300'
+          }`}
+        >
+          {talla || '—'}
+        </span>
+      )}
+
+      <div className="flex items-center gap-1">
+        {canManage ? (
+          <select
+            aria-label={`Estado de ${prenda.nombre}`}
+            value={String(fila.estados?.[prenda.nombre] || 'pendiente')}
+            className={`rounded-md border-0 px-1.5 py-0.5 text-[10px] font-bold leading-tight focus:outline-none focus:ring-2 focus:ring-orange-300 ${estado.chip}`}
+            onChange={e => onEstado(e.target.value)}
+          >
+            {ESTADOS_ENTREGA.map(e => (
+              <option key={e.valor} value={e.valor}>
+                {e.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-tight ${estado.chip}`}>
+            {estado.label}
+          </span>
+        )}
+
+        <button
+          type="button"
+          disabled={!canManage}
+          title={pagado ? 'Pagado' : 'No pagado'}
+          aria-label={pagado ? 'Pagado' : 'No pagado'}
+          onClick={onPagado}
+          className={`rounded-md border p-1 transition-colors ${
+            pagado
+              ? 'bg-yellow-100 border-yellow-300 text-yellow-600'
+              : 'bg-gray-100 border-gray-200 text-gray-400'
+          } ${canManage ? 'hover:scale-105' : 'cursor-default'}`}
+        >
+          <Banknote className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      <datalist id={`tallas-${prenda.id}`}>
+        {tallasDePrenda(prenda, TALLAS_PRESET).map(t => (
+          <option key={t} value={t} />
+        ))}
+      </datalist>
+    </div>
+  );
+};
+
 export const VestuarioView: React.FC = () => {
   const {
     jugadores,
     equipos,
+    categorias,
     vestuario,
     vestuarioTipos,
     saveHojaVestuario,
@@ -89,22 +188,39 @@ export const VestuarioView: React.FC = () => {
     return actual && !base.includes(actual) ? [actual, ...base] : base;
   };
 
-  /** Datos ya guardados de un jugador (camiseta + tallas por prenda). */
-  const baseRow = (j: Jugador): FilaVestuario => ({
-    jugadorId: j.id,
-    nombreCamiseta: j.nombreCamiseta || '',
-    numeroCamiseta: j.numeroCamiseta || '',
-    tallas: Object.fromEntries(
-      vestuario.filter(v => v.jugadorId === j.id).map(v => [v.tipoPrenda, v.talla || ''])
-    )
-  });
+  /** Datos ya guardados de un jugador (camiseta + tallas/estados/pagos por prenda). */
+  const baseRow = (j: Jugador): FilaVestuario => {
+    const tallas: Record<string, string> = {};
+    const estados: Record<string, string> = {};
+    const pagados: Record<string, boolean> = {};
+    for (const v of vestuario) {
+      if (v.jugadorId !== j.id) continue;
+      tallas[v.tipoPrenda] = v.talla || '';
+      estados[v.tipoPrenda] = v.estado || 'pendiente';
+      pagados[v.tipoPrenda] = pagadoDe(v);
+    }
+    return {
+      jugadorId: j.id,
+      nombreCamiseta: j.nombreCamiseta || '',
+      numeroCamiseta: j.numeroCamiseta || '',
+      tallas,
+      estados,
+      pagados
+    };
+  };
 
   /** Fila visible = guardado + borrador local sin guardar. */
   const rowOf = (j: Jugador): FilaVestuario => {
     const d = draft[j.id];
     const b = baseRow(j);
     if (!d) return b;
-    return { ...b, ...d, tallas: { ...b.tallas, ...(d.tallas || {}) } };
+    return {
+      ...b,
+      ...d,
+      tallas: { ...b.tallas, ...(d.tallas || {}) },
+      estados: { ...b.estados, ...(d.estados || {}) },
+      pagados: { ...b.pagados, ...(d.pagados || {}) }
+    };
   };
 
   /** Rojo: le faltan datos. Verde: ya lo tiene pedido. */
@@ -122,10 +238,16 @@ export const VestuarioView: React.FC = () => {
     const claves = new Set([
       ...Object.keys(row.tallas || {}),
       ...Object.keys(base.tallas || {}),
+      ...Object.keys(row.estados || {}),
+      ...Object.keys(base.estados || {}),
+      ...Object.keys(row.pagados || {}),
+      ...Object.keys(base.pagados || {}),
       ...nombresPrendas
     ]);
     for (const k of claves) {
       if ((row.tallas?.[k] || '') !== (base.tallas?.[k] || '')) return true;
+      if (String(row.estados?.[k] || 'pendiente') !== String(base.estados?.[k] || 'pendiente')) return true;
+      if (!!row.pagados?.[k] !== !!base.pagados?.[k]) return true;
     }
     return false;
   };
@@ -142,6 +264,18 @@ export const VestuarioView: React.FC = () => {
       [id]: { ...prev[id], tallas: { ...(prev[id]?.tallas || {}), [prenda]: valor } }
     }));
 
+  const setEstado = (id: string, prenda: string, valor: string) =>
+    setDraft(prev => ({
+      ...prev,
+      [id]: { ...prev[id], estados: { ...(prev[id]?.estados || {}), [prenda]: valor } }
+    }));
+
+  const togglePagado = (id: string, prenda: string, actual: boolean) =>
+    setDraft(prev => ({
+      ...prev,
+      [id]: { ...prev[id], pagados: { ...(prev[id]?.pagados || {}), [prenda]: !actual } }
+    }));
+
   const filasVisibles = useMemo(() => {
     let lista = soyJugador && jugadorActual ? jugadores.filter(j => j.id === jugadorActual.id) : jugadores;
     if (equipoSel) lista = lista.filter(j => j.equipo === equipoSel);
@@ -151,6 +285,31 @@ export const VestuarioView: React.FC = () => {
     }
     return [...lista].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
   }, [jugadores, soyJugador, jugadorActual, equipoSel, busqueda]);
+
+  /** Agrupación: categoría > equipo > jugadores. */
+  const grupos = useMemo(() => {
+    const ordenCat = new Map(categorias.map((c, i) => [c.nombre, i]));
+    const porCat = new Map<string, Map<string, Jugador[]>>();
+    for (const j of filasVisibles) {
+      const cat = (j.categoria || '').trim() || 'Sin categoría';
+      const eq = (j.equipo || '').trim() || 'Sin equipo';
+      if (!porCat.has(cat)) porCat.set(cat, new Map());
+      const porEq = porCat.get(cat)!;
+      if (!porEq.has(eq)) porEq.set(eq, []);
+      porEq.get(eq)!.push(j);
+    }
+    const lista = [...porCat.entries()].map(([nombre, porEq]) => ({
+      nombre,
+      equipos: [...porEq.entries()]
+        .map(([equipo, lista]) => ({
+          nombre: equipo,
+          jugadores: [...lista].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+        }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+    }));
+    const idx = (n: string) => (ordenCat.has(n) ? ordenCat.get(n)! : 1000);
+    return lista.sort((a, b) => idx(a.nombre) - idx(b.nombre) || a.nombre.localeCompare(b.nombre, 'es'));
+  }, [filasVisibles, categorias]);
 
   const pendientes = filasVisibles.filter(filaCambiada);
   const incompletos = filasVisibles.filter(j => !estaCompleto(j));
@@ -199,11 +358,12 @@ export const VestuarioView: React.FC = () => {
       tallasDisponibles: d.tallasDisponibles,
       orden: tipo.orden
     });
-    if (ok) setTipoDraft(prev => {
-      const next = { ...prev };
-      delete next[tipo.id];
-      return next;
-    });
+    if (ok)
+      setTipoDraft(prev => {
+        const next = { ...prev };
+        delete next[tipo.id];
+        return next;
+      });
   };
 
   const tipoSucio = (tipo: VestuarioTipo): boolean => {
@@ -266,6 +426,43 @@ export const VestuarioView: React.FC = () => {
     }
   };
 
+  const columnas = 4 + prendas.length; // Jugador + Nombre + Nº + prendas + Estado
+  const filasDe = (lista: Jugador[]): FilaVestuario[] => lista.map(rowOf);
+  const nombresP = nombresPrendas;
+
+  /** Fila de totales de un grupo: unidades por prenda + pagos. */
+  const filaTotales = (etiqueta: string, lista: Jugador[], key: string) => {
+    const rows = filasDe(lista);
+    return (
+      <tr key={`tot_${key}`} className="bg-white border-t-2 border-gray-200 font-bold">
+        <td colSpan={3} className="px-4 py-2 text-xs text-gray-700">
+          {etiqueta} · <span className="text-gray-400">{lista.length} jugadores</span>
+        </td>
+        {prendas.map(p => {
+          const u = unidadesDe(rows, p.nombre);
+          const pg = rows.filter(r => r.pagados?.[p.nombre]).length;
+          return (
+            <td key={p.id} className="px-3 py-2 text-center align-top">
+              <span className="block text-sm font-black text-gray-900">{u}</span>
+              <span className="block text-[10px] font-semibold text-gray-400">ud.</span>
+              <span className="mt-0.5 flex items-center justify-center gap-0.5 text-[10px] font-semibold text-gray-500">
+                <Banknote className={`w-3 h-3 ${pg ? 'text-yellow-500' : 'text-gray-300'}`} />
+                {pg}
+              </span>
+            </td>
+          );
+        })}
+        <td className="px-3 py-2 text-center align-top">
+          <span className="inline-flex items-center gap-1 text-xs font-black text-gray-900">
+            <Banknote className="w-3.5 h-3.5 text-yellow-500" />
+            {pagosDe(rows, nombresP)}
+          </span>
+          <span className="block text-[10px] font-semibold text-gray-400">pagos</span>
+        </td>
+      </tr>
+    );
+  };
+
   // ---------------------------------------------------------------- Cabecera
   const cabecera = (
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -279,10 +476,10 @@ export const VestuarioView: React.FC = () => {
           </h1>
           <p className="text-sm text-gray-500">
             {canManage
-              ? 'Gestiona prendas, tallas disponibles, fecha límite y avisos de la plantilla.'
+              ? 'Gestiona prendas, tallas, entregas, pagos, fecha límite y avisos de la plantilla.'
               : soyJugador
                 ? 'Indica tus tallas y los datos impresos en tu camiseta.'
-                : 'Consulta de tallas y de nombre/número de camiseta de la plantilla.'}
+                : 'Consulta de tallas, entregas y pagos de la plantilla.'}
           </p>
         </div>
       </div>
@@ -344,9 +541,8 @@ export const VestuarioView: React.FC = () => {
             <p>
               {plazoCerrado ? (
                 <>
-                  <strong>Plazo cerrado.</strong> La fecha límite era el{' '}
-                  {formatFechaLimite(fechaLimite)}: ya no puedes modificar tus tallas ni el nombre de
-                  la camiseta.
+                  <strong>Plazo cerrado.</strong> La fecha límite era el {formatFechaLimite(fechaLimite)}
+                  : ya no puedes modificar tus tallas ni el nombre de la camiseta.
                 </>
               ) : (
                 <>
@@ -408,12 +604,28 @@ export const VestuarioView: React.FC = () => {
           <div className="space-y-3">
             {prendas.map(p => {
               const actual = fila.tallas?.[p.nombre] || '';
+              const est = estadoInfo(fila.estados?.[p.nombre]);
+              const pagado = !!fila.pagados?.[p.nombre];
+              const sinTalla = !actual;
               return (
                 <div
                   key={p.id}
                   className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-gray-150 bg-gray-50/60 px-4 py-3"
                 >
-                  <span className="text-sm font-bold text-gray-800">{p.nombre}</span>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-bold text-gray-800">{p.nombre}</span>
+                    {!sinTalla && (
+                      <span className="flex items-center gap-1.5 text-[11px] font-semibold">
+                        <span className={`rounded-md px-1.5 py-0.5 font-bold ${est.chip}`}>{est.label}</span>
+                        <Banknote
+                          className={`w-3.5 h-3.5 ${pagado ? 'text-yellow-500' : 'text-gray-300'}`}
+                        />
+                        <span className={pagado ? 'text-yellow-600' : 'text-gray-400'}>
+                          {pagado ? 'Pagado' : 'Pendiente de pago'}
+                        </span>
+                      </span>
+                    )}
+                  </div>
                   <select
                     className={`${INPUT_TALLA} w-full sm:w-32 disabled:bg-gray-100 disabled:text-gray-400`}
                     value={actual}
@@ -514,10 +726,7 @@ export const VestuarioView: React.FC = () => {
                     className={`${INPUT_TEXTO} sm:w-56`}
                     value={d.nombre}
                     onChange={e =>
-                      setTipoDraft(prev => ({
-                        ...prev,
-                        [p.id]: { ...d, nombre: e.target.value }
-                      }))
+                      setTipoDraft(prev => ({ ...prev, [p.id]: { ...d, nombre: e.target.value } }))
                     }
                   />
                   <input
@@ -526,10 +735,7 @@ export const VestuarioView: React.FC = () => {
                     value={d.tallasDisponibles}
                     placeholder="Tallas disponibles, separadas por comas (S, M, L, XL)"
                     onChange={e =>
-                      setTipoDraft(prev => ({
-                        ...prev,
-                        [p.id]: { ...d, tallasDisponibles: e.target.value }
-                      }))
+                      setTipoDraft(prev => ({ ...prev, [p.id]: { ...d, tallasDisponibles: e.target.value } }))
                     }
                   />
                   <div className="flex items-center gap-1.5">
@@ -556,7 +762,8 @@ export const VestuarioView: React.FC = () => {
             })}
             {!prendas.length && (
               <p className="px-3.5 py-3 text-sm text-gray-400">
-                Sin prendas todavía. Añade la primera o ejecuta <code className="font-mono">vestuario.sql</code>.
+                Sin prendas todavía. Añade la primera o ejecuta{' '}
+                <code className="font-mono">vestuario.sql</code>.
               </p>
             )}
           </div>
@@ -631,11 +838,10 @@ export const VestuarioView: React.FC = () => {
 
       <div className="bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-sm">
+          <table className="w-full min-w-[980px] text-sm">
             <thead>
               <tr className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-500">
                 <th className="px-4 py-3">Jugador</th>
-                <th className="px-3 py-3">Equipo</th>
                 <th className="px-3 py-3">Nombre camiseta</th>
                 <th className="px-3 py-3">Nº</th>
                 {prendas.map(p => (
@@ -646,103 +852,134 @@ export const VestuarioView: React.FC = () => {
                 <th className="px-3 py-3">Estado</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filasVisibles.map(j => {
-                const row = rowOf(j);
-                const cambiada = filaCambiada(j);
-                const completo = estaCompleto(j);
-                return (
-                  <tr key={j.id} className={cambiada ? 'bg-orange-50/60' : 'bg-white'}>
-                    <td className="px-4 py-2.5 font-semibold text-gray-900 whitespace-nowrap">
-                      {j.nombre}
-                    </td>
-                    <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{j.equipo}</td>
-                    <td className="px-3 py-2.5">
-                      <input
-                        type="text"
-                        className={`${INPUT_TEXTO} w-36 disabled:bg-gray-50 disabled:text-gray-600`}
-                        value={row.nombreCamiseta || ''}
-                        placeholder="—"
-                        disabled={!canManage}
-                        onChange={e => setNombreCamiseta(j.id, e.target.value)}
-                      />
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={2}
-                        className={`${INPUT_TEXTO} w-16 disabled:bg-gray-50 disabled:text-gray-600`}
-                        value={row.numeroCamiseta || ''}
-                        placeholder="—"
-                        disabled={!canManage}
-                        onChange={e => setNumeroCamiseta(j.id, e.target.value.replace(/\D/g, ''))}
-                      />
-                    </td>
-                    {prendas.map(p => (
-                      <td key={p.id} className="px-3 py-2.5">
-                        {canManage ? (
-                          <input
-                            type="text"
-                            list={`tallas-${p.id}`}
-                            className={INPUT_TALLA}
-                            value={row.tallas?.[p.nombre] || ''}
-                            placeholder="—"
-                            onChange={e => setTalla(j.id, p.nombre, e.target.value)}
-                          />
-                        ) : (
-                          <span
-                            className={`inline-block rounded-lg px-2 py-1 text-xs font-bold ${
-                              row.tallas?.[p.nombre] ? 'bg-gray-900 text-white' : 'text-gray-300'
-                            }`}
-                          >
-                            {row.tallas?.[p.nombre] || '—'}
-                          </span>
-                        )}
-                        <datalist id={`tallas-${p.id}`}>
-                          {tallasDePrenda(p, TALLAS_PRESET).map(t => (
-                            <option key={t} value={t} />
-                          ))}
-                        </datalist>
-                      </td>
-                    ))}
-                    <td className="px-3 py-2.5">
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                          completo ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
-                        }`}
-                        title={
-                          completo
-                            ? 'Pedido completo: nombre y todas las tallas'
-                            : 'Faltan datos por completar'
-                        }
-                      >
-                        <span
-                          className={`w-2 h-2 rounded-full ${completo ? 'bg-emerald-500' : 'bg-red-500'}`}
-                        />
-                        {completo ? 'Verde: pedido' : 'Rojo: faltan'}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!filasVisibles.length && (
+
+            {grupos.length === 0 && (
+              <tbody>
                 <tr>
-                  <td colSpan={5 + prendas.length} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={columnas} className="px-4 py-10 text-center text-gray-400">
                     No hay jugadores que coincidan con el filtro.
                   </td>
                 </tr>
-              )}
-            </tbody>
+              </tbody>
+            )}
+
+            {grupos.map(cat => (
+              <tbody key={`cat_${cat.nombre}`} className="divide-y divide-gray-100">
+                {/* Cabecera de categoría */}
+                <tr className="bg-gray-900 text-white">
+                  <td
+                    colSpan={columnas}
+                    className="px-4 py-2 text-[11px] font-black uppercase tracking-widest"
+                  >
+                    {cat.nombre}
+                  </td>
+                </tr>
+
+                {cat.equipos.map(eq => (
+                  <React.Fragment key={`${cat.nombre}_${eq.nombre}`}>
+                    {/* Cabecera de equipo */}
+                    <tr className="bg-gray-100">
+                      <td
+                        colSpan={columnas}
+                        className="px-4 py-1.5 text-xs font-black text-gray-700 uppercase tracking-wide"
+                      >
+                        {eq.nombre}
+                        <span className="ml-2 font-semibold text-gray-400 normal-case tracking-normal">
+                          {eq.jugadores.length} jugadores
+                        </span>
+                      </td>
+                    </tr>
+
+                    {/* Jugadores del equipo */}
+                    {eq.jugadores.map(j => {
+                      const row = rowOf(j);
+                      const cambiada = filaCambiada(j);
+                      const completo = estaCompleto(j);
+                      return (
+                        <tr key={j.id} className={cambiada ? 'bg-orange-50/60' : 'bg-white'}>
+                          <td className="px-4 py-2.5 font-semibold text-gray-900 whitespace-nowrap">
+                            {j.nombre}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <input
+                              type="text"
+                              className={`${INPUT_TEXTO} w-36 disabled:bg-gray-50 disabled:text-gray-600`}
+                              value={row.nombreCamiseta || ''}
+                              placeholder="—"
+                              disabled={!canManage}
+                              onChange={e => setNombreCamiseta(j.id, e.target.value)}
+                            />
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={2}
+                              className={`${INPUT_TEXTO} w-16 disabled:bg-gray-50 disabled:text-gray-600`}
+                              value={row.numeroCamiseta || ''}
+                              placeholder="—"
+                              disabled={!canManage}
+                              onChange={e => setNumeroCamiseta(j.id, e.target.value.replace(/\D/g, ''))}
+                            />
+                          </td>
+                          {prendas.map(p => (
+                            <td key={p.id} className="px-3 py-2 align-top">
+                              <CeldaPrenda
+                                prenda={p}
+                                fila={row}
+                                canManage={canManage}
+                                onTalla={v => setTalla(j.id, p.nombre, v)}
+                                onEstado={v => setEstado(j.id, p.nombre, v)}
+                                onPagado={() =>
+                                  togglePagado(j.id, p.nombre, !!row.pagados?.[p.nombre])
+                                }
+                              />
+                            </td>
+                          ))}
+                          <td className="px-3 py-2.5">
+                            <span
+                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                                completo ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
+                              }`}
+                              title={
+                                completo
+                                  ? 'Pedido completo: nombre y todas las tallas'
+                                  : 'Faltan datos por completar'
+                              }
+                            >
+                              <span
+                                className={`w-2 h-2 rounded-full ${completo ? 'bg-emerald-500' : 'bg-red-500'}`}
+                              />
+                              {completo ? 'Verde: pedido' : 'Rojo: faltan'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {/* Totales del equipo: unidades de ropa y pagos */}
+                    {filaTotales(`Total ${eq.nombre}`, eq.jugadores, `${cat.nombre}_${eq.nombre}`)}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            ))}
+
+            {filasVisibles.length > 0 && (
+              <tbody>
+                {filaTotales('Total general', filasVisibles, 'general')}
+              </tbody>
+            )}
           </table>
         </div>
       </div>
 
-      <datalist id="tallas-vestuario">
-        {TALLAS_PRESET.map(t => (
-          <option key={t} value={t} />
-        ))}
-      </datalist>
+      <p className="text-[11px] text-gray-400">
+        Leyenda: <span className="font-semibold text-gray-500">Entregado</span> (verde),{' '}
+        <span className="font-semibold text-gray-500">Pendiente</span> (azul),{' '}
+        <span className="font-semibold text-gray-500">Sin stock</span> (rojo) ·{' '}
+        <Banknote className="w-3 h-3 inline -mt-0.5 text-gray-400" /> gris = no pagado,{' '}
+        <Banknote className="w-3 h-3 inline -mt-0.5 text-yellow-500" /> amarillo = pagado.
+      </p>
 
       {canManage && (
         <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-150 shadow-sm">

@@ -32,6 +32,10 @@ export interface VestuarioItem {
   temporada?: string;
   tipoPrenda: string; // Nombre de la prenda (unión con VestuarioTipo.nombre)
   talla?: string;
+  /** Estado de entrega de esa prenda: pendiente | entregado | sin_stock */
+  estado?: string;
+  /** true = pagado */
+  pagado?: boolean | string;
   actualizadoEn?: string;
 }
 
@@ -42,6 +46,10 @@ export interface FilaVestuario {
   numeroCamiseta?: string;
   /** prenda -> talla. Una talla vacía elimina la fila de esa prenda. */
   tallas?: Record<string, string>;
+  /** prenda -> estado de entrega (pendiente | entregado | sin_stock) */
+  estados?: Record<string, string>;
+  /** prenda -> pagado */
+  pagados?: Record<string, boolean>;
 }
 
 export type TipoFutbol = 'F8' | 'F11';

@@ -1,5 +1,5 @@
 import { apiClient } from './apiClient';
-import { VestuarioItem, VestuarioTipo } from '../types';
+import { FilaVestuario, VestuarioItem, VestuarioTipo } from '../types';
 
 const SHEET_ITEMS = 'vestuario';
 const SHEET_TIPOS = 'vestuario_tipos';
@@ -30,6 +30,38 @@ export const tallasDePrenda = (tipo?: VestuarioTipo, preset: string[] = []): str
     .map(t => t.trim())
     .filter(Boolean);
   return lista.length ? [...new Set(lista)] : preset;
+};
+
+/** Estados de entrega de una prenda dentro de la hoja. */
+export const ESTADOS_ENTREGA = [
+  { valor: 'pendiente', label: 'Pendiente', chip: 'bg-sky-100 text-sky-700' },
+  { valor: 'entregado', label: 'Entregado', chip: 'bg-emerald-100 text-emerald-700' },
+  { valor: 'sin_stock', label: 'Sin stock', chip: 'bg-rose-100 text-rose-700' }
+] as const;
+
+export type EstadoEntrega = (typeof ESTADOS_ENTREGA)[number]['valor'];
+
+/** Apariencia del estado (por defecto pendiente). */
+export const estadoInfo = (valor?: string): { valor: string; label: string; chip: string } =>
+  ESTADOS_ENTREGA.find(e => e.valor === String(valor || 'pendiente').trim()) || ESTADOS_ENTREGA[0];
+
+/** 'pagado' puede venir booleano o como texto desde la hoja. */
+export const pagadoDe = (v?: { pagado?: boolean | string }): boolean =>
+  v?.pagado === true || String(v?.pagado).toLowerCase() === 'true';
+
+/** Unidades pedidas de una prenda en una lista de filas (con talla). */
+export const unidadesDe = (filas: FilaVestuario[], prenda: string): number =>
+  filas.filter(f => (f.tallas?.[prenda] || '').trim()).length;
+
+/** Nº de prendas pagadas en una lista de filas. */
+export const pagosDe = (filas: FilaVestuario[], prendas: string[]): number => {
+  let n = 0;
+  for (const f of filas) {
+    for (const p of prendas) {
+      if (f.pagados?.[p]) n++;
+    }
+  }
+  return n;
 };
 
 export const vestuarioService = {

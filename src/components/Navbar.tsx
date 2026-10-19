@@ -81,6 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         offsetForSidePanel ? 'lg:ml-80 lg:w-[calc(100%_-_20rem)]' : ''
       }`}
     >
+      {/* Fila 1 (todas las vistas): marca + acciones rápidas */}
       <div className="w-full max-w-7xl 2xl:max-w-[1680px] mx-auto px-3 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-2 sm:gap-3 lg:gap-5 h-16">
         {/* Logo & Brand Personalizado del Club */}
         <div
@@ -107,29 +108,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </div>
         </div>
-
-        {/* Desktop Navigation Links con Espaciado Óptimo de Iconos (Expandido en PC) */}
-        <nav className="hidden lg:flex items-center gap-1 xl:gap-2 2xl:gap-3 flex-1 justify-center px-2 min-w-0">
-          {navItems.map(item => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`flex items-center gap-2 px-3 xl:px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                  isActive
-                    ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25 scale-[1.02]'
-                    : 'text-gray-300 hover:text-white hover:bg-gray-900 active:scale-95'
-                }`}
-              >
-                <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-white'}`} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
 
         {/* Acciones Rápidas con Espaciado Consistente (relative: ancla de los menús desplegables) */}
         <div className="relative flex items-center gap-1.5 sm:gap-2.5 shrink-0">
@@ -201,7 +179,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }`}
                 />
               </div>
-              <span className="hidden sm:inline text-xs">
+              <span className="hidden 2xl:inline text-xs">
                 {isOnlineConfigured ? 'Supabase Online' : 'Modo Local'}
               </span>
             </button>
@@ -258,10 +236,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden xl:inline text-xs font-semibold">Salir</span>
           </button>
 
-          {/* Botón de Menú Panel Lateral Ocultable (disponible tanto en móvil como en PC) */}
+          {/* Botón de Menú Panel Lateral Ocultable (en PC con panel fijo no hace falta) */}
           <button
             onClick={handleOpenPanel}
-            className="h-10 px-2.5 sm:px-3 flex items-center gap-1.5 text-gray-300 hover:text-white hover:bg-gray-800 rounded-xl transition-colors shrink-0 border border-gray-800"
+            className={`h-10 px-2.5 sm:px-3 flex items-center gap-1.5 text-gray-300 hover:text-white hover:bg-gray-800 rounded-xl transition-colors shrink-0 border border-gray-800 ${
+              offsetForSidePanel ? 'lg:hidden' : ''
+            }`}
             title="Abrir panel lateral completo"
             aria-label="Abrir panel lateral"
           >
@@ -269,6 +249,34 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden sm:inline text-xs font-semibold text-gray-300">Menú</span>
           </button>
         </div>
+      </div>
+
+      {/* Fila 2 (solo PC): las pestañas en su propia línea para que no se amontonen con las acciones */}
+      <div className="hidden lg:block border-t border-gray-800/70 bg-gray-950/60">
+        <nav
+          aria-label="Secciones"
+          className="w-full max-w-7xl 2xl:max-w-[1680px] mx-auto px-3 sm:px-6 lg:px-8 h-11 flex items-center gap-1 xl:gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {navItems.map(item => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
+                  isActive
+                    ? 'bg-orange-500 text-white shadow-md shadow-orange-500/25'
+                    : 'text-gray-300 hover:text-white hover:bg-gray-900 active:scale-95'
+                }`}
+              >
+                <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-gray-400'}`} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
     </header>
   );

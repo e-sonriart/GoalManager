@@ -137,7 +137,7 @@ const MainContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-950 flex justify-center font-sans text-gray-900 antialiased selection:bg-orange-500 selection:text-white overflow-x-hidden w-full">
-      <div className={`${vistaPC ? 'w-full max-w-[1400px] mx-auto' : 'w-full max-w-[430px] min-h-screen bg-[#F8FAFC] flex flex-col shadow-2xl relative mx-auto'}`}>
+      <div className={`${vistaPC ? 'w-full' : 'w-full max-w-[430px] min-h-screen bg-[#F8FAFC] flex flex-col shadow-2xl relative mx-auto'}`}>
       {/* Barra de Navegación Principal */}
       <Navbar
         activeTab={activeTab}

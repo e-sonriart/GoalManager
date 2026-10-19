@@ -81,7 +81,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         offsetForSidePanel ? 'lg:ml-80 lg:w-[calc(100%_-_20rem)]' : ''
       }`}
     >
-      <div className="w-full max-w-7xl 2xl:max-w-[1680px] mx-auto px-3 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-2 sm:gap-3 h-16">
+      <div className="w-full max-w-7xl 2xl:max-w-[1680px] mx-auto px-3 sm:px-6 lg:px-8 py-2 flex items-center justify-between gap-2 sm:gap-3 lg:gap-5 h-16">
         {/* Logo & Brand Personalizado del Club */}
         <div
           className="flex items-center gap-2 sm:gap-3 cursor-pointer min-w-0 shrink"
@@ -103,13 +103,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="flex items-center gap-1.5 text-[11px] text-gray-400 truncate">
               <span className="text-orange-400 font-semibold">{clubConfig?.temporada || '2025/2026'}</span>
               <span>•</span>
-              <span className="truncate max-w-[140px] sm:max-w-[200px]">{clubConfig?.lema || 'Gestión Deportiva'}</span>
+                <span className="truncate max-w-[140px] sm:max-w-[200px] lg:max-w-[280px] xl:max-w-[360px]">{clubConfig?.lema || 'Gestión Deportiva'}</span>
             </div>
           </div>
         </div>
 
         {/* Desktop Navigation Links con Espaciado Óptimo de Iconos (Expandido en PC) */}
-        <nav className="hidden lg:flex items-center gap-1 xl:gap-1.5 flex-1 justify-center px-2">
+        <nav className="hidden lg:flex items-center gap-1 xl:gap-2 2xl:gap-3 flex-1 justify-center px-2 min-w-0">
           {navItems.map(item => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;

@@ -182,6 +182,8 @@ export interface Partido {
   eventos?: string;
   finalizado?: boolean | string;
   suspendido?: boolean | string; // El entrenador marca el partido como suspendido antes de la alineación
+  suspensionMotivo?: string; // Mensaje/motivo que verá el equipo
+  suspensionHasta?: string; // Reanudación ('YYYY-MM-DD' o 'YYYY-MM-DDTHH:MM'); vacío = definitivo
   convocados?: string[]; // IDs de jugadores convocados directamente en el partido
   titulares?: string[]; // IDs de la alineación inicial (11 o 8 según modalidad)
   formacion?: string; // Táctica elegida, p. ej. '1-4-3-3' o '1-2-3-2'
@@ -245,6 +247,9 @@ export interface SesionEntrenamiento {
   temporada?: string;
   creadoPor?: string;
   creadoEn?: string;
+  suspendido?: boolean | string; // Sesión suspendida (temporal o definitiva)
+  suspensionMotivo?: string; // Mensaje/motivo que verá el equipo
+  suspensionHasta?: string; // Reanudación ('YYYY-MM-DD' o 'YYYY-MM-DDTHH:MM'); vacío = definitivo
 }
 
 export interface HistorialEstadisticaTemporada {

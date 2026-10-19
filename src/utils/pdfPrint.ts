@@ -1,3 +1,5 @@
+import { isItemSuspendido } from './partidoEstado';
+
 export interface PdfSeccion {
   titulo: string;
   columnas: string[];
@@ -26,7 +28,7 @@ export const pdfEstadoPartido = (p: { finalizado?: boolean | string; golesLocal?
   const fin = p.finalizado === true || p.finalizado === 'true';
   const hayMarcador = p.golesLocal !== undefined && p.golesLocal !== null && p.golesLocal !== '' && p.golesVisitante !== undefined && p.golesVisitante !== null && p.golesVisitante !== '';
   if (fin && hayMarcador) return `${p.golesLocal} - ${p.golesVisitante}`;
-  if (p.suspendido === true || p.suspendido === 'true') return 'Suspendido';
+  if (isItemSuspendido(p)) return 'Suspendido';
   return 'Por jugar';
 };
 

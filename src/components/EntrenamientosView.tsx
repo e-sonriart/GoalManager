@@ -3,8 +3,12 @@ import { useClub } from '../context/ClubContext';
 import { EstadoAsistencia, SesionEntrenamiento, TipoFutbol } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
+import { SuspenderModal } from './SuspenderModal';
+import { SuspensionBadge, SuspensionBanner, textoHasta } from './SuspensionUI';
+import { infoSuspension, isItemSuspendido } from '../utils/partidoEstado';
 import {
   Calendar,
+  Ban,
   Plus,
   Edit2,
   Trash2,
@@ -115,6 +119,43 @@ export const EntrenamientosView: React.FC = () => {
     setFormObjetivo(s.objetivo);
     setFormDescripcion(s.descripcion || '');
     setIsModalOpen(true);
+  };
+
+  // Suspensión de la sesión con motivo (temporal o definitivo), con aviso al equipo
+  const [suspTarget, setSuspTarget] = useState<SesionEntrenamiento | null>(null);
+
+  const handleSuspenderSesion = async (datos: { motivo: string; hasta: string }) => {
+    const s = suspTarget;
+    if (!s) return;
+    await saveSesion({
+      ...s,
+      suspendido: true,
+      suspensionMotivo: datos.motivo,
+      suspensionHasta: datos.hasta
+    });
+    setSuspTarget(null);
+    void notifyTeam({
+      tipo: 'entrenamiento_suspendido',
+      equipo: s.equipo,
+      refId: `susp_${s.id}_${Date.now()}`,
+      titulo: `⛔ Entrenamiento suspendido: ${s.equipo || 'equipo'}`,
+      cuerpo: `📅 ${formatFecha(s.fecha)} · ${s.hora || ''} · ${datos.motivo}${
+        datos.hasta ? ` · Reanudación: ${textoHasta(datos.hasta)}` : ' · Sin fecha de reanudación'
+      }`,
+      url: '/?tab=entrenamientos'
+    });
+  };
+
+  const handleReactivarSesion = async (s: SesionEntrenamiento) => {
+    await saveSesion({ ...s, suspendido: false, suspensionMotivo: '', suspensionHasta: '' });
+    void notifyTeam({
+      tipo: 'entrenamiento_reactivado',
+      equipo: s.equipo,
+      refId: `reac_${s.id}_${Date.now()}`,
+      titulo: `✅ Entrenamiento reactivado: ${s.equipo || 'equipo'}`,
+      cuerpo: `📅 ${formatFecha(s.fecha)} · ${s.hora || ''} · Se reanuda la sesión programada`,
+      url: '/?tab=entrenamientos'
+    });
   };
 
   const applyEquipo = (selName: string) => {
@@ -293,12 +334,16 @@ export const EntrenamientosView: React.FC = () => {
       jugadorActual &&
         equipoUsuario &&
         sesionAbierta(s) &&
+        !isItemSuspendido(s) &&
         (s.equipo || '').trim().toLowerCase() === equipoUsuario
     );
   const miRespuestaDe = (s: SesionEntrenamiento) =>
     sesionRespuestas.find(r => r.sesionId === s.id && jugadorActual && r.jugadorId === jugadorActual.id);
 
-  const renderSesionCard = (sesion: SesionEntrenamiento) => (
+  const renderSesionCard = (sesion: SesionEntrenamiento) => {
+    const suspInfoSesion = infoSuspension(sesion);
+    const suspendida = suspInfoSesion.activa;
+    return (
     <div
       key={sesion.id}
       className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-150 shadow-sm hover:border-orange-200 transition-all space-y-3 min-w-0 flex flex-col"
@@ -316,11 +361,26 @@ export const EntrenamientosView: React.FC = () => {
           }`}>
             {sesion.tipo || 'Fútbol'}
           </span>
+          {suspendida && <SuspensionBadge info={suspInfoSesion} />}
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
           {canManage && (
             <>
+              <button
+                onClick={() => {
+                  if (suspendida) void handleReactivarSesion(sesion);
+                  else setSuspTarget(sesion);
+                }}
+                title={suspendida ? 'Reactivar sesión' : 'Suspender sesión con motivo (temporal o definitivo)'}
+                className={`w-9 h-9 flex items-center justify-center rounded-lg transition-colors shrink-0 ${
+                  suspendida
+                    ? 'bg-red-600 text-white hover:bg-red-700'
+                    : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                }`}
+              >
+                <Ban className="w-3.5 h-3.5" />
+              </button>
               <button
                 onClick={() => openEditModal(sesion)}
                 title="Editar sesión"
@@ -339,6 +399,9 @@ export const EntrenamientosView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Motivo de la suspensión (si la hay) */}
+      {suspendida && <SuspensionBanner info={suspInfoSesion} />}
 
       {/* Equipo */}
       <div className="flex items-center gap-2.5">
@@ -466,6 +529,7 @@ export const EntrenamientosView: React.FC = () => {
       )}
     </div>
   );
+  };
 
   return (
     <div className="space-y-6">
@@ -922,6 +986,21 @@ export const EntrenamientosView: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* Modal de suspensión con motivo */}
+      <SuspenderModal
+        isOpen={Boolean(suspTarget)}
+        onClose={() => setSuspTarget(null)}
+        tipo="entrenamiento"
+        nombre={
+          suspTarget
+            ? `${suspTarget.equipo || 'equipo'} · ${formatFecha(suspTarget.fecha)} ${suspTarget.hora || ''}`
+            : ''
+        }
+        motivoInicial={suspTarget?.suspensionMotivo}
+        hastaInicial={suspTarget?.suspensionHasta}
+        onConfirm={handleSuspenderSesion}
+      />
     </div>
   );
 };

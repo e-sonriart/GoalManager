@@ -31,7 +31,9 @@ import {
 } from 'lucide-react';
 import { ActiveTab } from './Navbar';
 import { notifyTeam } from '../services/notifications';
-import { isPartidoSuspendido } from '../utils/partidoEstado';
+import { isPartidoSuspendido, infoSuspension } from '../utils/partidoEstado';
+import { SuspenderModal } from './SuspenderModal';
+import { SuspensionBadge, SuspensionBanner, textoHasta } from './SuspensionUI';
 import { abrirPdf, pdfFechaCorta, pdfEstadoPartido, pdfEdad, PdfSeccion } from '../utils/pdfPrint';
 import { BuscadorRivalModal } from './BuscadorRivalModal';
 import { FfcvEquipo, ffcvUbicacion, loadFfcvEquipos, mapsUrlDeCampo } from '../services/ffcvEquipos';
@@ -180,6 +182,47 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     setFormHoraConvocatoria(p.horaConvocatoria || '');
     setFormNotificar(leerPrefNotificarPartido());
     setIsModalOpen(true);
+  };
+
+  // Suspensión del partido con motivo (temporal o definitivo), con aviso al equipo
+  const [suspTarget, setSuspTarget] = useState<Partido | null>(null);
+
+  const handleSuspenderPartido = async (datos: { motivo: string; hasta: string }) => {
+    const p = suspTarget;
+    if (!p) return;
+    await savePartido({
+      ...p,
+      suspendido: true,
+      suspensionMotivo: datos.motivo,
+      suspensionHasta: datos.hasta
+    });
+    setSuspTarget(null);
+    const f = new Date(p.fecha);
+    const fechaTxt = Number.isNaN(f.getTime())
+      ? p.fecha
+      : f.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    void notifyTeam({
+      tipo: 'partido_suspendido',
+      equipo: p.equipo,
+      refId: `susp_${p.id}_${Date.now()}`,
+      titulo: `⛔ Partido suspendido: ${p.local} vs ${p.visitante}`,
+      cuerpo: `📅 ${fechaTxt}${p.campo ? ` · ${p.campo}` : ''} · ${datos.motivo}${
+        datos.hasta ? ` · Reanudación: ${textoHasta(datos.hasta)}` : ' · Sin fecha de reanudación'
+      }`,
+      url: '/?tab=partidos'
+    });
+  };
+
+  const handleReactivarPartido = async (p: Partido) => {
+    await savePartido({ ...p, suspendido: false, suspensionMotivo: '', suspensionHasta: '' });
+    void notifyTeam({
+      tipo: 'partido_reactivado',
+      equipo: p.equipo,
+      refId: `reac_${p.id}_${Date.now()}`,
+      titulo: `✅ Partido reactivado: ${p.local} vs ${p.visitante}`,
+      cuerpo: 'Se reanuda la actividad programada · atención a la convocatoria',
+      url: '/?tab=partidos'
+    });
   };
 
   const handleSavePartido = async (e: React.FormEvent) => {
@@ -439,6 +482,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
     const condicion: CondicionPartido = partido.condicion || (isLocal ? 'casa' : 'fuera');
     const esCasa = condicion === 'casa';
     const partidoSuspendido = isPartidoSuspendido(partido);
+    const suspInfoPartido = infoSuspension(partido);
 
     return (
       <div
@@ -481,15 +525,28 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
                 <CheckCircle2 className="w-3 h-3" /> Finalizado
               </span>
             ) : partidoSuspendido ? (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 shrink-0">
-                <Ban className="w-3 h-3" /> Suspendido
-              </span>
+              <SuspensionBadge info={suspInfoPartido} />
             ) : (
               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200 shrink-0">
                 <Clock className="w-3 h-3" /> Programado
               </span>
             )}
 
+            <button
+              onClick={() => {
+                if (!canManage) return;
+                if (partidoSuspendido) void handleReactivarPartido(partido);
+                else setSuspTarget(partido);
+              }}
+              title={partidoSuspendido ? 'Reactivar partido' : 'Suspender partido con motivo (temporal o definitivo)'}
+              className={`w-9 h-9 items-center justify-center rounded-lg transition-colors shrink-0 ${
+                partidoSuspendido
+                  ? 'bg-red-600 text-white hover:bg-red-700'
+                  : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+              } ${canManage ? 'flex' : 'hidden'}`}
+            >
+              <Ban className="w-3.5 h-3.5" />
+            </button>
             <button
               onClick={() => openEditModal(partido)}
               title="Editar partido"
@@ -506,6 +563,9 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Motivo de la suspensión (si la hay) */}
+        {partidoSuspendido && <SuspensionBanner info={suspInfoPartido} />}
 
         {/* Scoreboard visual con escudos */}
         <div
@@ -1336,6 +1396,19 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
           </div>
         </form>
       </Modal>
+
+      {/* Modal de suspensión con motivo */}
+      <SuspenderModal
+        isOpen={Boolean(suspTarget)}
+        onClose={() => setSuspTarget(null)}
+        tipo="partido"
+        nombre={
+          suspTarget ? `${suspTarget.local} vs ${suspTarget.visitante} · ${suspTarget.categoria}` : ''
+        }
+        motivoInicial={suspTarget?.suspensionMotivo}
+        hastaInicial={suspTarget?.suspensionHasta}
+        onConfirm={handleSuspenderPartido}
+      />
 
       {/* Buscador de rival (fuera del <form> para que Enter no dispare el guardado) */}
       <BuscadorRivalModal

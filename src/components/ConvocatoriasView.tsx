@@ -19,7 +19,9 @@ import {
 } from 'lucide-react';
 import { compareTeams, getCategoryOrder } from '../utils/teamOrder';
 import { notifyTeam } from '../services/notifications';
-import { isPartidoSuspendido } from '../utils/partidoEstado';
+import { isPartidoSuspendido, infoSuspension } from '../utils/partidoEstado';
+import { SuspenderModal } from './SuspenderModal';
+import { SuspensionBadge, SuspensionBanner, textoHasta } from './SuspensionUI';
 import { FfcvEquipo, loadFfcvEquipos, mapsUrlDeCampo } from '../services/ffcvEquipos';
 
 /** Mismos discos de color que la alineación (por posición). */
@@ -141,6 +143,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
 
   const selectedId = selectedPartido?.id;
   const suspendidoSelected = isPartidoSuspendido(selectedPartido);
+  const suspInfoSuspension = infoSuspension(selectedPartido);
 
   // Cargar la convocatoria guardada al entrar o cambiar de partido (descarta cambios pendientes)
   useEffect(() => {
@@ -292,25 +295,46 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
     onBack?.(selectedPartido.id);
   };
 
-  // Marcar / desmarcar el partido como suspendido (antes de montar la alineación)
-  const handleToggleSuspendido = async () => {
+  // Suspender el partido con motivo (temporal o definitivo): avisa al equipo con el mensaje
+  const [isSuspModalOpen, setIsSuspModalOpen] = useState(false);
+
+  const handleSuspender = async (datos: { motivo: string; hasta: string }) => {
     if (!selectedPartido || !canManage) return;
-    const next = !isPartidoSuspendido(selectedPartido);
-    await savePartido({ ...selectedPartido, suspendido: next });
-    if (next) {
-      const f = new Date(selectedPartido.fecha);
-      const fechaTxt = Number.isNaN(f.getTime())
-        ? selectedPartido.fecha
-        : f.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
-      void notifyTeam({
-        tipo: 'partido_suspendido',
-        equipo: selectedPartido.equipo,
-        refId: `susp_${selectedPartido.id}`,
-        titulo: `⛔ Partido suspendido: ${selectedPartido.local} vs ${selectedPartido.visitante}`,
-        cuerpo: `📅 ${fechaTxt}${selectedPartido.campo ? ` · ${selectedPartido.campo}` : ''} · El equipo será avisado si se reprograma`,
-        url: '/?tab=partidos'
-      });
-    }
+    await savePartido({
+      ...selectedPartido,
+      suspendido: true,
+      suspensionMotivo: datos.motivo,
+      suspensionHasta: datos.hasta
+    });
+    setIsSuspModalOpen(false);
+    const f = new Date(selectedPartido.fecha);
+    const fechaTxt = Number.isNaN(f.getTime())
+      ? selectedPartido.fecha
+      : f.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    void notifyTeam({
+      tipo: 'partido_suspendido',
+      equipo: selectedPartido.equipo,
+      refId: `susp_${selectedPartido.id}_${Date.now()}`,
+      titulo: `⛔ Partido suspendido: ${selectedPartido.local} vs ${selectedPartido.visitante}`,
+      cuerpo: `📅 ${fechaTxt}${selectedPartido.campo ? ` · ${selectedPartido.campo}` : ''} · ${datos.motivo}${
+        datos.hasta ? ` · Reanudación: ${textoHasta(datos.hasta)}` : ' · Sin fecha de reanudación'
+      }`,
+      url: '/?tab=partidos'
+    });
+  };
+
+  // Reactivar el partido suspendido (quita motivo y fecha)
+  const handleReactivar = async () => {
+    if (!selectedPartido || !canManage) return;
+    await savePartido({ ...selectedPartido, suspendido: false, suspensionMotivo: '', suspensionHasta: '' });
+    void notifyTeam({
+      tipo: 'partido_reactivado',
+      equipo: selectedPartido.equipo,
+      refId: `reac_${selectedPartido.id}_${Date.now()}`,
+      titulo: `✅ Partido reactivado: ${selectedPartido.local} vs ${selectedPartido.visitante}`,
+      cuerpo: 'Se reanuda la actividad programada · atención a la convocatoria',
+      url: '/?tab=convocatorias'
+    });
   };
 
   // Mensaje autogenerado de la convocatoria para enviarlo por WhatsApp
@@ -484,21 +508,44 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handleToggleSuspendido}
-            disabled={!canManage}
-            title={canManage ? 'Marca el partido como suspendido (avisa al equipo)' : 'Solo lectura'}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 border disabled:opacity-40 disabled:cursor-not-allowed ${
-              suspendidoSelected
-                ? 'bg-red-600 hover:bg-red-700 text-white border-red-700'
-                : 'bg-white hover:bg-red-50 text-red-600 border-red-200'
-            }`}
-          >
-            <Ban className="w-4 h-4" />
-            {suspendidoSelected ? 'Suspendido ✓' : 'Partido Suspendido'}
-          </button>
+          {suspendidoSelected ? (
+            <button
+              onClick={handleReactivar}
+              disabled={!canManage}
+              title={canManage ? 'Quita la suspensión y reactiva el partido' : 'Solo lectura'}
+              className="px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 border bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              Reactivar partido
+            </button>
+          ) : (
+            <button
+              onClick={() => setIsSuspModalOpen(true)}
+              disabled={!canManage}
+              title={canManage ? 'Suspende el partido con un motivo: temporal o definitivo (avisa al equipo)' : 'Solo lectura'}
+              className="px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 border bg-white hover:bg-red-50 text-red-600 border-red-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Ban className="w-4 h-4" />
+              Suspender partido
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Modal de suspensión con motivo */}
+      <SuspenderModal
+        isOpen={isSuspModalOpen}
+        onClose={() => setIsSuspModalOpen(false)}
+        tipo="partido"
+        nombre={
+          selectedPartido
+            ? `${selectedPartido.local} vs ${selectedPartido.visitante} · ${selectedPartido.categoria}`
+            : ''
+        }
+        motivoInicial={selectedPartido?.suspensionMotivo}
+        hastaInicial={selectedPartido?.suspensionHasta}
+        onConfirm={handleSuspender}
+      />
 
       {/* Selector de Partido Activo */}
       <div className="bg-white p-5 rounded-2xl border border-gray-150 shadow-sm space-y-4">
@@ -569,11 +616,7 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
                 <h3 className="font-bold text-sm sm:text-base font-athletic tracking-wide truncate">
                   {selectedPartido.local} <span className="text-orange-400">vs</span> {selectedPartido.visitante}
                 </h3>
-                {suspendidoSelected && (
-                  <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black uppercase tracking-wider shrink-0 flex items-center gap-1">
-                    <Ban className="w-3 h-3" /> Suspendido
-                  </span>
-                )}
+                {suspendidoSelected && <SuspensionBadge info={suspInfoSuspension} />}
               </div>
               <p className="text-xs text-gray-400 flex items-center gap-2 mt-0.5 truncate">
                 <span className="font-medium text-orange-300">{selectedPartido.categoria}</span>
@@ -596,6 +639,9 @@ export const ConvocatoriasView: React.FC<ConvocatoriasViewProps> = ({ initialPar
             </p>
           </div>
         </div>
+
+        {/* Motivo de la suspensión (si la hay) */}
+        {suspendidoSelected && <SuspensionBanner info={suspInfoSuspension} />}
       </div>
 
       {/* Lista de Jugadores para Convocar (agrupada) */}

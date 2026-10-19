@@ -3,6 +3,7 @@ import { Modal } from './Modal';
 import { useClub } from '../context/ClubContext';
 import { isValidPassword } from '../utils/validation';
 import { Eye, EyeOff, KeyRound, User } from 'lucide-react';
+import { ROLE_INFO, ROLE_ORDER } from '../utils/roles';
 
 interface MiCuentaModalProps {
   isOpen: boolean;
@@ -11,7 +12,7 @@ interface MiCuentaModalProps {
 
 /** Mi cuenta: el usuario en sesión cambia su propia contraseña de acceso. */
 export const MiCuentaModal: React.FC<MiCuentaModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser, cambiarPassword } = useClub();
+  const { currentUser, cambiarPassword, rolSesion, rolPrueba, probarRol } = useClub();
   const [actual, setActual] = useState('');
   const [nueva, setNueva] = useState('');
   const [repetir, setRepetir] = useState('');
@@ -98,7 +99,11 @@ export const MiCuentaModal: React.FC<MiCuentaModalProps> = ({ isOpen, onClose })
       isOpen={isOpen}
       onClose={onClose}
       title="Mi cuenta"
-      subtitle="Cambia tu contraseña de acceso"
+      subtitle={
+        rolSesion === 'admin'
+          ? 'Tu contraseña y la prueba de roles'
+          : 'Cambia tu contraseña de acceso'
+      }
       maxWidth="max-w-md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -123,6 +128,58 @@ export const MiCuentaModal: React.FC<MiCuentaModalProps> = ({ isOpen, onClose })
             </p>
           </div>
         </div>
+
+        {/* Solo admin: probar la app con otro rol sin cerrar la sesión */}
+        {rolSesion === 'admin' && (
+          <div className="space-y-2 p-3 bg-amber-50/60 border border-amber-200 rounded-xl">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Eye className="w-3.5 h-3.5 text-amber-600" />
+                Probar otro rol
+              </p>
+              {rolPrueba && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    probarRol(null);
+                    onClose();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white border border-amber-400 text-amber-800 text-[11px] font-bold hover:bg-amber-100"
+                >
+                  Volver a {ROLE_INFO[rolSesion].label}
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-gray-500">
+              Cambia la vista de la app (pestañas, permisos y datos visibles) para hacer pruebas sin
+              cerrar sesión: no modifica usuarios ni información.
+            </p>
+            {rolPrueba && (
+              <p className="text-[11px] font-bold text-amber-700">
+                Estás viendo la app como {ROLE_INFO[rolPrueba].label}.
+              </p>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {ROLE_ORDER.filter(r => r !== rolSesion).map(rol => (
+                <button
+                  key={rol}
+                  type="button"
+                  onClick={() => {
+                    probarRol(rol);
+                    onClose();
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-colors ${
+                    rolPrueba === rol
+                      ? 'bg-amber-100 border-amber-400 text-amber-800'
+                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {ROLE_INFO[rol].label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {campoClave('Contraseña actual', actual, setActual, 'current-password', 'Tu contraseña de hoy')}
         {campoClave('Nueva contraseña', nueva, setNueva, 'new-password', 'Mínimo 6 caracteres')}

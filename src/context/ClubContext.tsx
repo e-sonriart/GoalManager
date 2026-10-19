@@ -60,6 +60,12 @@ interface ClubContextType {
   // Estado de usuario y autenticación
   currentUser: Usuario | null;
   setCurrentUser: (user: Usuario | null) => void;
+  /** Rol real de la sesión (la prueba con otro rol no lo modifica). */
+  rolSesion: RolUsuario | null;
+  /** Rol que se está simulando en modo prueba, o null si no lo hay. */
+  rolPrueba: RolUsuario | null;
+  /** Simula otro rol sin cerrar la sesión (solo admin). */
+  probarRol: (rol: RolUsuario | null) => void;
   users: Usuario[];
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
@@ -222,11 +228,47 @@ const readLocalClubConfig = (): (ClubConfig & { ts?: number }) | null => {
 };
 
 export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
+  // Sesión real. rolPrueba (solo admin) deja ver la app con otro rol sin cerrar sesión.
+  const [usuarioSesion, setUsuarioSesion] = useState<Usuario | null>(null);
+  const [rolPrueba, setRolPrueba] = useState<RolUsuario | null>(null);
   const [gasUrl, setGasUrlState] = useState<string>(getGasUrl());
   const [loading, setLoading] = useState<boolean>(true);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState<boolean>(false);
+
+  /** Usuario visible: la sesión con el rol de prueba aplicado (si la hay). */
+  const currentUser = useMemo<Usuario | null>(() => {
+    if (!usuarioSesion) return null;
+    if (!rolPrueba || rolPrueba === usuarioSesion.rol) return usuarioSesion;
+    return { ...usuarioSesion, rol: rolPrueba };
+  }, [usuarioSesion, rolPrueba]);
+
+  /** Rol real de la sesión (no cambia aunque se esté probando otro rol). */
+  const rolSesion: RolUsuario | null = usuarioSesion?.rol ?? null;
+
+  /**
+   * Cambia el usuario de sesión. Al entrar con otra cuenta (o al salir) se
+   * desactiva el modo de prueba de rol; sincronizar datos lo mantiene.
+   */
+  const setCurrentUser = useCallback(
+    (user: Usuario | null) => {
+      if (!user || user.id !== usuarioSesion?.id) setRolPrueba(null);
+      setUsuarioSesion(user);
+    },
+    [usuarioSesion]
+  );
+
+  /**
+   * Simula otro rol sin cerrar la sesión (solo admin): cambia permisos,
+   * pestañas y datos visibles, pero no toca usuarios ni información real.
+   */
+  const probarRol = useCallback(
+    (rol: RolUsuario | null) => {
+      if (!usuarioSesion || usuarioSesion.rol !== 'admin') return;
+      setRolPrueba(rol && rol !== usuarioSesion.rol ? rol : null);
+    },
+    [usuarioSesion]
+  );
 
   // Datos
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
@@ -1772,6 +1814,9 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const value = useMemo<ClubContextType>(() => ({
     currentUser,
     setCurrentUser,
+    rolSesion,
+    rolPrueba,
+    probarRol,
     users,
     login,
     logout,
@@ -1876,6 +1921,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     exportSheet
   }), [
     currentUser, users, login, logout, can, allowedTabs, isTeamScoped, assignedTeams,
+    setCurrentUser, rolSesion, rolPrueba, probarRol,
     equiposControlables, equipoFiltro, setEquipoFiltro,
     jugadores, jugadoresScope, visibleJugadores, visibleEquipos, visibleCategorias, visibleEntrenadores,
     visiblePartidos, visibleAsistencias, visibleEstadisticas, visibleSesiones,

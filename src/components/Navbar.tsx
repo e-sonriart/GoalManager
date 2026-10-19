@@ -4,7 +4,8 @@ import { TeamShield } from './TeamShield';
 import { PushBellButton } from './PushBellButton';
 import { SelectorEquipos } from './SelectorEquipos';
 import { MiCuentaModal } from './MiCuentaModal';
-import { AppTab } from '../types';
+import { AppTab, RolUsuario } from '../types';
+import { ROLE_INFO, ROLE_ORDER } from '../utils/roles';
 import {
   BarChart3,
   Calendar,
@@ -21,7 +22,8 @@ import {
   Dumbbell,
   Shirt,
   Wallet,
-  LogOut
+  LogOut,
+  X
 } from 'lucide-react';
 
 // Compatibilidad: ActiveTab = AppTab (tipos unificados para permisos)
@@ -45,7 +47,18 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenMoreMobile,
   offsetForSidePanel = false
 }) => {
-  const { currentUser, isOnlineConfigured, refreshAll, loading, clubConfig, allowedTabs, logout } = useClub();
+  const {
+    currentUser,
+    isOnlineConfigured,
+    refreshAll,
+    loading,
+    clubConfig,
+    allowedTabs,
+    logout,
+    rolSesion,
+    rolPrueba,
+    probarRol
+  } = useClub();
   const [isMiCuentaOpen, setIsMiCuentaOpen] = useState(false);
   const handleOpenPanel = onOpenSidePanel || onOpenMoreMobile;
 
@@ -120,6 +133,44 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Acciones Rápidas con Espaciado Consistente (relative: ancla de los menús desplegables) */}
         <div className="relative flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* Modo prueba de rol (solo admin): clic para volver a administrador */}
+          {rolPrueba && (
+            <button
+              type="button"
+              onClick={() => probarRol(null)}
+              title="Volver al rol de administrador"
+              aria-label="Salir del modo prueba de rol"
+              className="hidden sm:flex h-10 px-2.5 items-center gap-1.5 rounded-xl bg-amber-500/15 border border-amber-500/50 text-amber-300 hover:bg-amber-500/25 transition-colors active:scale-95"
+            >
+              <span className="text-[10px] font-black uppercase text-amber-400/80">Prueba</span>
+              <span className="text-xs font-bold">{ROLE_INFO[rolPrueba].shortLabel}</span>
+              <X className="w-3.5 h-3.5 shrink-0" />
+            </button>
+          )}
+
+          {/* Selector de rol de prueba (solo admin): cambia la vista sin cerrar sesión */}
+          {rolSesion === 'admin' && (
+            <label
+              className="hidden lg:flex h-10 items-center gap-1.5 px-2.5 rounded-xl bg-gray-900 border border-gray-700/80 text-gray-300 hover:border-gray-600 transition-colors cursor-pointer"
+              title="Probar la app con otro rol: solo cambia la vista (pestañas, permisos y datos visibles), no modifica usuarios"
+            >
+              <span className="text-[10px] font-black uppercase text-gray-500">Probar rol</span>
+              <select
+                className="bg-transparent text-xs font-bold text-gray-200 focus:outline-none cursor-pointer"
+                value={rolPrueba ?? ''}
+                aria-label="Probar la app con otro rol"
+                onChange={e => probarRol(e.target.value ? (e.target.value as RolUsuario) : null)}
+              >
+                <option value="">Administrador</option>
+                {ROLE_ORDER.filter(r => r !== 'admin').map(rol => (
+                  <option key={rol} value={rol}>
+                    {ROLE_INFO[rol].shortLabel}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
           {/* Botón Sincronizar (en móvil vive en el panel "Más") */}
           <button
             onClick={() => refreshAll()}

@@ -2,7 +2,7 @@ import { apiClient } from './apiClient';
 import { getSupabase } from './supabaseClient';
 import { FraseMotivadora } from '../types';
 
-const SHEET_NAME = 'frases_motivadora_365';
+const SHEET_NAME = 'frases_motivadoras_365';
 
 const mismoEquipo = (a?: string, b?: string): boolean =>
   (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();

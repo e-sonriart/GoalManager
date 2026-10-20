@@ -252,7 +252,7 @@ export interface SesionEntrenamiento {
   suspensionHasta?: string; // Reanudación ('YYYY-MM-DD' o 'YYYY-MM-DDTHH:MM'); vacío = definitivo
 }
 
-/** Frase motivadora activa de un equipo (tabla frases_motivadora_365; equipo '' = todo el club). */
+/** Frase motivadora activa de un equipo (tabla frases_motivadoras_365; equipo '' = todo el club). */
 export interface FraseMotivadora {
   id?: string;
   frase: string;

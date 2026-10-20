@@ -170,6 +170,13 @@ interface ClubContextType {
   jugadorActual: Jugador | null;
   refreshRespuestas: () => Promise<void>;
   responderSesion: (sesion: SesionEntrenamiento, estado: EstadoRespuestaSesion) => Promise<boolean>;
+  // Respuesta manual de un jugador (entrenador/admin, por si el jugador no abre la app)
+  marcarRespuestaSesion: (
+    sesion: SesionEntrenamiento,
+    jugadorId: string,
+    estado: EstadoRespuestaSesion | null,
+    nombreJugador?: string
+  ) => Promise<boolean>;
 
   // Respuestas de jugadores a partidos (¿voy / no voy?)
   partidoRespuestas: RespuestaPartido[];
@@ -1131,6 +1138,53 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     [jugadorActual, sesionRespuestas, addToast]
   );
 
+  // Marca o limpia la respuesta "voy / no voy" de un jugador por encima de él (entrenador/admin)
+  const marcarRespuestaSesion = useCallback(
+    async (
+      sesion: SesionEntrenamiento,
+      jugadorId: string,
+      estado: EstadoRespuestaSesion | null,
+      nombreJugador?: string
+    ): Promise<boolean> => {
+      try {
+        const existente = sesionRespuestas.find(r => r.sesionId === sesion.id && r.jugadorId === jugadorId);
+        if (!estado) {
+          if (existente) {
+            await sesionRespuestasService.delete(existente.id);
+            setSesionRespuestas(prev => prev.filter(r => r.id !== existente.id));
+          }
+        } else {
+          const row = {
+            sesionId: sesion.id,
+            jugadorId,
+            equipo: sesion.equipo || '',
+            estado,
+            actualizadoEn: new Date().toISOString()
+          };
+          if (existente) {
+            const updated = await sesionRespuestasService.update({ ...existente, ...row });
+            setSesionRespuestas(prev => prev.map(r => (r.id === updated.id ? updated : r)));
+          } else {
+            const created = await sesionRespuestasService.create(row);
+            setSesionRespuestas(prev => [...prev, created]);
+          }
+        }
+        addToast({
+          type: 'success',
+          title: 'Respuesta actualizada',
+          message: `${nombreJugador || 'Jugador'} · ${
+            estado === 'si' ? 'Va' : estado === 'no' ? 'No va' : 'Sin responder'
+          } · entreno del ${sesion.fecha}.`
+        });
+        return true;
+      } catch (err) {
+        addToast({ type: 'error', title: 'Error', message: 'No se pudo actualizar la respuesta.' });
+        return false;
+      }
+    },
+    [sesionRespuestas, addToast]
+  );
+
   const deleteSesion = useCallback(async (id: string): Promise<boolean> => {
     try {
       await sesionesService.delete(id);
@@ -1941,6 +1995,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     jugadorActual,
     refreshRespuestas,
     responderSesion,
+    marcarRespuestaSesion,
     partidoRespuestas,
     responderPartido,
 
@@ -1987,7 +2042,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     vestuario, vestuarioTipos, saveHojaVestuario, saveVestuarioTipo, deleteVestuarioTipo,
     saveVestuarioFechaLimite,
     saveCajaDefaults,
-    sesionRespuestas, jugadorActual, refreshRespuestas, responderSesion,
+    sesionRespuestas, jugadorActual, refreshRespuestas, responderSesion, marcarRespuestaSesion,
     partidoRespuestas, responderPartido,
     toggleConvocatoria, setConvocatoriaEstado, batchSetConvocatoriaEstado,
     saveAsistencia, deleteAsistencia, toggleAsistencia, batchMarkAsistencia, saveEstadistica, applyEventStats,

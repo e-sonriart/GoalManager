@@ -3,6 +3,7 @@ import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
 import { FraseDelDiaCard } from './FraseDelDiaCard';
 import { FraseDelDiaModal } from './FraseDelDiaModal';
+import { RespuestaVoyControl } from './RespuestaVoyControl';
 import { resolveVisitorShield } from '../utils/shieldPresets';
 import { isPartidoSuspendido } from '../utils/partidoEstado';
 import { fetchResumenClasificaciones } from '../utils/ffcvClasificacion';
@@ -82,6 +83,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     allowedTabs,
     sesionRespuestas,
     responderSesion,
+    marcarRespuestaSesion,
     jugadorActual,
     refreshRespuestas,
     partidoRespuestas,
@@ -801,17 +803,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                             </span>
                             <span className="truncate">{j.nombre}</span>
                           </span>
-                          <span
-                            className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                              e === 'si'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : e === 'no'
-                                ? 'bg-red-50 text-red-600 border-red-200'
-                                : 'bg-gray-50 text-gray-400 border-gray-200'
-                            }`}
-                          >
-                            {e === 'si' ? '✅ Va' : e === 'no' ? '❌ No va' : '⏳ Sin respuesta'}
-                          </span>
+                          {tipoRsvp === 'entrenamiento' && sesionRsvp ? (
+                            <RespuestaVoyControl
+                              estado={e}
+                              onChange={estado =>
+                                void marcarRespuestaSesion(sesionRsvp, j.id, estado, j.nombre)
+                              }
+                            />
+                          ) : (
+                            <span
+                              className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                e === 'si'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : e === 'no'
+                                    ? 'bg-red-50 text-red-600 border-red-200'
+                                    : 'bg-gray-50 text-gray-400 border-gray-200'
+                              }`}
+                            >
+                              {e === 'si' ? '✅ Va' : e === 'no' ? '❌ No va' : '⏳ Sin respuesta'}
+                            </span>
+                          )}
                         </div>
                       );
                     })}

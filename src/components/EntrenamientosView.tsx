@@ -4,6 +4,7 @@ import { EstadoAsistencia, SesionEntrenamiento, TipoFutbol } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import { SuspenderModal } from './SuspenderModal';
+import { RespuestaVoyControl } from './RespuestaVoyControl';
 import { SuspensionBadge, SuspensionBanner, textoHasta } from './SuspensionUI';
 import { infoSuspension, isItemSuspendido } from '../utils/partidoEstado';
 import {
@@ -46,6 +47,7 @@ export const EntrenamientosView: React.FC = () => {
     deleteSesion,
     sesionRespuestas,
     responderSesion,
+    marcarRespuestaSesion,
     jugadorActual,
     toggleAsistencia,
     batchMarkAsistencia,
@@ -83,6 +85,9 @@ export const EntrenamientosView: React.FC = () => {
   // Modal de asistencia ligado a una sesión
   const [isAsistenciaOpen, setIsAsistenciaOpen] = useState(false);
   const [asistenciaSesion, setAsistenciaSesion] = useState<SesionEntrenamiento | null>(null);
+
+  // Panel de respuestas "voy / no voy" por sesión (el entrenador/admin las marca por quien no abra la app)
+  const [respuestasSesionId, setRespuestasSesionId] = useState<string | null>(null);
 
   const openAddModal = () => {
     setEditingSesion(null);
@@ -520,6 +525,80 @@ export const EntrenamientosView: React.FC = () => {
           Asistencia
         </button>
       </div>
+
+      {/* Respuestas de la plantilla: el entrenador/admin puede marcarlas por quien no abra la app */}
+      {canManage && (
+        <div className="pt-1 border-t border-gray-100 space-y-2">
+          {(() => {
+            const plantilla = jugadores
+              .filter(j => (j.equipo || '').trim().toLowerCase() === (sesion.equipo || '').trim().toLowerCase())
+              .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+            const respuestasDeSesion = sesionRespuestas.filter(r => r.sesionId === sesion.id);
+            const cuentaSi = plantilla.filter(j =>
+              respuestasDeSesion.some(r => r.jugadorId === j.id && r.estado === 'si')
+            ).length;
+            const cuentaNo = plantilla.filter(j =>
+              respuestasDeSesion.some(r => r.jugadorId === j.id && r.estado === 'no')
+            ).length;
+            const abierto = respuestasSesionId === sesion.id;
+            return (
+              <>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Van {cuentaSi}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200">
+                      No van {cuentaNo}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">
+                      Sin responder {Math.max(plantilla.length - cuentaSi - cuentaNo, 0)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRespuestasSesionId(abierto ? null : sesion.id)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-600 transition-colors shrink-0"
+                  >
+                    <Users className="w-3.5 h-3.5 text-orange-500" />
+                    {abierto ? 'Ocultar respuestas' : 'Respuestas'}
+                  </button>
+                </div>
+                {abierto && (
+                  <div className="divide-y divide-gray-100 border border-gray-150 rounded-xl overflow-hidden">
+                    {plantilla.length === 0 ? (
+                      <p className="text-xs text-gray-400 p-3">
+                        No hay jugadores en {sesion.equipo || 'este equipo'}.
+                      </p>
+                    ) : (
+                      plantilla.map(j => {
+                        const resp = respuestasDeSesion.find(r => r.jugadorId === j.id);
+                        return (
+                          <div
+                            key={j.id}
+                            className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-orange-50/20"
+                          >
+                            <span className="flex items-center gap-2 min-w-0 text-xs font-semibold text-gray-800">
+                              <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-600 text-[10px] font-black flex items-center justify-center shrink-0">
+                                {j.dorsal || '-'}
+                              </span>
+                              <span className="truncate">{j.nombre}</span>
+                            </span>
+                            <RespuestaVoyControl
+                              estado={resp?.estado || ''}
+                              onChange={estado => void marcarRespuestaSesion(sesion, j.id, estado, j.nombre)}
+                            />
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      )}
 
       {sesion.temporada && (
         <div className="pt-1 text-[10px] text-gray-400 font-semibold uppercase tracking-wider border-t border-gray-100">

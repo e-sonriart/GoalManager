@@ -20,7 +20,8 @@ import {
   AppTab,
   VestuarioItem,
   VestuarioTipo,
-  FilaVestuario
+  FilaVestuario,
+  FraseMotivadora
 } from '../types';
 import { DEFAULT_CLUB_SHIELD } from '../utils/shieldPresets';
 import { jugadoresService } from '../services/jugadores';
@@ -29,6 +30,7 @@ import { categoriasService } from '../services/categorias';
 import { entrenadoresService } from '../services/entrenadores';
 import { partidosService } from '../services/partidos';
 import { sesionesService } from '../services/sesiones';
+import { frasesService } from '../services/frases';
 import { sesionRespuestasService } from '../services/sesionRespuestas';
 import { partidoRespuestasService } from '../services/partidoRespuestas';
 import { asistenciasService } from '../services/asistencias';
@@ -97,6 +99,8 @@ interface ClubContextType {
   estadisticas: Estadistica[];
   sesiones: SesionEntrenamiento[];
   visibleSesiones: SesionEntrenamiento[];
+  /** Frases motivadoras activas por equipo (equipo '' = todo el club). */
+  frases: FraseMotivadora[];
 
   // Identidad y Personalización del Club
   clubConfig: ClubConfig;
@@ -141,6 +145,12 @@ interface ClubContextType {
   // Operaciones Sesiones de Entrenamiento
   saveSesion: (sesion: Partial<SesionEntrenamiento>) => Promise<SesionEntrenamiento | null>;
   deleteSesion: (id: string) => Promise<boolean>;
+
+  // Operaciones Frase del día (entrenador/admin)
+  /** Activa (o renueva) la frase motivadora de un equipo; vacío = todo el club. */
+  activarFrase: (equipo: string, frase: string, creadaPor: string, categoria?: string) => Promise<FraseMotivadora | null>;
+  /** Elimina la frase activa para que deje de mostrarse. */
+  quitarFrase: (id: string) => Promise<boolean>;
 
   // Hoja de vestuario (tallas por prenda + nombre y número de camiseta)
   vestuario: VestuarioItem[];
@@ -279,6 +289,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [asistencias, setAsistencias] = useState<Asistencia[]>([]);
   const [estadisticas, setEstadisticas] = useState<Estadistica[]>([]);
   const [sesiones, setSesiones] = useState<SesionEntrenamiento[]>([]);
+  const [frases, setFrases] = useState<FraseMotivadora[]>([]);
   const [sesionRespuestas, setSesionRespuestas] = useState<RespuestaSesion[]>([]);
   const [partidoRespuestas, setPartidoRespuestas] = useState<RespuestaPartido[]>([]);
   const [vestuario, setVestuario] = useState<VestuarioItem[]>([]);
@@ -529,7 +540,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         usrs,
         vestItems,
         vestTipos,
-        remoteConfig
+        remoteConfig,
+        frs
       ] = await Promise.all([
         jugadoresService.getAll(),
         equiposService.getAll(),
@@ -544,7 +556,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         usuariosService.getAll(),
         vestuarioService.getAll(),
         vestuarioTiposService.getAll(),
-        clubConfigService.get()
+        clubConfigService.get(),
+        frasesService.getAll()
       ]);
 
       setJugadores(jugs);
@@ -559,6 +572,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setPartidoRespuestas(partResps);
       setVestuario(vestItems);
       setVestuarioTipos(vestTipos);
+      setFrases(frs);
       // Asegurar que jugadores y entrenadores tengan un equipo asignado de los registrados
       const defaultTeam = eqs[0]?.nombre || 'Club Naranja Principal';
       const sanitizedUsrs = usrs.map(u => {
@@ -1128,6 +1142,42 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return false;
     }
   }, [addToast]);
+
+  // Frase del día: una frase activa por equipo (equipo vacío = todo el club)
+  const activarFrase = useCallback(
+    async (equipo: string, frase: string, creadaPor: string, categoria = ''): Promise<FraseMotivadora | null> => {
+      try {
+        const guardada = await frasesService.activar(equipo, frase, creadaPor, categoria);
+        const clave = (equipo || '').trim().toLowerCase();
+        setFrases(prev => [...prev.filter(f => (f.equipo || '').trim().toLowerCase() !== clave), guardada]);
+        addToast({
+          type: 'success',
+          title: 'Frase activada',
+          message: equipo ? `Ya se muestra para ${equipo}.` : 'Ya se muestra en toda la app.'
+        });
+        return guardada;
+      } catch (err) {
+        addToast({ type: 'error', title: 'Error', message: 'No se pudo guardar la frase. ¿Se ejecutó frases_motivadoras.sql?' });
+        return null;
+      }
+    },
+    [addToast]
+  );
+
+  const quitarFrase = useCallback(
+    async (id: string): Promise<boolean> => {
+      try {
+        await frasesService.quitar(id);
+        setFrases(prev => prev.filter(f => String(f.id) !== String(id)));
+        addToast({ type: 'info', title: 'Frase desactivada', message: 'La tarjeta deja de mostrarse al equipo.' });
+        return true;
+      } catch (err) {
+        addToast({ type: 'error', title: 'Error', message: 'No se pudo quitar la frase. ¿Se ejecutó frases_motivadoras.sql?' });
+        return false;
+      }
+    },
+    [addToast]
+  );
 
   // Hoja de vestuario: tallas por prenda + nombre y número de camiseta.
   // Una talla vacía elimina la fila de esa prenda; las filas sin cambios no se tocan.
@@ -1840,6 +1890,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     estadisticas: visibleEstadisticas,
     sesiones: visibleSesiones,
     visibleSesiones,
+    frases,
 
     clubConfig,
     saveClubConfig,
@@ -1875,6 +1926,8 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     saveSesion,
     deleteSesion,
+    activarFrase,
+    quitarFrase,
 
     vestuario,
     vestuarioTipos,
@@ -1930,6 +1983,7 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     toasts, addToast, removeToast,
     saveJugador, deleteJugador, saveEquipo, deleteEquipo, saveCategoria, deleteCategoria,
     saveEntrenador, deleteEntrenador, savePartido, deletePartido, saveSesion, deleteSesion,
+    frases, activarFrase, quitarFrase,
     vestuario, vestuarioTipos, saveHojaVestuario, saveVestuarioTipo, deleteVestuarioTipo,
     saveVestuarioFechaLimite,
     saveCajaDefaults,

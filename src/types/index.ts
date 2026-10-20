@@ -252,6 +252,16 @@ export interface SesionEntrenamiento {
   suspensionHasta?: string; // Reanudación ('YYYY-MM-DD' o 'YYYY-MM-DDTHH:MM'); vacío = definitivo
 }
 
+/** Frase motivadora activa de un equipo (tabla frases_motivadora_365; equipo '' = todo el club). */
+export interface FraseMotivadora {
+  id?: string;
+  frase: string;
+  equipo?: string; // Nombre del equipo; vacío = todo el club
+  categoria?: string; // Categoría del equipo (columna creada en Supabase)
+  creadaEn?: string; // ISO timestamp
+  creadaPor?: string; // Nombre de quien la activó
+}
+
 export interface HistorialEstadisticaTemporada {
   temporada: string;
   equipo: string;

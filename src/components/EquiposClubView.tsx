@@ -3,6 +3,7 @@ import { useClub } from '../context/ClubContext';
 import { Equipo, Categoria, Entrenador, AnoEquipo, Jugador, PosicionJugador, Estadistica, HistorialEstadisticaTemporada, Partido } from '../types';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
+import { FraseDelDiaCard } from './FraseDelDiaCard';
 import { WhatsAppIcon } from './WhatsAppIcon';
 import { computeStandings, TeamStanding } from '../utils/standings';
 import { openStandingsPopup, openFfcvStandingsPopup } from '../utils/standingsPopup';
@@ -935,6 +936,10 @@ export const EquiposClubView: React.FC = () => {
                             <Users className="w-4 h-4 text-orange-600" />
                             Ver Plantilla ({numJugadores})
                           </button>
+                          {/* Frase del día del equipo (activada por su entrenador/admin) */}
+                          <div onClick={e => e.stopPropagation()}>
+                            <FraseDelDiaCard equipos={[eq.nombre]} />
+                          </div>
                         </div>
                       </div>
                     );

@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useClub } from '../context/ClubContext';
 import { TeamShield } from './TeamShield';
+import { FraseDelDiaCard } from './FraseDelDiaCard';
+import { FraseDelDiaModal } from './FraseDelDiaModal';
 import { resolveVisitorShield } from '../utils/shieldPresets';
 import { isPartidoSuspendido } from '../utils/partidoEstado';
 import { fetchResumenClasificaciones } from '../utils/ffcvClasificacion';
@@ -93,6 +95,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [equipoRsvp, setEquipoRsvp] = useState('');
   const [tipoRsvp, setTipoRsvp] = useState<'entrenamiento' | 'partido'>('entrenamiento');
+  const [isFraseOpen, setIsFraseOpen] = useState(false);
 
   const canManagePartidos = can('manage:partidos');
 
@@ -178,6 +181,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         : null,
     [partidosFuturos, equipoJugador]
   );
+
+  // Frase del día: equipos candidatos en prioridad (filtro > equipo propio > controlables)
+  const fraseEquipos = useMemo(() => {
+    const out: string[] = [];
+    const add = (v?: string) => {
+      const t = (v || '').trim();
+      if (t && !out.some(x => x.toLowerCase() === t.toLowerCase())) out.push(t);
+    };
+    if (equipoFiltro) add(equipoFiltro);
+    add(equipoJugador);
+    add(currentUser?.equipo);
+    if (currentUser?.rol !== 'jugador' && currentUser?.rol !== 'aficionado') {
+      equiposControlables.forEach(e => add(e));
+    }
+    return out;
+  }, [equipoFiltro, equipoJugador, currentUser, equiposControlables]);
+
+  const puedeGestionarFrase = currentUser?.rol === 'admin' || currentUser?.rol === 'entrenador';
 
   // La convocatoria es la que registra al equipo: hasta que exista, no se pregunta asistencia
   const convocatoriaHecha = (p: Partido): boolean => (p.convocados?.length ?? 0) > 0;
@@ -451,8 +472,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </div>
       </div>
 
+      {/* Frase del día (activada por el entrenador/admin) bajo el cuadro del club */}
+      <FraseDelDiaCard equipos={fraseEquipos} />
+
       {/* Acciones rápidas (fuera de la tarjeta del club) */}
       <div className="flex flex-wrap items-center justify-center gap-3">
+        {puedeGestionarFrase && (
+          <button
+            onClick={() => setIsFraseOpen(true)}
+            className="px-4 py-2.5 bg-white hover:bg-orange-50 text-gray-800 border border-orange-200 rounded-xl text-xs font-bold tracking-wide transition-all flex items-center gap-2 shadow-xs"
+          >
+            <Sparkles className="w-4 h-4 text-orange-500" />
+            Frase del día
+          </button>
+        )}
         {canGo('partidos') && (
           <button
             onClick={() => onNavigate('partidos')}
@@ -1230,6 +1263,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
         </div>
       </div>
+
+      {/* Modal de frase del día (entrenador/admin) */}
+      <FraseDelDiaModal isOpen={isFraseOpen} onClose={() => setIsFraseOpen(false)} />
     </div>
   );
 };

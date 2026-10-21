@@ -40,9 +40,14 @@ export const FraseDelDiaModal: React.FC<FraseDelDiaModalProps> = ({ isOpen, onCl
     return esAdmin ? ['', ...base] : base;
   }, [equiposControlables, equipos, esAdmin]);
 
+  // Solo cuenta la frase fijada: las del banco (fija=false) rotan cada día y no se editan aquí
   const fraseGuardada = useMemo(
     () =>
-      frases.find(f => (f.equipo || '').trim().toLowerCase() === equipoSel.trim().toLowerCase()) || null,
+      frases.find(
+        f =>
+          f.fija &&
+          (f.equipo || '').trim().toLowerCase() === equipoSel.trim().toLowerCase()
+      ) || null,
     [frases, equipoSel]
   );
 
@@ -178,7 +183,7 @@ export const FraseDelDiaModal: React.FC<FraseDelDiaModalProps> = ({ isOpen, onCl
         {fraseGuardada && (
           <div className="flex items-center justify-between gap-2 rounded-xl bg-gray-50 border border-gray-200 px-3 py-2.5 text-[11px] text-gray-600">
             <span className="min-w-0 truncate">
-              Frase activa guardada{fraseGuardada.creadaPor ? ` · ${fraseGuardada.creadaPor}` : ''}
+              Frase fijada{fraseGuardada.creadaPor ? ` · ${fraseGuardada.creadaPor}` : ''}
             </span>
             <button
               type="button"
@@ -195,9 +200,9 @@ export const FraseDelDiaModal: React.FC<FraseDelDiaModalProps> = ({ isOpen, onCl
         <div className="flex items-start gap-2 rounded-xl bg-orange-50 border border-orange-200 px-3 py-2.5 text-[11px] text-orange-800">
           <Sparkles className="w-3.5 h-3.5 shrink-0 mt-0.5" />
           <span>
-            Al activarla aparece debajo del cuadro del equipo con el título{' '}
-            <strong>FRASE DEL DIA</strong>. Con "Notificar" se envía también por push al equipo
-            seleccionado.
+            Si no hay frase fijada, la tarjeta <strong>FRASE DEL DIA</strong> muestra cada día una
+            frase al azar del banco y la cambia sola. «Fijar» la deja quieta hasta que la quites.
+            Con «Notificar» se envía por push al equipo seleccionado.
           </span>
         </div>
 
@@ -226,7 +231,7 @@ export const FraseDelDiaModal: React.FC<FraseDelDiaModalProps> = ({ isOpen, onCl
             className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            {guardando ? 'Guardando…' : 'Activar'}
+            {guardando ? 'Guardando…' : 'Fijar'}
           </button>
         </div>
       </div>

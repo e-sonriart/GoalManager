@@ -252,7 +252,7 @@ export interface SesionEntrenamiento {
   suspensionHasta?: string; // Reanudación ('YYYY-MM-DD' o 'YYYY-MM-DDTHH:MM'); vacío = definitivo
 }
 
-/** Frase motivadora activa de un equipo (tabla frases_motivadoras_365; equipo '' = todo el club). */
+/** Frase motivadora (tabla frases_motivadoras_365; equipo '' = todo el club). fija = elegida a mano; sin fija rota cada día. */
 export interface FraseMotivadora {
   id?: string;
   frase: string;
@@ -260,6 +260,7 @@ export interface FraseMotivadora {
   categoria?: string; // Categoría del equipo (columna creada en Supabase)
   creadaEn?: string; // ISO timestamp
   creadaPor?: string; // Nombre de quien la activó
+  fija?: boolean; // true = frase fijada por entrenador/admin; false = banco que rota cada día
 }
 
 export interface HistorialEstadisticaTemporada {

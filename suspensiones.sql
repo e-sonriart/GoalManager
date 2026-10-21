@@ -4,6 +4,7 @@
 -- - suspensionMotivo: mensaje que ven los jugadores (ej: "El campo está inundado")
 -- - suspensionHasta: fecha/hora de reanudación; vacío = suspensión definitiva
 
+alter table partidos add column if not exists "suspendido" boolean default false;
 alter table partidos add column if not exists "suspensionMotivo" text default '';
 alter table partidos add column if not exists "suspensionHasta" text default '';
 

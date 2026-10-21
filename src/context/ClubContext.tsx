@@ -1203,11 +1203,17 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       try {
         const guardada = await frasesService.activar(equipo, frase, creadaPor, categoria);
         const clave = (equipo || '').trim().toLowerCase();
-        setFrases(prev => [...prev.filter(f => (f.equipo || '').trim().toLowerCase() !== clave), guardada]);
+        // Solo se sustituye la frase fijada de ese equipo; el banco diario no se toca
+        setFrases(prev => [
+          ...prev.filter(f => !(((f.equipo || '').trim().toLowerCase() === clave) && f.fija)),
+          guardada
+        ]);
         addToast({
           type: 'success',
           title: 'Frase activada',
-          message: equipo ? `Ya se muestra para ${equipo}.` : 'Ya se muestra en toda la app.'
+          message: equipo
+            ? `Fijada para ${equipo}; el banco diario sigue rotando hasta que la cambies.`
+            : 'Fijada para toda la app; el banco diario sigue rotando hasta que la cambies.'
         });
         return guardada;
       } catch (err) {
@@ -1221,16 +1227,25 @@ export const ClubProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const quitarFrase = useCallback(
     async (id: string): Promise<boolean> => {
       try {
+        const fila = frases.find(f => String(f.id) === String(id));
+        if (fila && !fila.fija) {
+          addToast({
+            type: 'info',
+            title: 'Frase del banco',
+            message: 'Esta frase rota cada día sola: no hace falta quitarla.'
+          });
+          return false;
+        }
         await frasesService.quitar(id);
         setFrases(prev => prev.filter(f => String(f.id) !== String(id)));
-        addToast({ type: 'info', title: 'Frase desactivada', message: 'La tarjeta deja de mostrarse al equipo.' });
+        addToast({ type: 'info', title: 'Frase desactivada', message: 'La tarjeta vuelve al banco diario.' });
         return true;
       } catch (err) {
         addToast({ type: 'error', title: 'Error', message: 'No se pudo quitar la frase. ¿Se ejecutó frases_motivadoras.sql?' });
         return false;
       }
     },
-    [addToast]
+    [frases, addToast]
   );
 
   // Hoja de vestuario: tallas por prenda + nombre y número de camiseta.

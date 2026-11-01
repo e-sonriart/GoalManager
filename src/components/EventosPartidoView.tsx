@@ -261,6 +261,25 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     [suplentes, expelledIds]
   );
 
+  // Bloques de convocados para los pickers de eventos (titulares primero, luego suplentes)
+  const gruposConvocados = useMemo(() => {
+    const grupos: Array<{ titulo: string; jugadores: typeof titulares }> = [];
+    if (disponiblesTitulares.length) grupos.push({ titulo: 'Titulares', jugadores: disponiblesTitulares });
+    if (disponiblesSuplentes.length) grupos.push({ titulo: 'Suplentes', jugadores: disponiblesSuplentes });
+    return grupos;
+  }, [disponiblesTitulares, disponiblesSuplentes]);
+
+  // En gol/asistencia/tarjeta se puede elegir a cualquier convocado;
+  // en "cambio" el que sale son titulares y el que entra suplentes.
+  const gruposPicker = useMemo(() => {
+    if (picker === 'cambio') {
+      return [{ titulo: '', jugadores: cambioOutId ? disponiblesSuplentes : disponiblesTitulares }];
+    }
+    return gruposConvocados;
+  }, [picker, cambioOutId, disponiblesSuplentes, disponiblesTitulares, gruposConvocados]);
+
+  const totalPicker = gruposPicker.reduce((n, g) => n + g.jugadores.length, 0);
+
   const { gl: golLocal, gv: golVisitante } = useMemo(
     () => scoreFromEvents(events, esClubLocal, baseLocal, baseVisit),
     [events, esClubLocal, baseLocal, baseVisit]
@@ -1346,29 +1365,39 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
             )}
 
             <div className="overflow-y-auto divide-y divide-gray-100 flex-1 min-h-0">
-              {!ownGoalMode && disponiblesTitulares.map(j => {
-                const expulsado = expelledIds.has(j.id);
-                return (
-                  <button
-                    key={j.id}
-                    type="button"
-                    onClick={() => handlePick(j.id)}
-                    disabled={expulsado}
-                    className="w-full p-3.5 flex items-center gap-3 text-left hover:bg-orange-50/60 active:bg-orange-100 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
-                  >
-                    <span className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-xs font-black font-athletic ${
-                      expulsado ? 'bg-red-200 text-red-700' : 'bg-emerald-600 text-white'
-                    }`}>
-                      #{j.dorsal || '-'}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-bold text-sm text-gray-900 truncate">{j.nombre}</span>
-                      <span className="block text-[11px] text-gray-400 truncate">{j.posicion}</span>
-                    </span>
-                  </button>
-                );
-              })}
-              {!ownGoalMode && disponiblesTitulares.length === 0 && (
+              {!ownGoalMode &&
+                gruposConvocados.map(grupo => (
+                  <React.Fragment key={grupo.titulo}>
+                    {gruposConvocados.length > 1 && (
+                      <p className="px-3.5 pt-2.5 pb-1 bg-gray-50 text-[10px] font-black uppercase tracking-wider text-gray-400">
+                        {grupo.titulo} ({grupo.jugadores.length})
+                      </p>
+                    )}
+                    {grupo.jugadores.map(j => {
+                      const expulsado = expelledIds.has(j.id);
+                      return (
+                        <button
+                          key={j.id}
+                          type="button"
+                          onClick={() => handlePick(j.id)}
+                          disabled={expulsado}
+                          className="w-full p-3.5 flex items-center gap-3 text-left hover:bg-orange-50/60 active:bg-orange-100 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+                        >
+                          <span className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-xs font-black font-athletic ${
+                            expulsado ? 'bg-red-200 text-red-700' : 'bg-emerald-600 text-white'
+                          }`}>
+                            #{j.dorsal || '-'}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-bold text-sm text-gray-900 truncate">{j.nombre}</span>
+                            <span className="block text-[11px] text-gray-400 truncate">{j.posicion}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+              {!ownGoalMode && gruposConvocados.length === 0 && (
                 <p className="p-6 text-center text-sm text-gray-400">No hay jugadores disponibles.</p>
               )}
             </div>
@@ -1491,44 +1520,48 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
             )}
 
             <div className="overflow-y-auto divide-y divide-gray-100 flex-1 min-h-0">
-              {(picker === 'cambio' && cambioOutId
-                ? disponiblesSuplentes
-                : disponiblesTitulares
-              ).map(j => {
-                const expulsado = expelledIds.has(j.id);
-                return (
-                  <button
-                    key={j.id}
-                    type="button"
-                    onClick={() => handlePick(j.id)}
-                    disabled={expulsado}
-                    className="w-full p-3.5 flex items-center gap-3 text-left hover:bg-orange-50/60 active:bg-orange-100 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
-                  >
-                    <span className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-xs font-black font-athletic ${
-                      expulsado ? 'bg-red-200 text-red-700' : 'bg-gray-900 text-white'
-                    }`}>
-                      #{j.dorsal || '-'}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-bold text-sm text-gray-900 truncate">
-                        {j.nombre}
-                        {expulsado && (
-                          <span className="ml-1.5 text-[10px] text-red-600 font-black">🟥 EXP.</span>
+              {gruposPicker.map(grupo => (
+                <React.Fragment key={grupo.titulo || 'grupo'}>
+                  {gruposPicker.length > 1 && (
+                    <p className="px-3.5 pt-2.5 pb-1 bg-gray-50 text-[10px] font-black uppercase tracking-wider text-gray-400">
+                      {grupo.titulo} ({grupo.jugadores.length})
+                    </p>
+                  )}
+                  {grupo.jugadores.map(j => {
+                    const expulsado = expelledIds.has(j.id);
+                    return (
+                      <button
+                        key={j.id}
+                        type="button"
+                        onClick={() => handlePick(j.id)}
+                        disabled={expulsado}
+                        className="w-full p-3.5 flex items-center gap-3 text-left hover:bg-orange-50/60 active:bg-orange-100 transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+                      >
+                        <span className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-xs font-black font-athletic ${
+                          expulsado ? 'bg-red-200 text-red-700' : 'bg-gray-900 text-white'
+                        }`}>
+                          #{j.dorsal || '-'}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-bold text-sm text-gray-900 truncate">
+                            {j.nombre}
+                            {expulsado && (
+                              <span className="ml-1.5 text-[10px] text-red-600 font-black">🟥 EXP.</span>
+                            )}
+                          </span>
+                          <span className="block text-[11px] text-gray-400 truncate">{j.posicion}</span>
+                        </span>
+                        {!expulsado && (
+                          <span className="shrink-0 text-gray-300">
+                            <Play className="w-4 h-4" />
+                          </span>
                         )}
-                      </span>
-                      <span className="block text-[11px] text-gray-400 truncate">{j.posicion}</span>
-                    </span>
-                    {!expulsado && (
-                      <span className="shrink-0 text-gray-300">
-                        <Play className="w-4 h-4" />
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-              {(picker === 'cambio' && cambioOutId
-                ? disponiblesSuplentes.length === 0
-                : disponiblesTitulares.length === 0) && (
+                      </button>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+              {totalPicker === 0 && (
                 <p className="p-6 text-center text-sm text-gray-400">No hay jugadores disponibles.</p>
               )}
             </div>

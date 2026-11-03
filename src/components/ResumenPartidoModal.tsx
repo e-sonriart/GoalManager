@@ -127,6 +127,7 @@ export const ResumenPartidoModal: React.FC<ResumenPartidoModalProps> = ({
                           : side === 'local'
                             ? 'Local'
                             : 'Visitante'}
+                        {event.extra ? ` · ${event.extra}` : ''}
                         {event.hora ? ` · ${event.hora}` : ''}
                       </span>
                     </span>

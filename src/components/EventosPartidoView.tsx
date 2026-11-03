@@ -44,7 +44,49 @@ interface EventosPartidoViewProps {
   onBack?: () => void;
 }
 
-type TipoRapido = 'gol' | 'gol_contra' | 'asistencia' | 'tarjeta' | 'cambio';
+type TipoRapido = 'gol' | 'gol_tipo' | 'gol_contra' | 'asistencia' | 'tarjeta' | 'cambio';
+
+/** Cómo se ha marcado el gol */
+type GolUso = 'cabeza' | 'pie' | 'otro';
+/** Jugada que precede al gol */
+type GolTras = 'jugada' | 'corner' | 'falta' | 'penalti';
+
+const GOL_USO_LABEL: Record<GolUso, string> = {
+  cabeza: 'Cabeza',
+  pie: 'Pie',
+  otro: 'Otro'
+};
+
+const GOL_TRAS_LABEL: Record<GolTras, string> = {
+  jugada: 'Jugada',
+  corner: 'Córner',
+  falta: 'Falta',
+  penalti: 'Penalti'
+};
+
+const GOL_USOS: GolUso[] = ['cabeza', 'pie', 'otro'];
+const GOL_TRAS_OPCIONES: GolTras[] = ['jugada', 'corner', 'falta', 'penalti'];
+
+/** Detalle legible que se guarda en el evento: «Cabeza · tras córner» */
+const detalleGol = (uso: GolUso, tras: GolTras): string =>
+  `${GOL_USO_LABEL[uso]} · tras ${GOL_TRAS_LABEL[tras].toLowerCase()}`;
+
+/** Reconstruye uso/tras desde el detalle guardado (eventos antiguos → pie/jugada) */
+const parseDetalleGol = (extra?: string): { uso: GolUso; tras: GolTras } => {
+  const t = (extra || '').toLowerCase();
+  const uso: GolUso = t.includes('cabeza') ? 'cabeza' : t.includes('otro') ? 'otro' : 'pie';
+  const tras: GolTras = t.includes('córner') || t.includes('corner')
+    ? 'corner'
+    : t.includes('penalti')
+      ? 'penalti'
+      : t.includes('falta')
+        ? 'falta'
+        : 'jugada';
+  return { uso, tras };
+};
+
+/** Los goles a favor en propia puerta guardan su propio detalle en extra */
+const esPropiaPuerta = (extra?: string): boolean => /propia puerta/i.test(extra || '');
 
 const EVENT_META: Record<TipoEvento, { label: string; chip: string; dot: string }> = {
   gol: { label: 'Gol', chip: 'bg-emerald-100 text-emerald-800 border-emerald-300', dot: 'bg-emerald-500' },
@@ -97,6 +139,8 @@ interface AddDraft {
   extra: string;
   dorsalRival: string;
   texto: string;
+  golUso: GolUso;
+  golTras: GolTras;
 }
 
 export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
@@ -113,6 +157,15 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
   const [clockLoadedId, setClockLoadedId] = useState<string | null>(null);
   const [tickNow, setTickNow] = useState(() => Date.now());
   const [picker, setPicker] = useState<TipoRapido | null>(null);
+  /** Gol pendiente de elegir cómo fue (uso/tras) antes de guardarlo */
+  const [golDraft, setGolDraft] = useState<{
+    jugadorId: string;
+    uso: GolUso;
+    tras: GolTras;
+    minuto: string;
+  } | null>(null);
+  /** Minuto del gol para que la asistencia encadenada se registre en el mismo minuto */
+  const [asistenciaMinuto, setAsistenciaMinuto] = useState<string>('');
   const [notaTexto, setNotaTexto] = useState('');
   const [showNota, setShowNota] = useState(false);
   const [cambioOutId, setCambioOutId] = useState<string | null>(null);
@@ -125,7 +178,18 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     tipo: TipoEvento;
     extra: string;
     jugadorId: string;
-  }>({ minuto: '0', hora: '', texto: '', tipo: 'nota', extra: '', jugadorId: '' });
+    golUso: GolUso;
+    golTras: GolTras;
+  }>({
+    minuto: '0',
+    hora: '',
+    texto: '',
+    tipo: 'nota',
+    extra: '',
+    jugadorId: '',
+    golUso: 'pie',
+    golTras: 'jugada'
+  });
   /** Modal «Añadir evento» con minuto manual (modificar el acta) */
   const [addOpen, setAddOpen] = useState(false);
   const [addDraft, setAddDraft] = useState<AddDraft>({
@@ -135,7 +199,9 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     jugadorId: '',
     extra: 'amarilla',
     dorsalRival: '',
-    texto: ''
+    texto: '',
+    golUso: 'pie',
+    golTras: 'jugada'
   });
   const [baseLocal, setBaseLocal] = useState(0);
   const [baseVisit, setBaseVisit] = useState(0);
@@ -621,6 +687,8 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     setTarjetaColor('amarilla');
     setRivalDorsal('');
     setOwnGoalMode(false);
+    setGolDraft(null);
+    setAsistenciaMinuto('');
   };
 
   const handleTarjeta = (j: { id: string; nombre: string; dorsal: number | string }) => {
@@ -668,13 +736,25 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
         closePicker();
         return;
       }
-      pushEvent(buildEvent('gol', `Gol de ${dorsal}${nombre}`, undefined, j.id));
-      // Justo después del gol de nuestro equipo se encadena la asistencia
-      setPicker('asistencia');
+      setGolDraft({
+        jugadorId: j.id,
+        uso: 'pie',
+        tras: 'jugada',
+        minuto: fase === 'pre' ? '0' : minuteLabel
+      });
+      setPicker('gol_tipo');
       return;
     }
     if (picker === 'asistencia') {
-      pushEvent(buildEvent('asistencia', `Asistencia de ${dorsal}${nombre}`, undefined, j.id));
+      pushEvent(
+        buildEvent(
+          'asistencia',
+          `Asistencia de ${dorsal}${nombre}`,
+          undefined,
+          j.id,
+          asistenciaMinuto || undefined
+        )
+      );
       closePicker();
       return;
     }
@@ -701,6 +781,29 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     }
   };
 
+  /** Guarda el gol con su tipo (uso/tras) y encadena la asistencia en el mismo minuto */
+  const guardarGol = () => {
+    if (!golDraft) return;
+    const j = jugadores.find(x => x.id === golDraft.jugadorId);
+    if (!j) {
+      closePicker();
+      return;
+    }
+    const dorsal = j.dorsal ? `#${j.dorsal} ` : '';
+    pushEvent(
+      buildEvent(
+        'gol',
+        `Gol de ${dorsal}${j.nombre}`,
+        detalleGol(golDraft.uso, golDraft.tras),
+        j.id,
+        golDraft.minuto
+      )
+    );
+    setAsistenciaMinuto(golDraft.minuto);
+    setGolDraft(null);
+    setPicker('asistencia');
+  };
+
   /** Gol en contra: solo dorsal del equipo contrario (número) */
   const submitGolContra = () => {
     const d = rivalDorsal.trim();
@@ -723,6 +826,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
   };
 
   const openEdit = (ev: MatchEvent) => {
+    const detalle = parseDetalleGol(ev.extra);
     setEditId(ev.id);
     setEditDraft({
       minuto: ev.minuto,
@@ -730,7 +834,9 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
       texto: ev.texto,
       tipo: ev.tipo,
       extra: ev.extra || '',
-      jugadorId: ev.jugadorId || ''
+      jugadorId: ev.jugadorId || '',
+      golUso: detalle.uso,
+      golTras: detalle.tras
     });
   };
 
@@ -752,9 +858,13 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                   ? editDraft.extra === 'roja'
                     ? 'roja'
                     : 'amarilla'
-                  : editDraft.tipo === 'gol_contra' || editDraft.tipo === 'gol' || editDraft.tipo === 'fase'
-                    ? e.extra
-                    : undefined
+                  : editDraft.tipo === 'gol'
+                    ? esPropiaPuerta(e.extra)
+                      ? e.extra
+                      : detalleGol(editDraft.golUso, editDraft.golTras)
+                    : editDraft.tipo === 'gol_contra' || editDraft.tipo === 'fase'
+                      ? e.extra
+                      : undefined
             }
           : e
       )
@@ -815,7 +925,9 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
       jugadorId: '',
       extra: 'amarilla',
       dorsalRival: '',
-      texto: ''
+      texto: '',
+      golUso: 'pie',
+      golTras: 'jugada'
     });
     setAddOpen(true);
   };
@@ -835,9 +947,11 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
           ? addDraft.extra === 'roja'
             ? 'roja'
             : 'amarilla'
-          : addDraft.tipo === 'gol_contra' && addDraft.dorsalRival.trim()
-            ? `rival #${addDraft.dorsalRival.trim()}`
-            : undefined,
+          : addDraft.tipo === 'gol'
+            ? detalleGol(addDraft.golUso, addDraft.golTras)
+            : addDraft.tipo === 'gol_contra' && addDraft.dorsalRival.trim()
+              ? `rival #${addDraft.dorsalRival.trim()}`
+              : undefined,
       jugadorId: addDraft.jugadorId || undefined
     };
     const prevEvents = clockRef.current.events;
@@ -1406,6 +1520,92 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
         </div>
       )}
 
+      {/* ===== Picker TIPO DE GOL: uso (cabeza/pie/otro) y tras (jugada/córner/falta/penalti) ===== */}
+      {picker === 'gol_tipo' && golDraft && (() => {
+        const jugador = jugadores.find(x => x.id === golDraft.jugadorId);
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/55 p-0 sm:p-4"
+            onClick={closePicker}
+          >
+            <div
+              className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="p-4 border-b border-gray-150 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="font-bold text-sm text-gray-900">¿Cómo fue el gol?</h3>
+                  <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                    Minuto {golDraft.minuto}′
+                    {jugador ? ` · #${jugador.dorsal || '-'} ${jugador.nombre}` : ''}
+                  </p>
+                </div>
+                <button onClick={closePicker} className="text-gray-400 hover:text-gray-600 text-xs font-bold px-2 py-1">
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">
+                    Usado
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {GOL_USOS.map(uso => (
+                      <button
+                        key={uso}
+                        type="button"
+                        onClick={() => setGolDraft(prev => (prev ? { ...prev, uso } : prev))}
+                        className={`py-2.5 rounded-xl text-xs font-bold border-2 transition-all ${
+                          golDraft.uso === uso
+                            ? 'bg-emerald-100 border-emerald-400 text-emerald-900'
+                            : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {GOL_USO_LABEL[uso]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">
+                    Tras
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {GOL_TRAS_OPCIONES.map(tras => (
+                      <button
+                        key={tras}
+                        type="button"
+                        onClick={() => setGolDraft(prev => (prev ? { ...prev, tras } : prev))}
+                        className={`py-2.5 rounded-xl text-xs font-bold border-2 transition-all ${
+                          golDraft.tras === tras
+                            ? 'bg-orange-100 border-orange-400 text-orange-900'
+                            : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {GOL_TRAS_LABEL[tras]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={guardarGol}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-black"
+                >
+                  Guardar gol y añadir asistencia
+                </button>
+                <p className="text-[10px] text-gray-400 text-center">
+                  Después podrás elegir quién da la asistencia o pulsar «Sin asistencia».
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ===== Picker GOL EN CONTRA: solo dorsal rival ===== */}
       {picker === 'gol_contra' && (
         <div
@@ -1682,6 +1882,43 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                 </div>
               </div>
 
+              {editDraft.tipo === 'gol' && !esPropiaPuerta(editDraft.extra) && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Usado</label>
+                    <select
+                      value={editDraft.golUso}
+                      onChange={e =>
+                        setEditDraft(prev => ({ ...prev, golUso: e.target.value as GolUso }))
+                      }
+                      className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    >
+                      {GOL_USOS.map(uso => (
+                        <option key={uso} value={uso}>
+                          {GOL_USO_LABEL[uso]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tras</label>
+                    <select
+                      value={editDraft.golTras}
+                      onChange={e =>
+                        setEditDraft(prev => ({ ...prev, golTras: e.target.value as GolTras }))
+                      }
+                      className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    >
+                      {GOL_TRAS_OPCIONES.map(tras => (
+                        <option key={tras} value={tras}>
+                          {GOL_TRAS_LABEL[tras]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
               {editDraft.tipo === 'tarjeta' && (
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Color</label>
@@ -1859,6 +2096,39 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                   <div />
                 )}
               </div>
+
+              {addDraft.tipo === 'gol' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Usado</label>
+                    <select
+                      value={addDraft.golUso}
+                      onChange={e => setAddField('golUso', e.target.value)}
+                      className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    >
+                      {GOL_USOS.map(uso => (
+                        <option key={uso} value={uso}>
+                          {GOL_USO_LABEL[uso]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tras</label>
+                    <select
+                      value={addDraft.golTras}
+                      onChange={e => setAddField('golTras', e.target.value)}
+                      className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                    >
+                      {GOL_TRAS_OPCIONES.map(tras => (
+                        <option key={tras} value={tras}>
+                          {GOL_TRAS_LABEL[tras]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
 
               {addDraft.tipo === 'tarjeta' && (
                 <div>

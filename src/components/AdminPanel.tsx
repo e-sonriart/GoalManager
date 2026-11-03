@@ -1007,7 +1007,7 @@ export const AdminPanel: React.FC = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-xl text-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
                     />
                     <p className="text-[10px] text-gray-400 mt-1">
-                      Se usa para rellenar automáticamente el campo de los partidos en casa.
+                      Se usa para rellenar automáticamente el campo de los partidos en casa y el lugar de los entrenamientos.
                     </p>
                   </div>
                 </div>

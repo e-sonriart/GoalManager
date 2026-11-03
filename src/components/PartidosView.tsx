@@ -1264,8 +1264,8 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
                 type="button"
                 onClick={() => {
                   setFormCondicion('casa');
-                  // En casa el campo se rellena con La Canaleta (editable a mano después)
-                  setFormCampo(CAMPO_CASA_POR_DEFECTO);
+                  // En casa el campo es la ubicación del club (editable), con La Canaleta de respaldo
+                  setFormCampo(clubConfig?.ubicacion?.trim() || CAMPO_CASA_POR_DEFECTO);
                 }}
                 className={`p-3 rounded-2xl border text-left transition-all flex items-center gap-3 ${
                   formCondicion === 'casa'

@@ -107,7 +107,7 @@ export const EntrenamientosView: React.FC = () => {
     setFormFecha(toISODate(nextDate));
     setFormHora('18:00');
     setFormHoraFin('');
-    setFormLugar(LUGAR_ENTRENAMIENTO_POR_DEFECTO);
+    setFormLugar(clubConfig?.ubicacion?.trim() || LUGAR_ENTRENAMIENTO_POR_DEFECTO);
     setFormTitulo('');
     setFormObjetivo('');
     setFormDescripcion('');

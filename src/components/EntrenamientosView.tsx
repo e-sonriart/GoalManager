@@ -36,6 +36,9 @@ const formatFecha = (fechaStr: string): string => {
 const toISODate = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+/** Ubicación que se rellena por defecto al crear un entrenamiento (editable). */
+const LUGAR_ENTRENAMIENTO_POR_DEFECTO = 'La Canaleta';
+
 export const EntrenamientosView: React.FC = () => {
   const {
     sesiones,
@@ -104,7 +107,7 @@ export const EntrenamientosView: React.FC = () => {
     setFormFecha(toISODate(nextDate));
     setFormHora('18:00');
     setFormHoraFin('');
-    setFormLugar('');
+    setFormLugar(LUGAR_ENTRENAMIENTO_POR_DEFECTO);
     setFormTitulo('');
     setFormObjetivo('');
     setFormDescripcion('');
@@ -883,7 +886,7 @@ export const EntrenamientosView: React.FC = () => {
                 <MapPin className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
                 <input
                   type="text"
-                  placeholder="Ej: Campo Municipal 1"
+                  placeholder="Ej: La Canaleta"
                   value={formLugar}
                   onChange={e => setFormLugar(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"

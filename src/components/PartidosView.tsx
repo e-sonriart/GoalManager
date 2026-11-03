@@ -5,6 +5,7 @@ import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import { resolveVisitorShield, DEFAULT_VISITOR_SHIELD } from '../utils/shieldPresets';
 import { MatchHighlights } from './MatchHighlights';
+import { ResumenPartidoModal } from './ResumenPartidoModal';
 import { eventsForPartido } from '../utils/matchHighlights';
 import { useRemoteClocks } from '../hooks/useRemoteClocks';
 import {
@@ -27,6 +28,7 @@ import {
   Play,
   Ban,
   FileDown,
+  ChevronRight,
   ExternalLink
 } from 'lucide-react';
 import { ActiveTab } from './Navbar';
@@ -101,6 +103,9 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
 
   // Ficha ampliada del partido (escudos, fecha/hora y ubicación en grande)
   const [partidoFicha, setPartidoFicha] = useState<Partido | null>(null);
+
+  // Resumen completo del partido (horas de inicio/fin, goles y asistencias)
+  const [resumenPartido, setResumenPartido] = useState<Partido | null>(null);
 
   // Catálogo FFCV (ubicaciones con coordenadas/dirección para el link de Maps)
   const [ffcvRows, setFfcvRows] = useState<FfcvEquipo[]>([]);
@@ -355,6 +360,22 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
 
   const equiposF8 = useMemo(() => agruparPorEquipos('F8', filteredPartidos), [equipos, categorias, filteredPartidos]);
   const equiposF11 = useMemo(() => agruparPorEquipos('F11', filteredPartidos), [equipos, categorias, filteredPartidos]);
+
+  // Último partido jugado: el más reciente entre los finalizados (respeta equipo y categoría)
+  const ultimoPartidoJugado = useMemo(() => {
+    const base = partidos.filter(
+      p =>
+        Boolean(p.finalizado) &&
+        (!equipoFiltro || clubTeamName(p) === equipoFiltro) &&
+        (!filterCategoria || p.categoria === filterCategoria)
+    );
+    return (
+      [...base]
+        .sort((a, b) =>
+          `${b.fecha || ''} ${b.hora || ''}`.localeCompare(`${a.fecha || ''} ${a.hora || ''}`)
+        )[0] || null
+    );
+  }, [partidos, equipoFiltro, filterCategoria, equipos]);
 
   // ===== Exportar a PDF: las listas tal y como están en pantalla =====
   const [pdfMenuAbierto, setPdfMenuAbierto] = useState(false);
@@ -646,8 +667,14 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
           </div>
         </div>
 
-        {/* Resumen del partido bajo el resultado (solo goles y tarjetas por bando) */}
-        <MatchHighlights events={eventsForPartido(partido, remoteClocks)} partido={partido} tone="dark" standalone />
+        {/* Resumen del partido bajo el resultado (goles y tarjetas por bando) */}
+        <MatchHighlights
+          events={eventsForPartido(partido, remoteClocks)}
+          partido={partido}
+          tone="dark"
+          standalone
+          onOpen={() => setResumenPartido(partido)}
+        />
 
         {/* RSVP: ¿Vas al partido? (jugador de este equipo, partido aún no jugado) */}
         {puedeResponderPartido(partido) && (
@@ -808,6 +835,89 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Último partido jugado: siempre lo primero del calendario */}
+      {ultimoPartidoJugado && (() => {
+        const p = ultimoPartidoJugado;
+        const clubTeam = clubTeamName(p);
+        const horaStr =
+          p.hora ||
+          (!isNaN(new Date(p.fecha).getTime())
+            ? new Date(p.fecha).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+            : '');
+        const conResultado = p.golesLocal !== '' && p.golesLocal !== undefined;
+        return (
+          <div className="bg-gray-950 text-white rounded-2xl border border-orange-500/50 shadow-lg shadow-orange-500/10 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-orange-400">
+                <Star className="w-3 h-3 fill-orange-400" />
+                Último partido jugado
+              </span>
+              <span className="text-[10px] font-semibold text-gray-400 capitalize">
+                {formatFechaLarga(p.fecha)}
+                {horaStr ? ` · ${horaStr}` : ''}
+                {p.categoria ? ` · ${p.categoria}` : ''}
+              </span>
+            </div>
+
+            <div className="px-4 py-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0 flex items-center justify-end gap-2 text-right">
+                <span className="min-w-0 truncate font-bold text-sm font-athletic tracking-wide" title={p.local}>
+                  {p.local}
+                </span>
+                <div className={`w-10 h-10 shrink-0 rounded-xl bg-white/10 p-1 flex items-center justify-center border ${
+                  p.local === clubTeam ? 'border-orange-500 ring-1 ring-orange-500/40' : 'border-white/20'
+                }`}>
+                  <TeamShield
+                    escudoUrl={p.local === clubTeam ? getTeamEscudo(p.local) : resolveVisitorShield(p)}
+                    teamName={p.local}
+                    size="sm"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+              </div>
+
+              <div className="shrink-0 text-center min-w-[64px]">
+                {conResultado ? (
+                  <div className="text-2xl font-black font-athletic text-orange-400 tabular-nums tracking-wider whitespace-nowrap">
+                    {p.golesLocal} - {p.golesVisitante}
+                  </div>
+                ) : (
+                  <div className="text-xl font-black font-athletic text-gray-400">VS</div>
+                )}
+                <span className="mt-0.5 inline-flex items-center gap-1 text-[9px] font-bold text-emerald-300">
+                  <CheckCircle2 className="w-2.5 h-2.5" /> Finalizado
+                </span>
+              </div>
+
+              <div className="flex-1 min-w-0 flex items-center gap-2">
+                <div className={`w-10 h-10 shrink-0 rounded-xl bg-white/10 p-1 flex items-center justify-center border ${
+                  p.visitante === clubTeam ? 'border-orange-500 ring-1 ring-orange-500/40' : 'border-white/20'
+                }`}>
+                  <TeamShield
+                    escudoUrl={p.visitante === clubTeam ? getTeamEscudo(p.visitante) : resolveVisitorShield(p)}
+                    teamName={p.visitante}
+                    size="sm"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <span className="min-w-0 truncate font-bold text-sm font-athletic tracking-wide" title={p.visitante}>
+                  {p.visitante}
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setResumenPartido(p)}
+              className="w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-black uppercase tracking-widest flex items-center justify-center gap-1.5 transition-colors"
+            >
+              Resumen de partido
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Filter Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-150 shadow-sm">
@@ -1082,6 +1192,14 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
         </Modal>
         );
       })()}
+
+      {/* Modal resumen completo del partido (horas, goles y asistencias) */}
+      <ResumenPartidoModal
+        isOpen={Boolean(resumenPartido)}
+        partido={resumenPartido}
+        events={resumenPartido ? eventsForPartido(resumenPartido, remoteClocks) : []}
+        onClose={() => setResumenPartido(null)}
+      />
 
       {/* Modal Añadir / Editar Partido - Nuestro Equipo como Protagonista */}
       <Modal

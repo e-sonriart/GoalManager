@@ -669,7 +669,8 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
         return;
       }
       pushEvent(buildEvent('gol', `Gol de ${dorsal}${nombre}`, undefined, j.id));
-      closePicker();
+      // Justo después del gol de nuestro equipo se encadena la asistencia
+      setPicker('asistencia');
       return;
     }
     if (picker === 'asistencia') {
@@ -1493,6 +1494,18 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
                 ✕
               </button>
             </div>
+
+            {picker === 'asistencia' && (
+              <div className="p-3 border-b border-gray-100 shrink-0">
+                <button
+                  type="button"
+                  onClick={closePicker}
+                  className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-colors"
+                >
+                  Sin asistencia
+                </button>
+              </div>
+            )}
 
             {picker === 'tarjeta' && (
               <div className="p-3 border-b border-gray-100 flex gap-2 shrink-0">

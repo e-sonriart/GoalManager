@@ -40,7 +40,7 @@ export interface HighlightRow {
 }
 
 /** Texto corto del autor: quita el prefijo del tipo de evento */
-const shortLabel = (e: MatchEvent): string =>
+export const shortLabel = (e: MatchEvent): string =>
   e.texto
     .replace(/^Gol a favor · /, '')
     .replace(/^Gol en contra · /, '')
@@ -83,8 +83,68 @@ export function highlightRows(
   return rows;
 }
 
-/** Reconstruye eventos desde el resumen de texto de partido.eventos (fallback sin reloj estructurado) */
-export function parseSummaryEvents(summary?: string): MatchEvent[] {
+/**
+ * Empareja cada gol de nuestro equipo con la asistencia registrada justo
+ * después (mismo minuto o siguiente acción). Si entre el gol y la asistencia
+ * aparece otro gol o una fase, el gol se queda sin asistencia.
+ */
+export function asistenciaPorGol(events: MatchEvent[]): Map<string, MatchEvent> {
+  const out = new Map<string, MatchEvent>();
+  let golPendiente: MatchEvent | null = null;
+  for (const e of sortHighlights(events)) {
+    if (e.tipo === 'gol') {
+      golPendiente = e;
+    } else if (e.tipo === 'asistencia') {
+      if (golPendiente && !out.has(golPendiente.id)) out.set(golPendiente.id, e);
+      golPendiente = null;
+    } else if (e.tipo === 'gol_contra' || e.tipo === 'fase') {
+      golPendiente = null;
+    }
+  }
+  return out;
+}
+
+export interface ResumenFila extends HighlightRow {
+  /** Asistencia del gol (solo goles de nuestro equipo) */
+  asistencia?: MatchEvent;
+}
+
+export interface ResumenPartidoDatos {
+  /** Eventos de fase con hora (inicio/fin de cada parte) */
+  fases: MatchEvent[];
+  filas: ResumenFila[];
+  /** Hora de inicio (1ª parte) con fallback a la hora programada del partido */
+  horaInicio?: string;
+  /** Hora del final del partido */
+  horaFin?: string;
+}
+
+/**
+ * Datos del resumen completo de un partido: horas de inicio/fin de cada parte,
+ * goles y tarjetas en orden cronológico y la asistencia debajo de cada gol.
+ */
+export function resumenDePartido(
+  events: MatchEvent[],
+  partido?: { hora?: string; local?: string; visitante?: string; equipo?: string; condicion?: string }
+): ResumenPartidoDatos {
+  const ordered = sortHighlights(events);
+  const fases = ordered.filter(e => e.tipo === 'fase' && Boolean(e.hora));
+  const inicio = fases.find(e => /inicio 1/i.test(e.texto));
+  const fin = [...fases].reverse().find(e => /fin del partido/i.test(e.texto));
+  const asistencias = asistenciaPorGol(ordered);
+  const filas = highlightRows(ordered, partido).map(row => ({
+    ...row,
+    asistencia: asistencias.get(row.event.id)
+  }));
+  return {
+    fases,
+    filas,
+    horaInicio: inicio?.hora || partido?.hora || undefined,
+    horaFin: fin?.hora || undefined
+  };
+}
+
+/** Reconstruye eventos desde el resumen de texto de partido.eventos (fallback sin reloj estructurado) */export function parseSummaryEvents(summary?: string): MatchEvent[] {
   if (!summary || typeof summary !== 'string') return [];
   const out: MatchEvent[] = [];
   for (const seg of summary.split(' | ')) {

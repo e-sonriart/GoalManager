@@ -1,5 +1,5 @@
 import React from 'react';
-import { CircleDot } from 'lucide-react';
+import { ChevronRight, CircleDot } from 'lucide-react';
 import type { MatchEvent } from '../utils/matchClock';
 import { highlightRows } from '../utils/matchHighlights';
 
@@ -26,6 +26,8 @@ interface MatchHighlightsProps {
   standalone?: boolean;
   /** Partido para colocar cada acción en su bando (local / visitante) */
   partido?: { local?: string; visitante?: string; equipo?: string; condicion?: string };
+  /** Si se pasa, el bloque es pulsable para abrir el resumen completo */
+  onOpen?: () => void;
 }
 
 /**
@@ -38,7 +40,8 @@ export const MatchHighlights: React.FC<MatchHighlightsProps> = ({
   events,
   tone = 'dark',
   standalone = false,
-  partido
+  partido,
+  onOpen
 }) => {
   const rows = highlightRows(events, partido);
   if (rows.length === 0) return null;
@@ -46,18 +49,44 @@ export const MatchHighlights: React.FC<MatchHighlightsProps> = ({
 
   return (
     <div
+      onClick={onOpen}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onKeyDown={
+        onOpen
+          ? e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onOpen();
+              }
+            }
+          : undefined
+      }
+      title={onOpen ? 'Ver todos los eventos del partido' : undefined}
       className={
         standalone
-          ? 'bg-black/40 border border-gray-800 rounded-2xl px-3 py-2.5'
-          : `border-t ${dark ? 'bg-black/40 border-white/10 px-3.5 py-2.5' : 'bg-gray-50 border-gray-100 px-3.5 py-2.5'}`
+          ? `bg-black/40 border border-gray-800 rounded-2xl px-3 py-2.5 ${
+              onOpen
+                ? 'cursor-pointer hover:border-orange-500/60 hover:ring-1 hover:ring-orange-500/30 transition-all'
+                : ''
+            }`
+          : `border-t ${dark ? 'bg-black/40 border-white/10 px-3.5 py-2.5' : 'bg-gray-50 border-gray-100 px-3.5 py-2.5'} ${
+              onOpen ? 'cursor-pointer hover:bg-black/30 transition-colors' : ''
+            }`
       }
     >
       <p
-        className={`text-[9px] font-black uppercase tracking-widest mb-1.5 ${
+        className={`text-[9px] font-black uppercase tracking-widest mb-1.5 flex items-center justify-between gap-2 ${
           dark ? 'text-orange-400' : 'text-gray-400'
         }`}
       >
-        Resumen del partido
+        <span>Resumen del partido</span>
+        {onOpen && (
+          <span className="inline-flex items-center gap-0.5 normal-case tracking-normal text-[10px] font-bold opacity-80">
+            Ver eventos
+            <ChevronRight className="w-3 h-3" />
+          </span>
+        )}
       </p>
       <ul className="space-y-1">
         {rows.map(row => {

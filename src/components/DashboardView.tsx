@@ -119,7 +119,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     }
   };
 
-  // Top goleadores/asistencias (del equipo asignado; selector si hay varios)
+  // Juego colectivo (asistencias y partidos) del equipo asignado; selector si hay varios
   const misEquipos = useMemo(() => {
     // Con filtro de equipo activo solo se muestra ese equipo (coherente con el resto de la app)
     if (equipoFiltro) return [equipoFiltro];
@@ -135,7 +135,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   }, [equipoFiltro, equiposControlables, currentUser?.equipo, equipos]);
 
   const [statsTeam, setStatsTeam] = useState('');
-  const [statsMetric, setStatsMetric] = useState<'goles' | 'asistencias'>('goles');
+  // En categorías de niños se destaca el juego colectivo: asistencias y participación,
+  // nunca un ranking individual de goles.
+  const [statsMetric, setStatsMetric] = useState<'asistencias' | 'partidos'>('asistencias');
 
   useEffect(() => {
     if (!statsTeam || !misEquipos.includes(statsTeam)) setStatsTeam(misEquipos[0] || '');
@@ -416,7 +418,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     return map;
   }, [sesiones, partidos]);
 
-  // Ranking de goles/asistencias filtrado por equipo y métrica
+  // Ranking de juego colectivo (asistencias y partidos jugados), sin goles individuales
   const topJugadoresData = useMemo(() => {
     const list = estadisticas.map(st => {
       const player = jugadores.find(j => j.id === st.jugadorId);
@@ -424,21 +426,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         nombre: player ? player.nombre : 'Desconocido',
         dorsal: player ? player.dorsal : '-',
         equipo: (player?.equipo || '').trim(),
-        goles: Number(st.goles) || 0,
-        asistencias: Number(st.asistencias) || 0
+        asistencias: Number(st.asistencias) || 0,
+        partidos: Number(st.partidosJugados) || 0
       };
     });
     const filtered =
       statsTeam && statsTeam !== 'Todos'
         ? list.filter(d => d.equipo.toLowerCase() === statsTeam.toLowerCase())
         : list;
-    const metricVal = (d: { goles: number; asistencias: number }) =>
-      statsMetric === 'goles' ? d.goles : d.asistencias;
+    const metricVal = (d: { asistencias: number; partidos: number }) =>
+      statsMetric === 'asistencias' ? d.asistencias : d.partidos;
     return filtered.sort((a, b) => metricVal(b) - metricVal(a)).slice(0, 5);
   }, [estadisticas, jugadores, statsTeam, statsMetric]);
 
   const maxVal = Math.max(
-    ...topJugadoresData.map(d => (statsMetric === 'goles' ? d.goles : d.asistencias)),
+    ...topJugadoresData.map(d => (statsMetric === 'asistencias' ? d.asistencias : d.partidos)),
     1
   );
 
@@ -1085,15 +1087,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Ranking */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Ranking goles/asistencias por equipo asignado */}
+          {/* Juego colectivo por equipo asignado (sin ranking individual de goles) */}
           <div className="bg-white p-6 rounded-3xl border border-gray-150 shadow-sm space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-bold text-gray-900 font-athletic tracking-wide">
-                  {statsMetric === 'goles' ? 'Top Goleadores' : 'Top Asistencias'}
+                  Juego en equipo
                 </h3>
                 <p className="text-xs text-gray-500">
-                  {statsTeam && statsTeam !== 'Todos' ? statsTeam : 'Todos los equipos'} · goles y asistencias
+                  {statsTeam && statsTeam !== 'Todos' ? statsTeam : 'Todos los equipos'} · asistencias y partidos jugados
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -1109,7 +1111,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                   </select>
                 )}
                 <div className="flex bg-gray-100 rounded-lg p-0.5">
-                  {(['goles', 'asistencias'] as const).map(m => (
+                  {(['asistencias', 'partidos'] as const).map(m => (
                     <button
                       key={m}
                       type="button"
@@ -1120,7 +1122,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                           : 'text-gray-500 hover:text-gray-700'
                       }`}
                     >
-                      {m === 'goles' ? 'Goles' : 'Asist.'}
+                      {m === 'asistencias' ? 'Asist.' : 'Partidos'}
                     </button>
                   ))}
                 </div>
@@ -1132,7 +1134,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 <p className="text-xs text-gray-400 text-center py-6">Sin datos de este equipo.</p>
               )}
               {topJugadoresData.map((jug, idx) => {
-                const metricVal = statsMetric === 'goles' ? jug.goles : jug.asistencias;
+                const metricVal = statsMetric === 'asistencias' ? jug.asistencias : jug.partidos;
                 const pct = Math.round((metricVal / maxVal) * 100);
                 return (
                   <div key={idx} className="space-y-1">
@@ -1146,10 +1148,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                       </span>
                       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                         <span className="font-bold text-orange-600 font-athletic text-sm whitespace-nowrap">
-                          {metricVal} {statsMetric === 'goles' ? 'Goles' : 'Asist.'}
+                          {metricVal} {statsMetric === 'asistencias' ? 'Asist.' : 'Partidos'}
                         </span>
                         <span className="hidden sm:inline text-gray-400 text-[11px] whitespace-nowrap">
-                          {statsMetric === 'goles' ? `${jug.asistencias} Asist.` : `${jug.goles} Goles`}
+                          {statsMetric === 'asistencias'
+                            ? `${jug.partidos} partidos`
+                            : `${jug.asistencias} asist.`}
                         </span>
                       </div>
                     </div>
@@ -1164,12 +1168,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               })}
             </div>
 
+            <p className="text-[11px] text-gray-400 leading-relaxed pt-1 border-t border-gray-100">
+              Destacamos el juego colectivo: los goles quedan en el acta de cada partido, no en un ranking individual.
+            </p>
+
             {canGo('estadisticas') && (
               <button
                 onClick={() => onNavigate('estadisticas')}
                 className="w-full text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center justify-center gap-1 pt-2 border-t border-gray-100"
               >
-                Ver Ranking Completo <ArrowRight className="w-3.5 h-3.5" />
+                Ver todas las estadísticas <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}
           </div>

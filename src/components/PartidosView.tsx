@@ -341,16 +341,26 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
       // Ocultar equipos sin partidos previstos en el filtro actual
       .filter(g => g.partidos.length > 0);
 
+  /**
+   * Orden de la lista: los partidos ya disputados van del más reciente al más
+   * antiguo y, después, los pendientes del más próximo al más lejano.
+   */
+  const ordenarPartidos = (lista: Partido[]): Partido[] => {
+    const porFecha = (a: Partido, b: Partido) =>
+      `${a.fecha || ''} ${a.hora || ''}`.localeCompare(`${b.fecha || ''} ${b.hora || ''}`);
+    const disputados = lista.filter(p => Boolean(p.finalizado)).sort((a, b) => porFecha(b, a));
+    const pendientes = lista.filter(p => !p.finalizado).sort(porFecha);
+    return [...disputados, ...pendientes];
+  };
+
   const partidosPorDia = (partidos: Partido[]): [string, Partido[]][] => {
     const map = new Map<string, Partido[]>();
-    [...partidos]
-      .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))
-      .forEach(p => {
-        const key = (p.fecha || '').slice(0, 10);
-        const arr = map.get(key);
-        if (arr) arr.push(p);
-        else map.set(key, [p]);
-      });
+    ordenarPartidos(partidos).forEach(p => {
+      const key = (p.fecha || '').slice(0, 10);
+      const arr = map.get(key);
+      if (arr) arr.push(p);
+      else map.set(key, [p]);
+    });
     return Array.from(map.entries());
   };
 
@@ -415,8 +425,7 @@ export const PartidosView: React.FC<PartidosViewProps> = ({
       { tipo: 'F11', grupos: equiposF11 }
     ] as const).forEach(({ tipo, grupos }) => {
       grupos.forEach(({ equipo, partidos: lista }) => {
-        const filas = [...lista]
-          .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))
+        const filas = ordenarPartidos(lista)
           .map(p => [
             pdfFechaCorta(p.fecha),
             p.hora || '',

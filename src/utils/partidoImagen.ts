@@ -12,6 +12,11 @@ export interface DatosImagenPartido {
   /** Marcador. Si se omite, se muestra «VS». */
   golesLocal?: number;
   golesVisitante?: number;
+  /**
+   * Competición mostrada bajo el resultado:
+   * liga y grupo en partidos de liga, o «Amistoso»/«Torneo» en el resto.
+   */
+  competicion?: string;
   clubName?: string;
   temporada?: string;
 }
@@ -84,7 +89,11 @@ const paletaEquipo = (nombre: string): [string, string] => {
   return paletas[Math.abs(hash) % paletas.length];
 };
 
-const cargarImagen = (src: string): Promise<HTMLImageElement | null> =>
+const esUrlRemota = (src: string): boolean => /^https?:\/\//i.test(src);
+
+const urlProxy = (src: string): string => `/api/imagen?url=${encodeURIComponent(src)}`;
+
+const intentarCargar = (src: string): Promise<HTMLImageElement | null> =>
   new Promise(resolve => {
     if (!src) {
       resolve(null);
@@ -98,6 +107,20 @@ const cargarImagen = (src: string): Promise<HTMLImageElement | null> =>
     // Respaldo por si el navegador no dispara onload/onerror (red colgada).
     window.setTimeout(() => resolve(img.naturalWidth > 0 ? img : null), 8000);
   });
+
+/**
+ * Carga un escudo para dibujarlo en el canvas.
+ * Las URLs externas (FFCV, Supabase) pasan primero por el proxy de la app:
+ * el canvas EXIGE CORS y los servidores de escudos no lo permiten.
+ */
+const cargarImagen = async (src: string): Promise<HTMLImageElement | null> => {
+  if (!src) return null;
+  if (esUrlRemota(src)) {
+    const viaProxy = await intentarCargar(urlProxy(src));
+    if (viaProxy) return viaProxy;
+  }
+  return intentarCargar(src);
+};
 
 const dibujarEscudo = (
   ctx: CanvasRenderingContext2D,
@@ -264,9 +287,9 @@ export async function crearImagenResumenPartido(
   dibujarNombre(ctx, partido.local, 210, 790, 340);
   dibujarNombre(ctx, partido.visitante, 870, 790, 340);
 
-  // Datos del partido (categoría, jornada y campo).
+  // Datos del partido: categoría/jornada y competición (liga y grupo, amistoso o torneo).
   const linea1 = [partido.categoria, partido.jornada].filter(Boolean).join(' · ');
-  const linea2 = partido.campo || '';
+  const linea2 = datos.competicion || '';
   if (linea1 || linea2) {
     ctx.save();
     redondear(ctx, 90, 940, ANCHO - 180, 150, 34);

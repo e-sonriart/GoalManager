@@ -88,6 +88,14 @@ export const ResumenPartidoModal: React.FC<ResumenPartidoModalProps> = ({
   const escudoVisitante =
     partido.visitante === clubTeam ? getTeamEscudo(partido.visitante) : resolveVisitorShield(partido);
 
+  // Competición para la imagen: liga + grupo en liga; «Amistoso»/«Torneo» en el resto.
+  const equipoClub = equipos.find(e => e.nombre === clubTeam);
+  const tipoPartido = partido.tipo || 'Liga';
+  const competicion =
+    tipoPartido === 'Liga'
+      ? [equipoClub?.division, equipoClub?.grupo].filter(Boolean).join(' · ') || 'Liga'
+      : tipoPartido;
+
   const generarImagen = async () => {
     if (generando) return;
     setGenerando(true);
@@ -117,6 +125,7 @@ export const ResumenPartidoModal: React.FC<ResumenPartidoModalProps> = ({
         escudoVisitante,
         golesLocal,
         golesVisitante,
+        competicion,
         clubName: clubConfig?.nombre,
         temporada: clubConfig?.temporada
       });
@@ -182,7 +191,7 @@ export const ResumenPartidoModal: React.FC<ResumenPartidoModalProps> = ({
                 Imagen para WhatsApp
               </p>
               <p className="text-[11px] text-gray-500">
-                Fecha y hora, escudos en grande y resultado.
+                Fecha y hora, escudos en grande, resultado y competición.
               </p>
             </div>
             <button

@@ -147,7 +147,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
   initialPartidoId,
   onBack
 }) => {
-  const { partidos, jugadores, equipos, categorias, savePartido, getTeamEscudo, applyEventStats } = useClub();
+  const { partidos, jugadores, allJugadores, equipos, categorias, savePartido, getTeamEscudo, applyEventStats } = useClub();
 
   const [selectedPartidoId, setSelectedPartidoId] = useState(
     initialPartidoId || partidos[0]?.id || ''
@@ -282,23 +282,36 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
     return String(porParteMin + mins);
   }, [elapsed, fase, porParteMin, porParteSec, overMin]);
 
+  const plantilla = useMemo(
+    () => (allJugadores.length > 0 ? allJugadores : jugadores),
+    [allJugadores, jugadores]
+  );
+
+  const jugadorPorId = useMemo(
+    () => new Map(plantilla.map(j => [j.id, j])),
+    [plantilla]
+  );
+
   const titulares = useMemo(() => {
     if (!selectedPartido) return [];
     const ids = selectedPartido.titulares || [];
     return ids
-      .map(id => jugadores.find(j => j.id === id))
+      .map(id => jugadorPorId.get(id))
       .filter((j): j is NonNullable<typeof j> => Boolean(j));
-  }, [selectedPartido, jugadores]);
+  }, [selectedPartido, jugadorPorId]);
 
   const suplentes = useMemo(() => {
     if (!selectedPartido) return [];
     const tit = new Set(selectedPartido.titulares || []);
     const conv = selectedPartido.convocados || [];
+    // Con convocatoria, se resuelven también los refuerzos de otros equipos por su id.
     const base = conv.length > 0
-      ? jugadores.filter(j => conv.includes(j.id))
+      ? conv
+          .map(id => jugadorPorId.get(id))
+          .filter((j): j is NonNullable<typeof j> => Boolean(j))
       : jugadores;
     return base.filter(j => !tit.has(j.id));
-  }, [selectedPartido, jugadores]);
+  }, [selectedPartido, jugadores, jugadorPorId]);
 
   const expelledIds = useMemo(() => {
     const yellows = new Map<string, number>();
@@ -714,7 +727,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
   };
 
   const handlePick = (jugadorId: string) => {
-    const j = jugadores.find(x => x.id === jugadorId);
+    const j = jugadorPorId.get(jugadorId);
     if (!j) return;
     if (expelledIds.has(j.id)) return;
     const nombre = j.nombre;
@@ -768,7 +781,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
         return;
       }
       if (cambioOutId === j.id) return;
-      const sal = jugadores.find(x => x.id === cambioOutId);
+      const sal = jugadorPorId.get(cambioOutId);
       pushEvent(
         buildEvent(
           'cambio',
@@ -784,7 +797,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
   /** Guarda el gol con su tipo (uso/tras) y encadena la asistencia en el mismo minuto */
   const guardarGol = () => {
     if (!golDraft) return;
-    const j = jugadores.find(x => x.id === golDraft.jugadorId);
+    const j = jugadorPorId.get(golDraft.jugadorId);
     if (!j) {
       closePicker();
       return;
@@ -897,7 +910,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
   const jugadoresActa = useMemo(() => [...titulares, ...suplentes], [titulares, suplentes]);
 
   const autoTexto = (d: AddDraft): string => {
-    const j = jugadores.find(x => x.id === d.jugadorId);
+    const j = jugadorPorId.get(d.jugadorId);
     const dors = j?.dorsal ? `#${j.dorsal} ` : '';
     if (d.tipo === 'gol') return j ? `Gol de ${dors}${j.nombre}` : 'Gol';
     if (d.tipo === 'gol_contra') {
@@ -1522,7 +1535,7 @@ export const EventosPartidoView: React.FC<EventosPartidoViewProps> = ({
 
       {/* ===== Picker TIPO DE GOL: uso (cabeza/pie/otro) y tras (jugada/córner/falta/penalti) ===== */}
       {picker === 'gol_tipo' && golDraft && (() => {
-        const jugador = jugadores.find(x => x.id === golDraft.jugadorId);
+        const jugador = jugadorPorId.get(golDraft.jugadorId);
         return (
           <div
             className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/55 p-0 sm:p-4"

@@ -1,7 +1,16 @@
-import React from 'react';
-import { Flag, Timer } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Download, Flag, Loader2, Timer } from 'lucide-react';
 import { Modal } from './Modal';
 import { HighlightIcon } from './MatchHighlights';
+import { WhatsAppIcon } from './WhatsAppIcon';
+import { useClub } from '../context/ClubContext';
+import { resolveVisitorShield } from '../utils/shieldPresets';
+import {
+  compartirImagen,
+  crearImagenResumenPartido,
+  descargarImagen,
+  nombreArchivoImagen
+} from '../utils/partidoImagen';
 import type { Partido } from '../types';
 import type { MatchEvent } from '../utils/matchClock';
 import { resumenDePartido, shortLabel } from '../utils/matchHighlights';
@@ -35,8 +44,111 @@ export const ResumenPartidoModal: React.FC<ResumenPartidoModalProps> = ({
   events,
   onClose
 }) => {
+  const { equipos, getTeamEscudo, clubConfig } = useClub();
+  const [generando, setGenerando] = useState(false);
+  const [imagen, setImagen] = useState<{ blob: Blob; url: string; nombre: string } | null>(null);
+  const [aviso, setAviso] = useState('');
+  const urlRef = useRef<string | null>(null);
+
+  const liberarImagen = () => {
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
+    }
+    setImagen(null);
+    setAviso('');
+  };
+
+  // Al cerrar el modal o cambiar de partido se descarta la imagen generada.
+  useEffect(() => {
+    if (!isOpen) liberarImagen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  useEffect(() => {
+    liberarImagen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partido?.id]);
+
+  useEffect(
+    () => () => {
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    },
+    []
+  );
+
   if (!partido) return null;
   const { fases, filas, horaInicio, horaFin } = resumenDePartido(events, partido);
+
+  const clubTeam =
+    partido.equipo ||
+    (equipos.some(e => e.nombre === partido.local) ? partido.local : partido.visitante);
+  const escudoLocal =
+    partido.local === clubTeam ? getTeamEscudo(partido.local) : resolveVisitorShield(partido);
+  const escudoVisitante =
+    partido.visitante === clubTeam ? getTeamEscudo(partido.visitante) : resolveVisitorShield(partido);
+
+  const generarImagen = async () => {
+    if (generando) return;
+    setGenerando(true);
+    setAviso('');
+    try {
+      const tieneMarcador = tieneResultado(partido);
+      const golesClub = events.filter(e => e.tipo === 'gol').length;
+      const golesRival = events.filter(e => e.tipo === 'gol_contra').length;
+      const esClubLocal = partido.local === clubTeam;
+      const golesLocal = tieneMarcador
+        ? Number(partido.golesLocal) || 0
+        : events.length > 0
+          ? esClubLocal
+            ? golesClub
+            : golesRival
+          : undefined;
+      const golesVisitante = tieneMarcador
+        ? Number(partido.golesVisitante) || 0
+        : events.length > 0
+          ? esClubLocal
+            ? golesRival
+            : golesClub
+          : undefined;
+
+      const blob = await crearImagenResumenPartido(partido, {
+        escudoLocal,
+        escudoVisitante,
+        golesLocal,
+        golesVisitante,
+        clubName: clubConfig?.nombre,
+        temporada: clubConfig?.temporada
+      });
+
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+      const url = URL.createObjectURL(blob);
+      urlRef.current = url;
+      setImagen({ blob, url, nombre: nombreArchivoImagen(partido) });
+      setAviso('Imagen creada. Compártela o descárgala para enviarla por WhatsApp.');
+    } catch (error) {
+      console.error('[imagen resumen partido]', error);
+      setAviso('No se pudo crear la imagen. Inténtalo de nuevo.');
+    } finally {
+      setGenerando(false);
+    }
+  };
+
+  const compartir = async () => {
+    if (!imagen) return;
+    try {
+      const resultado = await compartirImagen(imagen.blob, imagen.nombre);
+      setAviso(
+        resultado === 'compartida'
+          ? 'Imagen compartida.'
+          : 'Imagen descargada. Adjúntala en WhatsApp.'
+      );
+    } catch (error) {
+      if ((error as DOMException)?.name === 'AbortError') return;
+      descargarImagen(imagen.blob, imagen.nombre);
+      setAviso('Imagen descargada. Adjúntala en WhatsApp.');
+    }
+  };
 
   return (
     <Modal
@@ -60,6 +172,63 @@ export const ResumenPartidoModal: React.FC<ResumenPartidoModalProps> = ({
           <span className="min-w-0 flex-1 text-sm sm:text-base font-bold font-athletic truncate">
             {partido.visitante}
           </span>
+        </div>
+
+        {/* Imagen para WhatsApp: fecha y hora, escudos y resultado */}
+        <div className="rounded-2xl border border-gray-150 bg-gray-50 p-3 space-y-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                Imagen para WhatsApp
+              </p>
+              <p className="text-[11px] text-gray-500">
+                Fecha y hora, escudos en grande y resultado.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={generarImagen}
+              disabled={generando}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+            >
+              {generando ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <WhatsAppIcon className="w-4 h-4" />
+              )}
+              {generando ? 'Creando…' : imagen ? 'Regenerar' : 'Crear imagen'}
+            </button>
+          </div>
+
+          {imagen && (
+            <div className="space-y-2">
+              <img
+                src={imagen.url}
+                alt={`Resumen de ${partido.local} contra ${partido.visitante}`}
+                className="w-full rounded-xl border border-gray-200 shadow-sm"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={compartir}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
+                >
+                  <WhatsAppIcon className="w-4 h-4" />
+                  Compartir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => descargarImagen(imagen.blob, imagen.nombre)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {aviso && <p className="text-[11px] text-gray-500">{aviso}</p>}
         </div>
 
         {/* Horas de inicio y fin */}

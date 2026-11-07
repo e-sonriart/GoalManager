@@ -288,7 +288,12 @@ export async function crearImagenResumenPartido(
   dibujarNombre(ctx, partido.visitante, 870, 790, 340);
 
   // Datos del partido: categoría/jornada y competición (liga y grupo, amistoso o torneo).
-  const linea1 = [partido.categoria, partido.jornada].filter(Boolean).join(' · ');
+  const esLiga = (partido.tipo || 'Liga') === 'Liga';
+  const jornadaTexto =
+    esLiga && partido.jornada !== undefined && partido.jornada !== null && String(partido.jornada).trim() !== ''
+      ? `Jornada ${partido.jornada}`
+      : '';
+  const linea1 = [partido.categoria, jornadaTexto].filter(Boolean).join(' · ');
   const linea2 = datos.competicion || '';
   if (linea1 || linea2) {
     ctx.save();

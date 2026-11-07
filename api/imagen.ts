@@ -15,6 +15,15 @@ const ALLOWED_HOSTS = new Set([
   'fycfljwckpflderfddgy.supabase.co'
 ]);
 
+/** Dominios de escudos FFCV (appwebffcv / appffcv.filesnovanet...). */
+const ALLOWED_SUFFIXES = ['novanet.es', 'filesnovanet.es'];
+
+const hostPermitido = (hostname: string): boolean => {
+  const host = hostname.toLowerCase();
+  if (ALLOWED_HOSTS.has(host)) return true;
+  return ALLOWED_SUFFIXES.some(sufijo => host === sufijo || host.endsWith(`.${sufijo}`));
+};
+
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
@@ -45,7 +54,7 @@ export default async function handler(req: any, res: any): Promise<void> {
     return;
   }
 
-  if (target.protocol !== 'https:' || !ALLOWED_HOSTS.has(target.hostname.toLowerCase())) {
+  if (target.protocol !== 'https:' || !hostPermitido(target.hostname)) {
     res.status(403).json({ error: 'host_no_permitido' });
     return;
   }

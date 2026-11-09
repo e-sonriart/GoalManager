@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useClub } from '../context/ClubContext';
-import { EstadoAsistencia, SesionEntrenamiento, TipoFutbol } from '../types';
+import { EstadoAsistencia, HorarioEntrenamiento, SesionEntrenamiento, TipoFutbol } from '../types';
+import { horariosEntrenamientoService } from '../services/horariosEntrenamiento';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
 import { SuspenderModal } from './SuspenderModal';
@@ -39,6 +40,55 @@ const toISODate = (d: Date): string =>
 /** Ubicación que se rellena por defecto al crear un entrenamiento (editable). */
 const LUGAR_ENTRENAMIENTO_POR_DEFECTO = 'La Canaleta';
 
+/** Días de la semana en orden de lunes a domingo (0 = domingo en Date.getDay()). */
+const DIAS_SEMANA: { value: number; short: string; label: string }[] = [
+  { value: 1, short: 'L', label: 'Lunes' },
+  { value: 2, short: 'M', label: 'Martes' },
+  { value: 3, short: 'X', label: 'Miércoles' },
+  { value: 4, short: 'J', label: 'Jueves' },
+  { value: 5, short: 'V', label: 'Viernes' },
+  { value: 6, short: 'S', label: 'Sábado' },
+  { value: 0, short: 'D', label: 'Domingo' }
+];
+
+const ordenarDias = (dias: number[]): number[] =>
+  [...new Set(dias)].sort((a, b) => (a === 0 ? 7 : a) - (b === 0 ? 7 : b));
+
+/** Texto corto: "Lun, Mié, Vie" */
+const formatDias = (dias: number[]): string => {
+  const orden = ordenarDias(dias);
+  if (orden.length === 0) return 'Sin días';
+  return orden
+    .map(d => {
+      const dia = DIAS_SEMANA.find(x => x.value === d);
+      return dia ? dia.label.slice(0, 3) : '';
+    })
+    .filter(Boolean)
+    .join(', ');
+};
+
+/** Primer día (hoy o en los próximos 7) que coincida con el horario. */
+const proximaFechaDeHorario = (dias: number[], hora: string): string => {
+  const ahora = new Date();
+  const horaObj = /^\d{2}:\d{2}$/.test(hora) ? hora : '';
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + i, 12, 0, 0);
+    if (!dias.includes(d.getDay())) continue;
+    if (i === 0 && horaObj) {
+      const [h, m] = horaObj.split(':').map(Number);
+      const inicio = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), h, m, 0);
+      if (inicio.getTime() < ahora.getTime()) continue;
+    }
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  const d = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() + 7, 12, 0, 0);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const nuevoIdHorario = (): string =>
+  `hor_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 5)}`;
+
+
 export const EntrenamientosView: React.FC = () => {
   const {
     sesiones,
@@ -59,7 +109,8 @@ export const EntrenamientosView: React.FC = () => {
     currentUser,
     can,
     clubConfig,
-    equipoFiltro
+    equipoFiltro,
+    addToast
   } = useClub();
 
   const canManage = can('manage:entrenamientos');
@@ -84,6 +135,41 @@ export const EntrenamientosView: React.FC = () => {
   const [formTitulo, setFormTitulo] = useState('');
   const [formObjetivo, setFormObjetivo] = useState('');
   const [formDescripcion, setFormDescripcion] = useState('');
+
+  // Horario habitual por equipo (días + hora) reutilizable al programar sesiones
+  const [horarios, setHorarios] = useState<HorarioEntrenamiento[]>([]);
+  const [isHorarioModalOpen, setIsHorarioModalOpen] = useState(false);
+  const [editingHorario, setEditingHorario] = useState<HorarioEntrenamiento | null>(null);
+  const [horarioEquipo, setHorarioEquipo] = useState('');
+  const [horarioCategoria, setHorarioCategoria] = useState('');
+  const [horarioDias, setHorarioDias] = useState<number[]>([]);
+  const [horarioHora, setHorarioHora] = useState('18:00');
+  const [horarioHoraFin, setHorarioHoraFin] = useState('');
+  const [horarioLugar, setHorarioLugar] = useState('');
+  const [horarioTitulo, setHorarioTitulo] = useState('');
+  const [horarioObjetivo, setHorarioObjetivo] = useState('');
+  const [horarioDescripcion, setHorarioDescripcion] = useState('');
+  const [guardandoHorario, setGuardandoHorario] = useState(false);
+
+  useEffect(() => {
+    let activo = true;
+    horariosEntrenamientoService
+      .getAll()
+      .then(list => {
+        if (activo) setHorarios(list);
+      })
+      .catch(err => {
+        console.warn('[Entrenamientos] No se pudieron cargar los horarios habituales', err);
+      });
+    return () => {
+      activo = false;
+    };
+  }, []);
+
+  const horariosDeEquipo = useMemo(
+    () => horarios.filter(h => h.equipo === formEquipo),
+    [horarios, formEquipo]
+  );
 
   // Modal de asistencia ligado a una sesión
   const [isAsistenciaOpen, setIsAsistenciaOpen] = useState(false);
@@ -127,6 +213,123 @@ export const EntrenamientosView: React.FC = () => {
     setFormObjetivo(s.objetivo);
     setFormDescripcion(s.descripcion || '');
     setIsModalOpen(true);
+  };
+
+  // ---- Horario habitual: CRUD ----
+  const resetHorarioForm = (equipo?: string) => {
+    const eqNombre = equipo || formEquipo || equipos[0]?.nombre || '';
+    const eq = equipos.find(e => e.nombre === eqNombre);
+    setEditingHorario(null);
+    setHorarioEquipo(eqNombre);
+    setHorarioCategoria(eq?.categoria || '');
+    setHorarioDias([]);
+    setHorarioHora('18:00');
+    setHorarioHoraFin('');
+    setHorarioLugar(clubConfig?.ubicacion?.trim() || LUGAR_ENTRENAMIENTO_POR_DEFECTO);
+    setHorarioTitulo('');
+    setHorarioObjetivo('');
+    setHorarioDescripcion('');
+  };
+
+  const openHorarioModal = () => {
+    resetHorarioForm();
+    setIsHorarioModalOpen(true);
+  };
+
+  const editHorario = (h: HorarioEntrenamiento) => {
+    setEditingHorario(h);
+    setHorarioEquipo(h.equipo);
+    setHorarioCategoria(h.categoria || '');
+    setHorarioDias(ordenarDias(h.dias));
+    setHorarioHora(h.hora || '18:00');
+    setHorarioHoraFin(h.horaFin || '');
+    setHorarioLugar(h.lugar || '');
+    setHorarioTitulo(h.titulo || '');
+    setHorarioObjetivo(h.objetivo || '');
+    setHorarioDescripcion(h.descripcion || '');
+    setIsHorarioModalOpen(true);
+  };
+
+  const toggleHorarioDia = (dia: number) => {
+    setHorarioDias(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]));
+  };
+
+  const handleSaveHorario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!horarioEquipo.trim() || !horarioHora) return;
+    if (horarioDias.length === 0) {
+      addToast({
+        type: 'error',
+        title: 'Faltan días',
+        message: 'Selecciona al menos un día de entrenamiento.'
+      });
+      return;
+    }
+
+    const eq = equipos.find(x => x.nombre === horarioEquipo);
+    const payload: HorarioEntrenamiento = {
+      id: editingHorario?.id || nuevoIdHorario(),
+      equipo: horarioEquipo.trim(),
+      categoria: horarioCategoria || eq?.categoria || '',
+      tipo: eq ? tipoDeEquipo(eq.nombre) : undefined,
+      dias: ordenarDias(horarioDias),
+      hora: horarioHora,
+      horaFin: horarioHoraFin || undefined,
+      lugar: horarioLugar.trim() || undefined,
+      titulo: horarioTitulo.trim() || undefined,
+      objetivo: horarioObjetivo.trim() || undefined,
+      descripcion: horarioDescripcion.trim() || undefined,
+      actualizadoEn: new Date().toISOString()
+    };
+
+    setGuardandoHorario(true);
+    try {
+      const guardado = editingHorario
+        ? await horariosEntrenamientoService.update(payload)
+        : await horariosEntrenamientoService.create(payload);
+      setHorarios(prev =>
+        prev.some(h => h.id === guardado.id)
+          ? prev.map(h => (h.id === guardado.id ? guardado : h))
+          : [...prev, guardado]
+      );
+      addToast({
+        type: 'success',
+        title: editingHorario ? 'Horario actualizado' : 'Horario guardado',
+        message: `${payload.equipo} · ${formatDias(payload.dias)} · ${payload.hora}`
+      });
+      resetHorarioForm(payload.equipo);
+    } catch (err) {
+      console.warn('[Entrenamientos] No se pudo guardar el horario habitual', err);
+      addToast({
+        type: 'error',
+        title: 'Error',
+        message: 'No se pudo guardar el horario habitual.'
+      });
+    } finally {
+      setGuardandoHorario(false);
+    }
+  };
+
+  const handleDeleteHorario = async (h: HorarioEntrenamiento) => {
+    if (!confirm(`¿Eliminar el horario habitual de ${h.equipo}?`)) return;
+    await horariosEntrenamientoService.delete(h.id);
+    setHorarios(prev => prev.filter(x => x.id !== h.id));
+    addToast({ type: 'success', title: 'Horario eliminado', message: h.equipo });
+  };
+
+  const aplicarHorario = (h: HorarioEntrenamiento) => {
+    setFormHora(h.hora || formHora);
+    setFormHoraFin(h.horaFin || '');
+    if (h.lugar) setFormLugar(h.lugar);
+    if (h.titulo) setFormTitulo(h.titulo);
+    if (h.objetivo) setFormObjetivo(h.objetivo);
+    if (h.descripcion) setFormDescripcion(h.descripcion);
+    if (h.categoria) {
+      setFormCategoria(h.categoria);
+      if (h.tipo) setFormTipo(h.tipo);
+    }
+    // Al crear una sesión, saltamos directamente al próximo día que toque.
+    if (!editingSesion) setFormFecha(proximaFechaDeHorario(h.dias, h.hora));
   };
 
   // Suspensión de la sesión con motivo (temporal o definitivo), con aviso al equipo
@@ -647,6 +850,16 @@ export const EntrenamientosView: React.FC = () => {
           )}
           {canManage && (
             <button
+              onClick={openHorarioModal}
+              className="px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+              title="Definir los días y horas habituales de cada equipo"
+            >
+              <Clock className="w-3.5 h-3.5 text-orange-500" />
+              Horario habitual
+            </button>
+          )}
+          {canManage && (
+            <button
               id="btn-add-sesion"
               onClick={openAddModal}
               className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-orange-500/20 flex items-center gap-1.5"
@@ -657,6 +870,73 @@ export const EntrenamientosView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Horario habitual del club (visible para todos) */}
+      {horarios.length > 0 && (
+        <div className="bg-white p-4 rounded-2xl border border-gray-150 shadow-sm space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-gray-700 uppercase tracking-wider">
+              <Clock className="w-4 h-4 text-orange-500 shrink-0" />
+              <span>Horario habitual de entrenamientos</span>
+            </div>
+            {canManage && (
+              <button
+                onClick={openHorarioModal}
+                className="text-[11px] font-bold text-orange-600 hover:text-orange-700 hover:underline flex items-center gap-1 shrink-0"
+              >
+                <Edit2 className="w-3 h-3" /> Gestionar
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+            {[...horarios]
+              .sort((a, b) => (a.equipo || '').localeCompare(b.equipo || ''))
+              .map(h => (
+                <div
+                  key={h.id}
+                  className="flex items-center gap-2.5 rounded-xl border border-gray-150 bg-gray-50 px-3 py-2"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 p-0.5 flex items-center justify-center shrink-0 overflow-hidden">
+                    <TeamShield
+                      escudoUrl={getTeamEscudo(h.equipo)}
+                      teamName={h.equipo}
+                      size="sm"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-gray-900 truncate" title={h.equipo}>
+                      {h.equipo}
+                    </p>
+                    <p className="text-[10px] text-gray-600 font-semibold truncate">
+                      {formatDias(h.dias)} · {h.hora}
+                      {h.horaFin ? `-${h.horaFin}` : ''}
+                      {h.lugar ? ` · ${h.lugar}` : ''}
+                    </p>
+                  </div>
+                  {canManage && (
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        onClick={() => editHorario(h)}
+                        title="Editar horario"
+                        className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => void handleDeleteHorario(h)}
+                        title="Eliminar horario"
+                        className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-gray-150 shadow-sm">
@@ -837,6 +1117,34 @@ export const EntrenamientosView: React.FC = () => {
             </div>
           </div>
 
+          {/* Atajos del horario habitual del equipo */}
+          {horariosDeEquipo.length > 0 && (
+            <div className="bg-emerald-50/60 border border-emerald-200 rounded-2xl p-3 space-y-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+                <Clock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                Horario habitual de {formEquipo}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {horariosDeEquipo.map(h => (
+                  <button
+                    key={h.id}
+                    type="button"
+                    onClick={() => aplicarHorario(h)}
+                    title={`Rellenar con este horario${h.lugar ? ` (${h.lugar})` : ''}`}
+                    className="px-2.5 py-1.5 bg-white border border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50 rounded-lg text-[11px] font-bold text-emerald-800 transition-colors"
+                  >
+                    {formatDias(h.dias)} · {h.hora}
+                    {h.horaFin ? `-${h.horaFin}` : ''}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-emerald-700/80">
+                Pulsa un horario para rellenar hora, lugar y objetivo
+                {editingSesion ? '.' : '. La fecha salta al próximo día que toque.'}
+              </p>
+            </div>
+          )}
+
           {/* 2. Fecha, Hora Inicio y Fin */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
@@ -952,6 +1260,235 @@ export const EntrenamientosView: React.FC = () => {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal de Horario habitual */}
+      <Modal
+        isOpen={isHorarioModalOpen}
+        onClose={() => setIsHorarioModalOpen(false)}
+        title="Horario habitual de entrenamientos"
+        subtitle="Define los días y horas fijos de cada equipo para reutilizarlos al programar sesiones"
+        maxWidth="max-w-2xl"
+      >
+        <div className="space-y-4">
+          {/* Horarios guardados */}
+          <div className="space-y-2">
+            {horarios.length === 0 ? (
+              <div className="text-center py-5 text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl">
+                Aún no hay horarios guardados. Añade el primero aquí abajo.
+              </div>
+            ) : (
+              [...horarios]
+                .sort((a, b) => (a.equipo || '').localeCompare(b.equipo || ''))
+                .map(h => (
+                  <div
+                    key={h.id}
+                    className="flex items-center gap-2.5 rounded-xl border border-gray-150 bg-gray-50 px-3 py-2.5"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-white border border-gray-200 p-0.5 flex items-center justify-center shrink-0 overflow-hidden">
+                      <TeamShield
+                        escudoUrl={getTeamEscudo(h.equipo)}
+                        teamName={h.equipo}
+                        size="sm"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-gray-900 truncate" title={h.equipo}>
+                        {h.equipo}
+                      </p>
+                      <p className="text-[11px] text-gray-600 font-semibold truncate">
+                        {formatDias(h.dias)} · {h.hora}
+                        {h.horaFin ? `-${h.horaFin}` : ''}
+                        {h.lugar ? ` · ${h.lugar}` : ''}
+                      </p>
+                      {h.titulo && (
+                        <p className="text-[10px] text-orange-600 font-semibold truncate">{h.titulo}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        onClick={() => editHorario(h)}
+                        title="Editar horario"
+                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => void handleDeleteHorario(h)}
+                        title="Eliminar horario"
+                        className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+            )}
+          </div>
+
+          <form onSubmit={handleSaveHorario} className="space-y-3 border-t border-gray-150 pt-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700">
+                {editingHorario ? 'Editar horario' : 'Añadir horario'}
+              </h3>
+              {editingHorario && (
+                <button
+                  type="button"
+                  onClick={() => resetHorarioForm()}
+                  className="text-[11px] font-bold text-gray-500 hover:text-gray-800"
+                >
+                  Cancelar edición
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Equipo *
+                </label>
+                <select
+                  value={horarioEquipo}
+                  onChange={e => {
+                    setHorarioEquipo(e.target.value);
+                    const eq = equipos.find(x => x.nombre === e.target.value);
+                    if (eq?.categoria) setHorarioCategoria(eq.categoria);
+                  }}
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-xl text-sm font-semibold text-gray-900 focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                >
+                  {equipos.map(eq => (
+                    <option key={eq.id} value={eq.nombre}>
+                      {eq.nombre} {eq.ano ? `(${eq.ano})` : ''} - {eq.categoria}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Lugar (Opcional)
+                </label>
+                <div className="relative">
+                  <MapPin className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Ej: La Canaleta"
+                    value={horarioLugar}
+                    onChange={e => setHorarioLugar(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                Días de entrenamiento *
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {DIAS_SEMANA.map(d => {
+                  const activo = horarioDias.includes(d.value);
+                  return (
+                    <button
+                      key={d.value}
+                      type="button"
+                      onClick={() => toggleHorarioDia(d.value)}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-colors ${
+                        activo
+                          ? 'bg-orange-500 border-orange-500 text-white shadow-sm'
+                          : 'bg-white border-gray-300 text-gray-600 hover:border-orange-400 hover:text-orange-600'
+                      }`}
+                    >
+                      {d.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Hora inicio *
+                </label>
+                <input
+                  type="time"
+                  required
+                  value={horarioHora}
+                  onChange={e => setHorarioHora(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Hora fin (Opcional)
+                </label>
+                <input
+                  type="time"
+                  value={horarioHoraFin}
+                  onChange={e => setHorarioHoraFin(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                Título de la sesión (Opcional)
+              </label>
+              <input
+                type="text"
+                placeholder="Ej: Físico + técnica"
+                value={horarioTitulo}
+                onChange={e => setHorarioTitulo(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                Objetivo habitual (Opcional)
+              </label>
+              <textarea
+                rows={2}
+                placeholder="Ej: Presión tras pérdida y salida de balón."
+                value={horarioObjetivo}
+                onChange={e => setHorarioObjetivo(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none resize-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
+                Descripción (Opcional)
+              </label>
+              <textarea
+                rows={2}
+                placeholder="Ej: Rondos, partido reducido y finalización."
+                value={horarioDescripcion}
+                onChange={e => setHorarioDescripcion(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none resize-none"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-gray-150">
+              <button
+                type="button"
+                onClick={() => setIsHorarioModalOpen(false)}
+                className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-xs font-semibold hover:bg-gray-50"
+              >
+                Cerrar
+              </button>
+              <button
+                type="submit"
+                disabled={guardandoHorario}
+                className="px-5 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition-colors shadow-md shadow-orange-500/20"
+              >
+                {guardandoHorario ? 'Guardando...' : editingHorario ? 'Guardar cambios' : 'Añadir horario'}
+              </button>
+            </div>
+          </form>
+        </div>
       </Modal>
 
       {/* Modal de Asistencia de la sesión */}

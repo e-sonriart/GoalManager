@@ -252,6 +252,23 @@ export interface SesionEntrenamiento {
   suspensionHasta?: string; // Reanudación ('YYYY-MM-DD' o 'YYYY-MM-DDTHH:MM'); vacío = definitivo
 }
 
+/** Horario habitual de entrenamiento de un equipo (días de la semana + hora). */
+export interface HorarioEntrenamiento {
+  id: string;
+  equipo: string;
+  categoria?: string;
+  tipo?: TipoFutbol;
+  /** Días de la semana: 0 = domingo, 1 = lunes ... 6 = sábado. */
+  dias: number[];
+  hora: string; // 'HH:MM'
+  horaFin?: string;
+  lugar?: string;
+  titulo?: string;
+  objetivo?: string;
+  descripcion?: string;
+  actualizadoEn?: string;
+}
+
 /** Frase motivadora (tabla frases_motivadoras_365; equipo '' = todo el club). fija = elegida a mano; sin fija rota cada día. */
 export interface FraseMotivadora {
   id?: string;

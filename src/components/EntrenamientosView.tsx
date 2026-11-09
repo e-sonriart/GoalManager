@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useClub } from '../context/ClubContext';
-import { EstadoAsistencia, HorarioEntrenamiento, SesionEntrenamiento, TipoFutbol } from '../types';
+import { EstadoAsistencia, HorarioEntrenamiento, HorarioEntrenamientoDia, SesionEntrenamiento, TipoFutbol } from '../types';
 import { horariosEntrenamientoService } from '../services/horariosEntrenamiento';
 import { Modal } from './Modal';
 import { TeamShield } from './TeamShield';
@@ -53,6 +53,41 @@ const DIAS_SEMANA: { value: number; short: string; label: string }[] = [
 
 const ordenarDias = (dias: number[]): number[] =>
   [...new Set(dias)].sort((a, b) => (a === 0 ? 7 : a) - (b === 0 ? 7 : b));
+
+const ordenarPorDia = (a: number, b: number): number => (a === 0 ? 7 : a) - (b === 0 ? 7 : b);
+
+const diaCorto = (dia: number): string => {
+  const d = DIAS_SEMANA.find(x => x.value === dia);
+  return d ? d.label.slice(0, 3) : '';
+};
+
+/** Lista de días con su hora propia (migrando registros antiguos al vuelo). */
+const diasHorarioDe = (h: HorarioEntrenamiento): HorarioEntrenamientoDia[] => {
+  if (Array.isArray(h.diasHorario) && h.diasHorario.length > 0) {
+    return [...h.diasHorario].sort((a, b) => ordenarPorDia(a.dia, b.dia));
+  }
+  return ordenarDias(h.dias || []).map(dia => ({
+    dia,
+    hora: h.hora || '',
+    horaFin: h.horaFin || undefined
+  }));
+};
+
+const formatoHoraDia = (d: HorarioEntrenamientoDia): string =>
+  `${d.hora}${d.horaFin ? `-${d.horaFin}` : ''}`;
+
+/** Si todos los días comparten hora se resume; si no, se detalla día a día. */
+const formatHorarioResumen = (h: HorarioEntrenamiento): string => {
+  const dias = diasHorarioDe(h);
+  if (dias.length === 0) return 'Sin días';
+  const mismoHorario = dias.every(
+    d => d.hora === dias[0].hora && (d.horaFin || '') === (dias[0].horaFin || '')
+  );
+  if (mismoHorario) {
+    return `${formatDias(dias.map(d => d.dia))} · ${formatoHoraDia(dias[0])}`;
+  }
+  return dias.map(d => `${diaCorto(d.dia)} ${formatoHoraDia(d)}`).join(' · ');
+};
 
 /** Texto corto: "Lun, Mié, Vie" */
 const formatDias = (dias: number[]): string => {
@@ -143,8 +178,7 @@ export const EntrenamientosView: React.FC = () => {
   const [horarioEquipo, setHorarioEquipo] = useState('');
   const [horarioCategoria, setHorarioCategoria] = useState('');
   const [horarioDias, setHorarioDias] = useState<number[]>([]);
-  const [horarioHora, setHorarioHora] = useState('18:00');
-  const [horarioHoraFin, setHorarioHoraFin] = useState('');
+  const [horarioHoras, setHorarioHoras] = useState<Record<number, { hora: string; horaFin: string }>>({});
   const [horarioLugar, setHorarioLugar] = useState('');
   const [horarioTitulo, setHorarioTitulo] = useState('');
   const [horarioObjetivo, setHorarioObjetivo] = useState('');
@@ -223,8 +257,7 @@ export const EntrenamientosView: React.FC = () => {
     setHorarioEquipo(eqNombre);
     setHorarioCategoria(eq?.categoria || '');
     setHorarioDias([]);
-    setHorarioHora('18:00');
-    setHorarioHoraFin('');
+    setHorarioHoras({});
     setHorarioLugar(clubConfig?.ubicacion?.trim() || LUGAR_ENTRENAMIENTO_POR_DEFECTO);
     setHorarioTitulo('');
     setHorarioObjetivo('');
@@ -237,12 +270,17 @@ export const EntrenamientosView: React.FC = () => {
   };
 
   const editHorario = (h: HorarioEntrenamiento) => {
+    const dias = diasHorarioDe(h);
     setEditingHorario(h);
     setHorarioEquipo(h.equipo);
     setHorarioCategoria(h.categoria || '');
-    setHorarioDias(ordenarDias(h.dias));
-    setHorarioHora(h.hora || '18:00');
-    setHorarioHoraFin(h.horaFin || '');
+    setHorarioDias(dias.map(d => d.dia));
+    setHorarioHoras(
+      dias.reduce<Record<number, { hora: string; horaFin: string }>>((acc, d) => {
+        acc[d.dia] = { hora: d.hora || '18:00', horaFin: d.horaFin || '' };
+        return acc;
+      }, {})
+    );
     setHorarioLugar(h.lugar || '');
     setHorarioTitulo(h.titulo || '');
     setHorarioObjetivo(h.objetivo || '');
@@ -251,17 +289,63 @@ export const EntrenamientosView: React.FC = () => {
   };
 
   const toggleHorarioDia = (dia: number) => {
-    setHorarioDias(prev => (prev.includes(dia) ? prev.filter(d => d !== dia) : [...prev, dia]));
+    const activo = horarioDias.includes(dia);
+    setHorarioDias(prev => (activo ? prev.filter(d => d !== dia) : [...prev, dia]));
+    setHorarioHoras(prev => {
+      if (activo) {
+        const next = { ...prev };
+        delete next[dia];
+        return next;
+      }
+      return { ...prev, [dia]: prev[dia] || { hora: '18:00', horaFin: '' } };
+    });
+  };
+
+  const cambiarHoraDia = (dia: number, campo: 'hora' | 'horaFin', valor: string) => {
+    setHorarioHoras(prev => ({
+      ...prev,
+      [dia]: { ...(prev[dia] || { hora: '18:00', horaFin: '' }), [campo]: valor }
+    }));
+  };
+
+  /** Copia el horario del primer día seleccionado al resto. */
+  const igualarHorarios = () => {
+    const primero = ordenarDias(horarioDias)
+      .map(d => horarioHoras[d])
+      .find(h => h && h.hora);
+    if (!primero) return;
+    const copia = { hora: primero.hora, horaFin: primero.horaFin };
+    setHorarioHoras(
+      ordenarDias(horarioDias).reduce<Record<number, { hora: string; horaFin: string }>>((acc, d) => {
+        acc[d] = { ...copia };
+        return acc;
+      }, {})
+    );
   };
 
   const handleSaveHorario = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!horarioEquipo.trim() || !horarioHora) return;
+    if (!horarioEquipo.trim()) return;
     if (horarioDias.length === 0) {
       addToast({
         type: 'error',
         title: 'Faltan días',
         message: 'Selecciona al menos un día de entrenamiento.'
+      });
+      return;
+    }
+
+    const diasOrdenados = ordenarDias(horarioDias);
+    const diasHorario: HorarioEntrenamientoDia[] = diasOrdenados.map(dia => ({
+      dia,
+      hora: horarioHoras[dia]?.hora || '',
+      horaFin: horarioHoras[dia]?.horaFin || undefined
+    }));
+    if (diasHorario.some(d => !/^\d{2}:\d{2}$/.test(d.hora))) {
+      addToast({
+        type: 'error',
+        title: 'Falta la hora',
+        message: 'Indica la hora de inicio de cada día seleccionado.'
       });
       return;
     }
@@ -272,9 +356,10 @@ export const EntrenamientosView: React.FC = () => {
       equipo: horarioEquipo.trim(),
       categoria: horarioCategoria || eq?.categoria || '',
       tipo: eq ? tipoDeEquipo(eq.nombre) : undefined,
-      dias: ordenarDias(horarioDias),
-      hora: horarioHora,
-      horaFin: horarioHoraFin || undefined,
+      dias: diasOrdenados,
+      hora: diasHorario[0].hora,
+      horaFin: diasHorario[0].horaFin,
+      diasHorario,
       lugar: horarioLugar.trim() || undefined,
       titulo: horarioTitulo.trim() || undefined,
       objetivo: horarioObjetivo.trim() || undefined,
@@ -295,7 +380,7 @@ export const EntrenamientosView: React.FC = () => {
       addToast({
         type: 'success',
         title: editingHorario ? 'Horario actualizado' : 'Horario guardado',
-        message: `${payload.equipo} · ${formatDias(payload.dias)} · ${payload.hora}`
+        message: `${payload.equipo} · ${formatHorarioResumen(payload)}`
       });
       resetHorarioForm(payload.equipo);
     } catch (err) {
@@ -317,9 +402,9 @@ export const EntrenamientosView: React.FC = () => {
     addToast({ type: 'success', title: 'Horario eliminado', message: h.equipo });
   };
 
-  const aplicarHorario = (h: HorarioEntrenamiento) => {
-    setFormHora(h.hora || formHora);
-    setFormHoraFin(h.horaFin || '');
+  const aplicarHorarioDia = (h: HorarioEntrenamiento, dia: HorarioEntrenamientoDia) => {
+    setFormHora(dia.hora || formHora);
+    setFormHoraFin(dia.horaFin || '');
     if (h.lugar) setFormLugar(h.lugar);
     if (h.titulo) setFormTitulo(h.titulo);
     if (h.objetivo) setFormObjetivo(h.objetivo);
@@ -329,7 +414,7 @@ export const EntrenamientosView: React.FC = () => {
       if (h.tipo) setFormTipo(h.tipo);
     }
     // Al crear una sesión, saltamos directamente al próximo día que toque.
-    if (!editingSesion) setFormFecha(proximaFechaDeHorario(h.dias, h.hora));
+    if (!editingSesion) setFormFecha(proximaFechaDeHorario([dia.dia], dia.hora));
   };
 
   // Suspensión de la sesión con motivo (temporal o definitivo), con aviso al equipo
@@ -908,9 +993,8 @@ export const EntrenamientosView: React.FC = () => {
                     <p className="text-xs font-bold text-gray-900 truncate" title={h.equipo}>
                       {h.equipo}
                     </p>
-                    <p className="text-[10px] text-gray-600 font-semibold truncate">
-                      {formatDias(h.dias)} · {h.hora}
-                      {h.horaFin ? `-${h.horaFin}` : ''}
+                    <p className="text-[10px] text-gray-600 font-semibold truncate" title={formatHorarioResumen(h)}>
+                      {formatHorarioResumen(h)}
                       {h.lugar ? ` · ${h.lugar}` : ''}
                     </p>
                   </div>
@@ -1125,21 +1209,22 @@ export const EntrenamientosView: React.FC = () => {
                 Horario habitual de {formEquipo}
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {horariosDeEquipo.map(h => (
-                  <button
-                    key={h.id}
-                    type="button"
-                    onClick={() => aplicarHorario(h)}
-                    title={`Rellenar con este horario${h.lugar ? ` (${h.lugar})` : ''}`}
-                    className="px-2.5 py-1.5 bg-white border border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50 rounded-lg text-[11px] font-bold text-emerald-800 transition-colors"
-                  >
-                    {formatDias(h.dias)} · {h.hora}
-                    {h.horaFin ? `-${h.horaFin}` : ''}
-                  </button>
-                ))}
+                {horariosDeEquipo.flatMap(h =>
+                  diasHorarioDe(h).map(dia => (
+                    <button
+                      key={`${h.id}-${dia.dia}`}
+                      type="button"
+                      onClick={() => aplicarHorarioDia(h, dia)}
+                      title={`Rellenar con ${diaCorto(dia.dia)} ${formatoHoraDia(dia)}${h.lugar ? ` (${h.lugar})` : ''}`}
+                      className="px-2.5 py-1.5 bg-white border border-emerald-300 hover:border-emerald-500 hover:bg-emerald-50 rounded-lg text-[11px] font-bold text-emerald-800 transition-colors"
+                    >
+                      {diaCorto(dia.dia)} · {formatoHoraDia(dia)}
+                    </button>
+                  ))
+                )}
               </div>
               <p className="text-[10px] text-emerald-700/80">
-                Pulsa un horario para rellenar hora, lugar y objetivo
+                Pulsa el día que quieras para rellenar su hora, el lugar y el objetivo
                 {editingSesion ? '.' : '. La fecha salta al próximo día que toque.'}
               </p>
             </div>
@@ -1297,9 +1382,8 @@ export const EntrenamientosView: React.FC = () => {
                       <p className="text-sm font-bold text-gray-900 truncate" title={h.equipo}>
                         {h.equipo}
                       </p>
-                      <p className="text-[11px] text-gray-600 font-semibold truncate">
-                        {formatDias(h.dias)} · {h.hora}
-                        {h.horaFin ? `-${h.horaFin}` : ''}
+                      <p className="text-[11px] text-gray-600 font-semibold truncate" title={formatHorarioResumen(h)}>
+                        {formatHorarioResumen(h)}
                         {h.lugar ? ` · ${h.lugar}` : ''}
                       </p>
                       {h.titulo && (
@@ -1406,31 +1490,55 @@ export const EntrenamientosView: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  Hora inicio *
-                </label>
-                <input
-                  type="time"
-                  required
-                  value={horarioHora}
-                  onChange={e => setHorarioHora(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                />
+            {horarioDias.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider">
+                    Horario de cada día *
+                  </label>
+                  {horarioDias.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={igualarHorarios}
+                      className="text-[10px] font-bold text-orange-600 hover:text-orange-700 hover:underline"
+                    >
+                      Igualar horarios
+                    </button>
+                  )}
+                </div>
+                {ordenarDias(horarioDias).map(dia => {
+                  const valor = horarioHoras[dia] || { hora: '', horaFin: '' };
+                  const etiqueta = DIAS_SEMANA.find(d => d.value === dia)?.label || '';
+                  return (
+                    <div
+                      key={dia}
+                      className="flex items-center gap-2 bg-orange-50/60 border border-orange-200 rounded-xl px-2.5 py-2"
+                    >
+                      <span className="w-20 text-[11px] font-bold text-orange-900 shrink-0">{etiqueta}</span>
+                      <input
+                        type="time"
+                        required
+                        aria-label={`Hora de inicio del ${etiqueta}`}
+                        value={valor.hora}
+                        onChange={e => cambiarHoraDia(dia, 'hora', e.target.value)}
+                        className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                      />
+                      <span className="text-gray-400 text-xs shrink-0">-</span>
+                      <input
+                        type="time"
+                        aria-label={`Hora de fin del ${etiqueta}`}
+                        value={valor.horaFin}
+                        onChange={e => cambiarHoraDia(dia, 'horaFin', e.target.value)}
+                        className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                      />
+                    </div>
+                  );
+                })}
+                <p className="text-[10px] text-gray-500">
+                  Puedes poner una hora distinta a cada día (por ejemplo, martes 18:00 y jueves 17:30).
+                </p>
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  Hora fin (Opcional)
-                </label>
-                <input
-                  type="time"
-                  value={horarioHoraFin}
-                  onChange={e => setHorarioHoraFin(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                />
-              </div>
-            </div>
+            )}
 
             <div>
               <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">

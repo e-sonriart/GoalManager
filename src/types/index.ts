@@ -252,6 +252,13 @@ export interface SesionEntrenamiento {
   suspensionHasta?: string; // Reanudación ('YYYY-MM-DD' o 'YYYY-MM-DDTHH:MM'); vacío = definitivo
 }
 
+/** Horario concreto de un día de la semana (cada día puede tener su propia hora). */
+export interface HorarioEntrenamientoDia {
+  dia: number; // 0 = domingo, 1 = lunes ... 6 = sábado
+  hora: string; // 'HH:MM'
+  horaFin?: string; // 'HH:MM'
+}
+
 /** Horario habitual de entrenamiento de un equipo (días de la semana + hora). */
 export interface HorarioEntrenamiento {
   id: string;
@@ -260,8 +267,12 @@ export interface HorarioEntrenamiento {
   tipo?: TipoFutbol;
   /** Días de la semana: 0 = domingo, 1 = lunes ... 6 = sábado. */
   dias: number[];
+  /** Hora de referencia (primer día). Se mantiene por compatibilidad. */
   hora: string; // 'HH:MM'
+  /** Hora de fin de referencia (primer día). */
   horaFin?: string;
+  /** Horario propio de cada día; permite horas distintas según el día. */
+  diasHorario?: HorarioEntrenamientoDia[];
   lugar?: string;
   titulo?: string;
   objetivo?: string;

@@ -257,8 +257,11 @@ const normalizeRow = <T>(sheet: string, row: Record<string, unknown>): T => {
   if (sheet === 'equipos' && 'entrenadores' in item) {
     item.entrenadores = parseJsonField<string[]>(item.entrenadores) || [];
   }
-  if (sheet === 'horarios_entrenamiento' && 'dias' in item) {
-    item.dias = parseJsonField<number[]>(item.dias) || [];
+  if (sheet === 'horarios_entrenamiento') {
+    if ('dias' in item) item.dias = parseJsonField<number[]>(item.dias) || [];
+    if ('diasHorario' in item) {
+      item.diasHorario = parseJsonField<unknown[]>(item.diasHorario) || [];
+    }
   }
   if (sheet === 'caja' && 'pagos' in item) {
     item.pagos = parseJsonField(item.pagos) || {};
@@ -295,8 +298,9 @@ const prepareRow = <T>(sheet: string, item: Partial<T>): Record<string, unknown>
   if (sheet === 'equipos' && 'entrenadores' in row) {
     row.entrenadores = JSON.stringify(row.entrenadores ?? []);
   }
-  if (sheet === 'horarios_entrenamiento' && 'dias' in row) {
-    row.dias = JSON.stringify(row.dias ?? []);
+  if (sheet === 'horarios_entrenamiento') {
+    if ('dias' in row) row.dias = JSON.stringify(row.dias ?? []);
+    if ('diasHorario' in row) row.diasHorario = JSON.stringify(row.diasHorario ?? []);
   }
   if (sheet === 'estadisticas' && 'historico' in row) {
     row.historico = JSON.stringify(row.historico ?? []);

@@ -9,6 +9,7 @@ create table if not exists horarios_entrenamiento (
   categoria text,
   tipo text,
   dias jsonb default '[]'::jsonb,
+  "diasHorario" jsonb default '[]'::jsonb,
   hora text,
   "horaFin" text,
   lugar text,
@@ -17,6 +18,9 @@ create table if not exists horarios_entrenamiento (
   descripcion text,
   "actualizadoEn" text
 );
+
+-- Por si la tabla ya se había creado antes de admitir horas distintas por día.
+alter table horarios_entrenamiento add column if not exists "diasHorario" jsonb default '[]'::jsonb;
 
 alter table horarios_entrenamiento enable row level security;
 
